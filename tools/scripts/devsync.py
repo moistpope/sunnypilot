@@ -37,6 +37,16 @@ def git_tracked_files() -> bytes:
   )
 
 
+def git_dirs() -> bytes:
+  """.git paths for the main repo and all submodules, so `git status` works on the device."""
+  paths = [".git"]
+  out = subprocess.check_output(
+    ["git", "-C", BASEDIR, "submodule", "--quiet", "foreach", "--recursive", "echo $sm_path"]
+  ).decode()
+  paths += [f"{line.strip()}/.git" for line in out.splitlines() if line.strip()]
+  return b"".join(p.encode() + b"\0" for p in paths)
+
+
 class Handler(FileSystemEventHandler):
   def __init__(self, sync_fn):
     self.dirty = threading.Event()
@@ -65,7 +75,7 @@ def main():
   print(f"[devsync] target   comma@{args.ip}:{args.remote}")
 
   def run_sync():
-    file_list = git_tracked_files()
+    file_list = git_tracked_files() + git_dirs()
     cmd = build_rsync_cmd(args)
     t0 = time.monotonic()
     r = subprocess.run(cmd, input=file_list, capture_output=True)
