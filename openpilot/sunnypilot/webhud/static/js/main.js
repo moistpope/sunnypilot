@@ -5,15 +5,28 @@ import { Hud } from './hud.js';
 import { Settings } from './settings.js';
 import { VehicleState } from './vehicle.js';
 
+const SETTINGS_VERSION = 2;
 const DEFAULTS = {
-  theme: 'auto', units: 'auto', laneSource: 'auto', egoColor: 'model', view: 'chase',
+  theme: 'auto', units: 'auto', laneSource: 'blend', egoColor: 'model', view: 'chase',
   showPath: true, showUss: true, showOpLeads: true, autoView: true, showGround: true, showRoad: true,
   laneHeadingSign: 1, laneCurvatureSign: 1, objectHeadingSign: 1,
 };
 
+function loadSettings() {
+  const s = store('settings', {});
+  if ((s.version || 1) < 2) {
+    // v2: the lane heading direction verified on the car is built in (a stored "invert" would now
+    // double-invert), and the 'auto' lane source became 'blend'
+    if (s.laneHeadingSign === -1) s.laneHeadingSign = 1;
+    if (s.laneSource === 'auto') s.laneSource = 'blend';
+  }
+  return { ...DEFAULTS, ...s, version: SETTINGS_VERSION };
+}
+
 class App {
   constructor() {
-    this.settings = { ...DEFAULTS, ...store('settings', {}) };
+    this.settings = loadSettings();
+    save('settings', this.settings);
     this.state = null;
     this.ws = null;
     this.connected = false;

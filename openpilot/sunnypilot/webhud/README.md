@@ -14,9 +14,14 @@ braking, flashing with the indicator) and reversing lamps (`static/js/lamps.js`)
 
 Lanes and objects are filtered before drawing (`static/js/road.js`, `scene.js`): lane lines are
 carried with the car's motion and eased toward each measurement by confidence, with hysteresis on
-validity; objects are tracked with an alpha-beta filter. Lanes the cameras don't report are filled
-in as a softer, inferred road following the last known lanes (width, count, oncoming lane) or the
-car's own path. Ground texture and inferred road can be turned off under *Display*.
+validity; objects are tracked with an alpha-beta filter. The default *Blended* lane source takes
+the ADAS lines and refines each with openpilot's matching line where they agree, adding lines only
+openpilot sees when it's confident. Lanes neither reports are filled in as a softer, inferred road:
+lane count and width from ADAS lines/lane info and openpilot's outer lines and road edges (the road
+between the edges is split into lanes and the car put in its slot), held for a while, else the
+car's own path. The inferred road only appears once there's lane evidence and fades after ~150 m
+without any, or in Park; the ground fades out with distance from the car. Ground texture and
+inferred road can be turned off under *Display*.
 
 **Open:** `http://sunnypilot.local:8088` (or `http://<device-ip>:8088`; port 80 is also served when
 the process is allowed to bind it). Toggle: *Settings → Developer → Web HUD* (`EnableWebHud`, on by
@@ -50,8 +55,8 @@ Bus 2 (ADAS module) unless noted; the full set is in the *Signals* tab.
 - **Vehicle (bus 0):** `VCU_0x214` gear/ready/pedal, `ICC_0x531` cluster speed + unit, `BCM_0x335` lamp outputs, `EPS_0x1C2` steering angle, `BCM_0x343` doors/locks/windows, `PLGM_0x471` liftgate, `ECC_0x373` outside temp, `VCU_0x358` regen/e-pedal, `ICC_0x52A`/`ICC_0x35B` the ICC's own settings (shown next to the overrides).
 
 Not documented in the matrix, so exposed as display toggles (*Display → Geometry calibration*): the
-sign of lane heading/curvature and of object heading. Verify them on a drive with good lane
-confidence against the openpilot lanes (*Lane lines → Both*).
+sign of lane curvature and of object heading (lane heading grows to the right, verified on the car).
+Verify them on a drive with good lane confidence against the openpilot lanes (*Lane lines → Both*).
 
 ## API
 

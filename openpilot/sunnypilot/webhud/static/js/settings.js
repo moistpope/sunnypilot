@@ -201,8 +201,9 @@ export class Settings {
     body.append(el('div.section', el('h3', 'Speed units'),
       this.app.segmented([['auto', 'Follow cluster'], ['mph', 'mph'], ['kmh', 'km/h']], s.units, v => set('units', v))));
     body.append(el('div.section', el('h3', 'Lane lines'),
-      el('p.desc', 'Fisker ADAS camera lanes, openpilot model lanes, or both (model drawn faint).'),
-      this.app.segmented([['auto', 'Auto'], ['fisker', 'Fisker ADAS'], ['model', 'openpilot'], ['both', 'Both']], s.laneSource, v => set('laneSource', v))));
+      el('p.desc', 'Blended: the Fisker ADAS lanes, refined with openpilot\'s where they agree and filled in where only openpilot sees a line. ' +
+        'Or either source alone, or both drawn separately (openpilot faint).'),
+      this.app.segmented([['blend', 'Blended'], ['fisker', 'Fisker ADAS'], ['model', 'openpilot'], ['both', 'Both']], s.laneSource, v => set('laneSource', v))));
     body.append(el('div.section', el('h3', 'Car color'),
       this.app.segmented([['model', 'Original'], ['#1d1f24', 'Black'], ['#e8e9eb', 'White'], ['#6e7781', 'Gray'], ['#3a5a8c', 'Blue'], ['#7d2b2b', 'Red'], ['#5f6b4e', 'Green']],
         s.egoColor, v => set('egoColor', v))));
@@ -217,7 +218,7 @@ export class Settings {
     body.append(el('div.section', el('div.rows', toggles.map(([k, t, d]) =>
       el('div.row', el('div.lbl', el('b', t), el('small', d)), this.app.switch(s[k] !== false, v => set(k, v)))))));
     body.append(el('div.section', el('h3', 'Geometry calibration'),
-      el('p.desc', 'Sign conventions of the ADAS lane heading/curvature and object heading signals aren\'t documented. ' +
+      el('p.desc', 'The ADAS lane heading direction is verified on the car; lane curvature and object heading signs aren\'t documented. ' +
         'Flip these if lines bend or cars point the wrong way compared to the openpilot lanes.'),
       el('div.rows',
         el('div.row', el('div.lbl', el('b', 'Invert lane heading')), this.app.switch(s.laneHeadingSign === -1, v => set('laneHeadingSign', v ? -1 : 1))),

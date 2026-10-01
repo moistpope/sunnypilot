@@ -36,7 +36,7 @@ class TestFiskerWorld(OpenpilotTestCase):
     ], 1.0)
     lines = {ln["id"]: ln for ln in self.world.state()["lanes"]["lines"]}
     left = lines["L1"]
-    assert left["y0"] == 1.75 and left["heading"] == 2.0 and left["radius"] == -500
+    assert left["y0"] == 1.75 and left["heading"] == -2.0 and left["radius"] == -500   # raw 92 deg = 2 deg to the right
     assert left["color"] == "yellow" and left["typeName"] == "SingleLine_dashed" and left["conf"] == 1.0 and left["valid"]
     right = lines["R1"]
     assert right["y0"] == -1.6          # right lines are negative (y is +left)

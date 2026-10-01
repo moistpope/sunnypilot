@@ -35,8 +35,10 @@ ACC_ENGAGED = {3, 4, 5, 6, 11}   # Active, Override, Standstill_active/wait, GoN
 USS_SECTORS = {"front": "F", "rear": "B", "left": "L", "right": "R"}
 PDC_SENSORS = ("LS", "LC", "LM", "RM", "RC", "RS")  # left side .. right side
 
-# Lane line encoding (ADAS_xxLineN*): heading is 90 deg when parallel to the ego heading, curvature
-# is a signed radius in 50 m steps (raw 63 -> 0 = straight, raw 127 -> 3200 = not displayed).
+# Lane line encoding (ADAS_xxLineN*): heading is 90 deg when parallel to the ego heading and grows
+# as the line turns to the right (checked against the road on the car), so heading = 90 - raw is
+# + to the left like y; curvature is a signed radius in 50 m steps (raw 63 -> 0 = straight,
+# raw 127 -> 3200 = not displayed).
 LANE_HEADING_CENTER_DEG = 90.0
 LANE_NO_DISPLAY = 3200.0
 
@@ -273,7 +275,7 @@ class FiskerWorld:
     return {
       "id": lid,
       "y0": _r(side * offset, 3),
-      "heading": _r(s(f"ADAS_{prefix}Hdng", LANE_HEADING_CENTER_DEG) - LANE_HEADING_CENTER_DEG, 2),
+      "heading": _r(LANE_HEADING_CENTER_DEG - s(f"ADAS_{prefix}Hdng", LANE_HEADING_CENTER_DEG), 2),   # deg, + = left
       "radius": None if (not displayed or crvt == 0) else crvt,
       "type": typ,
       "typeName": s.label(f"ADAS_{prefix}LnTyp"),

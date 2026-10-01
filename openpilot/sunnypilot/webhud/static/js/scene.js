@@ -68,18 +68,23 @@ function groundMaterial(anisotropy) {
     tGrain: { value: noiseTexture(256, 24, 4, 0.6, 7, anisotropy) },
     tCloud: { value: noiseTexture(256, 4, 5, 0.55, 3, anisotropy) },
     uContrast: { value: 0.1 },
+    uBg: { value: new THREE.Color(0xffffff) },
+    uFade: { value: new THREE.Vector2(40, 160) },   // m from the car: start/end of the fade into the background
   };
   const m = new THREE.MeshBasicMaterial({ color: 0xffffff });
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uniforms);
-    sh.vertexShader = 'varying vec2 vGround;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = position.xz;');
-    sh.fragmentShader = 'varying vec2 vGround;\nuniform sampler2D tGrain;\nuniform sampler2D tCloud;\nuniform float uContrast;\n' +
+    sh.vertexShader = 'varying vec2 vGround;\nvarying vec2 vScene;\n' + sh.vertexShader.replace('#include <begin_vertex>',
+      '#include <begin_vertex>\nvGround = position.xz;\nvScene = (modelMatrix * vec4(transformed, 1.0)).xz;');
+    sh.fragmentShader = 'varying vec2 vGround;\nvarying vec2 vScene;\nuniform sampler2D tGrain;\nuniform sampler2D tCloud;\nuniform float uContrast;\nuniform vec3 uBg;\nuniform vec2 uFade;\n' +
       sh.fragmentShader.replace('#include <map_fragment>', `
         float grain = texture2D(tGrain, vGround / 2.0).r;
         float mid = texture2D(tCloud, vGround / 12.0 + vec2(0.37, 0.61)).r;
         float cloud = texture2D(tCloud, vGround / 48.0).r;
         float n = (cloud - 0.5) * 0.6 + (mid - 0.5) * 0.45 + (grain - 0.5) * 0.8;
-        diffuseColor.rgb *= 1.0 + n * uContrast;`);
+        diffuseColor.rgb *= 1.0 + n * uContrast;
+        // fade into the background with distance from the car (sooner when there's no road to show)
+        diffuseColor.rgb = mix(diffuseColor.rgb, uBg, smoothstep(uFade.x, uFade.y, length(vScene - vec2(0.0, 2.4))));`);
   };
   m.userData.uniforms = uniforms;
   return m;
@@ -195,18 +200,28 @@ function lineMaterial(color, opacity = 1) {
 }
 
 function dashed(pts, phase) {
-  // split a polyline into dashes by arc length; phase (distance driven) keeps them fixed to the road
+  // split a polyline into dashes by arc length, cutting exact dash ends inside each segment (the
+  // line is sampled every ~2 m, coarser than a dash); phase (distance driven) keeps them on the road
+  const P = DASH + GAP;
   const out = [];
-  let s = phase, cur = null;
-  for (let i = 0; i < pts.length; i++) {
-    if (i > 0) s += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-    const m = ((s % (DASH + GAP)) + (DASH + GAP)) % (DASH + GAP);
-    if (m < DASH) {
-      if (!cur) { cur = []; out.push(cur); }
-      cur.push(pts[i]);
-    } else {
-      cur = null;
+  let s0 = phase, cur = null;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    if (len < 1e-6) continue;
+    const at = (d) => [x0 + (x1 - x0) * d / len, y0 + (y1 - y0) * d / len];
+    let a = 0;
+    while (a < len) {
+      const m = (((s0 + a) % P) + P) % P;
+      const dash = m < DASH;
+      const next = Math.min(len, a + (dash ? DASH - m : P - m));
+      if (dash) {
+        if (!cur) { cur = [at(a)]; out.push(cur); }
+        cur.push(at(next));
+      } else cur = null;
+      a = next;
     }
+    s0 += len;
   }
   return out.filter(p => p.length >= 2);
 }
@@ -327,6 +342,7 @@ export class CarScene {
     this.scene.background = new THREE.Color(t.bg);
     this.scene.fog = new THREE.Fog(t.bg, 70, 190);
     this.ground.material.color.set(t.ground);
+    this.ground.material.userData.uniforms.uBg.value.set(t.bg);
     this.ground.material.userData.uniforms.uContrast.value = dark ? 0.85 : 0.15;
     // headlight light adds up on a dark road; on a light one it tints it instead
     this.headBeam.material.blending = dark ? THREE.AdditiveBlending : THREE.NormalBlending;
@@ -339,7 +355,8 @@ export class CarScene {
     this.mats.lineYellowSoft.color.set(t.yellow);
     this.mats.lineBlueSoft.color.set(t.blue);
     this.mats.road.color.set(t.road);
-    this.mats.road.opacity = dark ? 0.35 : 0.07;
+    // inferred road: full opacity, scaled by the road model's confidence each frame
+    this.softOpacity = { road: dark ? 0.35 : 0.07, lineSoft: 0.55, lineYellowSoft: 0.5, lineBlueSoft: 0.5 };
     this.mats.lineBlue.color.set(t.blue);
     this.mats.lineYellow.color.set(t.yellow);
     this.mats.lineRed.color.set(t.red);
@@ -414,9 +431,14 @@ export class CarScene {
     const road = this.road.update(st, this.vehicle, s, dt);
     const anchor = linePoints(road.anchor.c, xFrom, xTo, 2);
     const fromCenter = (d) => offsetLine(anchor, d - road.anchor.offset);
-    this.ribbons.road.set(s.showRoad === false ? [] : [fromCenter(road.surface.offset)], road.surface.width, 0.006);
+    // the inferred road only shows as far as we believe the car is on a laned road
+    const rc = s.showRoad === false ? 0 : road.confidence;
+    for (const [k, o] of Object.entries(this.softOpacity || {})) this.mats[k].opacity = o * rc;
+    this.ribbons.road.set(rc > 0.02 ? [fromCenter(road.surface.offset)] : [], road.surface.width, 0.006);
+    const u = this.ground.material.userData.uniforms;
+    u.uFade.value.set(16 + 34 * rc, 60 + 110 * rc);
     for (const line of road.lines) {
-      if (line.inferred && s.showRoad === false) continue;
+      if (line.inferred && rc <= 0.02) continue;
       const pts = line.inferred ? fromCenter(line.offset) : linePoints(line.c, xFrom, xTo, 2);
       if (line.edge) { pieces.edge.push(pts); continue; }
       const ego = line.id === 'L1' || line.id === 'R1';
