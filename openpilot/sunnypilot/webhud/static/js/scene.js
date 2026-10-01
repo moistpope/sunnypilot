@@ -7,6 +7,7 @@ import { OrbitControls } from '../vendor/OrbitControls.js';
 import { makeEgo, makeObject, fitScale, loadEgoModel } from './models.js';
 import { applyLamps } from './lamps.js';
 import { RoadModel, linePoints } from './road.js';
+import { RoadFurniture } from './furniture.js';
 import { STEER_RATIO } from './vehicle.js';
 
 const EGO_LEN = 4.775;
@@ -296,6 +297,8 @@ export class CarScene {
       // inferred (procedural) lane lines and the road surface
       lineSoft: lineMaterial(0x8e949d, 0.55), lineYellowSoft: lineMaterial(0xdcaa2e, 0.5), lineBlueSoft: lineMaterial(0x3e6ae1, 0.5),
       road: lineMaterial(0x000000, 0.06),
+      // stop lines and crosswalks
+      marking: lineMaterial(0x8e949d, 0.9),
     };
     this.ribbons = {};
     for (const key of Object.keys(this.mats)) {
@@ -305,6 +308,9 @@ export class CarScene {
     this.ribbons.path.mesh.renderOrder = 1;
     this.ribbons.road.mesh.renderOrder = 0;
     this.road = new RoadModel();
+    this.ribbons.zebra = new Ribbon(this.mats.marking, 256);
+    this.scene.add(this.ribbons.zebra.mesh);
+    this.furniture = new RoadFurniture(this.scene, this.world);
 
     this.objects = new Map();   // key -> track (see _track)
     this.labels = new Map();
@@ -352,6 +358,7 @@ export class CarScene {
     this.hemi.groundColor.set(t.hemiGround);
     this.mats.line.color.set(t.line);
     this.mats.lineSoft.color.set(t.line);
+    this.mats.marking.color.set(t.line);
     this.mats.lineYellowSoft.color.set(t.yellow);
     this.mats.lineBlueSoft.color.set(t.blue);
     this.mats.road.color.set(t.road);
@@ -401,7 +408,7 @@ export class CarScene {
     // a rotated (portrait) screen needs a wider vertical field of view to keep the lanes in frame
     this.camera.fov = w < h ? 60 : 42;
     // shift the projection so the car sits in the lower part of the free screen area (Tesla-like)
-    const offY = this.viewOffset.y + (w < h && this.viewOffset.y > 0 ? 0.06 : 0);   // clear the portrait header
+    const offY = this.viewOffset.y;
     this.camera.setViewOffset(w, h, -this.viewOffset.x * w, -offY * h, w, h);
     this.camera.updateProjectionMatrix();
   }
@@ -425,7 +432,7 @@ export class CarScene {
     const latActive = !!((op.carControl && op.carControl.latActive) || (op.selfdriveStateSP && op.selfdriveStateSP.mads && op.selfdriveStateSP.mads.active));
     const hmi = f && f.lanes ? f.lanes.hmi : null;
     const pieces = { line: [], lineBlue: [], lineYellow: [], lineRed: [], lineSoft: [], lineYellowSoft: [], lineBlueSoft: [], edge: [], model: [], modelEdge: [] };
-    const xTo = 90, xFrom = -12;
+    const xTo = 90, xFrom = -30;
 
     // smoothed + procedurally completed road (road.js)
     const road = this.road.update(st, this.vehicle, s, dt);
@@ -457,6 +464,10 @@ export class CarScene {
         (t === 4 || t === 5 ? dash : solid)(b);
       } else solid(pts);
     }
+    // stop line / crosswalk the ADAS reports, across the road at its distance
+    const mk = this.furniture.markings(this.road);
+    this.ribbons.marking.set(mk.stop, 0.5, 0.025);
+    this.ribbons.zebra.set(mk.zebra, 0.55, 0.025);
     // 'both': openpilot's raw lane lines on top, thin
     if (s.laneSource === 'both' && op.modelV2) {
       const md = op.modelV2;
@@ -762,6 +773,7 @@ export class CarScene {
     this.vehicle = vehicle;
     this._camera(dt);
     this._ground(dt);
+    this.furniture.update(this.state, this.road, this.vehicle, this.settings, dt, this.clock, toScene);
     this._laneGeometry(dt);
     this._uss();
     this._objects(dt);

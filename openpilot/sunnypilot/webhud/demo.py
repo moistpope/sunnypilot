@@ -115,15 +115,30 @@ class DemoSource:
         frames.append(self._frame(msg, {f"ADAS_Obj{n}_ID": 0}))
 
     engaged = not parking
-    frames.append(self._frame("ADAS_0x313", {"ADAS_Sts_ACC_ICC": 3 if engaged else 2, "ADAS_TJA_AutoSteerSts": 1, "ADAS_TSRSts": 2, "ADAS_Sts_TLR": 1}))
+    # road furniture: a speed limit sign read at 6 s (65 -> 55), a no-U-turn sign at 12-15 s, a light that
+    # turns green as we approach it at 20-26 s with its stop line, and a crosswalk at 32-35 s
+    sign_read = 6 < t < 7 or 12 < t < 13
+    limit = 55 if 6 < t < 46 else 65
+    light_dist = 150 - 26 * (t - 20)
+    light = 20 < t < 26
+    light_color = 1 if t < 23.5 else 3   # red, then green
+    stop_dist = light_dist - 18
+    cross_dist = 26 * (35 - t)
+    frames.append(self._frame("ADAS_0x313", {"ADAS_Sts_ACC_ICC": 3 if engaged else 2, "ADAS_TJA_AutoSteerSts": 1,
+                                             "ADAS_TSRSts": 3 if sign_read else 2, "ADAS_Sts_TLR": 2 if light else 1}))
     frames.append(self._frame("ADAS_0x31C", {"ADAS_AccTrgSpdDisp": 60, "ADAS_TiGapSet_ACC": 3, "ADAS_ACCPrimTgtID": 11 if engaged else 0,
                                              "ADAS_ACCIconDisp": 2 if engaged else 1, "ADAS_ACCFuncTyp": 2}))
     frames.append(self._frame("ADAS_0x314", {"ADAS_BSDSts": 2, "ADAS_DOW_Sts": 2, "ADAS_LKASts": 3}))
     frames.append(self._frame("ADAS_0x315", {"ADAS_BSD_CID_LeDispReq": 1 if bsd_left else 0, "ADAS_BSDLeftThreatID": bsd_left}))
-    frames.append(self._frame("ADAS_0x311", {"ADAS_TSRSpeedLimit": 65, "ADAS_SpeedLimitUnit": 1}))
-    red_light = 20 < t < 30
-    frames.append(self._frame("ADAS_0x210", {"ADAS_TLR_EgoLaneColor": 1 if red_light else 0, "ADAS_TLR_EgoLaneTyp": 1 if red_light else 0}))
-    frames.append(self._frame("ADAS_0x351", {"ADAS_TrafficLiDst": 90 - (t - 20) * 6 if red_light else 0}))
+    frames.append(self._frame("ADAS_0x311", {"ADAS_TSRSpeedLimit": limit, "ADAS_SpeedLimitUnit": 1}))
+    frames.append(self._frame("ADAS_0x334", {"ADAS_FobdSign": 3 if 12 < t < 15 else 0}))
+    frames.append(self._frame("ADAS_0x210", {
+      "ADAS_TLR_EgoLaneColor": light_color if light else 0, "ADAS_TLR_EgoLaneTyp": 1 if light else 0,
+      "ADAS_TLR_EgoLaneSts": 2 if light else 0, "ADAS_TLRStructOrient": 1 if light else 0, "ADAS_TLRNumSpots": 3 if light else 0,
+    }))
+    frames.append(self._frame("ADAS_0x351", {"ADAS_TrafficLiDst": max(0, light_dist) if light else 0}))
+    marking = (0, stop_dist) if light and 0 < stop_dist < 80 else (2, cross_dist) if 0 < cross_dist < 80 else (0, 0)
+    frames.append(self._frame("ADAS_0x350", {"ADAS_LaneMarkingType": marking[0], "ADAS_LaneMarkingDistance": marking[1]}))
     # backing towards a wall: rear zones close in, something beside the right rear door
     zr = max(1, 4 - int(t - 46)) if parking else 9
     rear = [zr, zr, min(zr + 1, 9), 9] if parking else [9] * 4

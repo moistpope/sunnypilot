@@ -23,6 +23,17 @@ car's own path. The inferred road only appears once there's lane evidence and fa
 without any, or in Park; the ground fades out with distance from the car. Ground texture and
 inferred road can be turned off under *Display*.
 
+Traffic lights, signs and road markings (`static/js/furniture.js`) come from the car's ADAS camera
+only; sunnypilot adds map speed limits (`liveMapDataSP`) but no signs or lights. The camera reports
+what it saw and, for lights and markings, how far ahead, never where across the road: the ego-lane
+traffic light (color, arrow, solid/blinking, lamp count, orientation) floats over our lane at its
+distance (else the stop line's or a landmark's, else an estimate); a speed-limit sign the camera
+just read (`ADAS_TSRSts` Vision mode or a new value) or a prohibition sign (`ADAS_FobdSign`) goes up
+at the roadside a little ahead and stays put as the car passes; stop lines and crosswalks are drawn
+across the road at their distance. The camera doesn't classify stop or yield signs. The ICC also
+sends an ADASIS v2 map horizon (`ICC_0x250`..`0x255`, `0x361`) with map signs and lanes per
+direction; its sign type table isn't in the matrix, so it isn't used yet.
+
 **Open:** `http://sunnypilot.local:8088` (or `http://<device-ip>:8088`; port 80 is also served when
 the process is allowed to bind it). Toggle: *Settings → Developer → Web HUD* (`EnableWebHud`, on by
 default).

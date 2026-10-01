@@ -6,9 +6,10 @@ import { Settings } from './settings.js';
 import { VehicleState } from './vehicle.js';
 
 const SETTINGS_VERSION = 2;
+const AUTO_VIEW_HOLD_MS = 30000;   // after the user picks a view or moves the camera, auto view waits this long
 const DEFAULTS = {
   theme: 'auto', units: 'auto', laneSource: 'blend', egoColor: 'model', view: 'chase',
-  showPath: true, showUss: true, showOpLeads: true, autoView: true, showGround: true, showRoad: true,
+  showPath: true, showUss: true, showOpLeads: true, autoView: true, showGround: true, showRoad: true, showSigns: true,
   laneHeadingSign: 1, laneCurvatureSign: 1, objectHeadingSign: 1,
 };
 
@@ -34,6 +35,7 @@ class App {
     this.rawAddrs = [];
     this.lastStateAt = 0;
     this.autoViewActive = false;
+    this.manualViewAt = -1e9;
 
     this.scene = new CarScene($('#scene'));
     this.hud = new Hud();
@@ -46,6 +48,8 @@ class App {
     this.bindReplaybar();
     this.updateLayout();
     window.addEventListener('resize', () => this.updateLayout());
+    // mobile toolbars showing/hiding change the visible height without always firing window resize
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { this.scene.resize(); this.updateLayout(); });
     matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => this.applyTheme());
     this.connect();
     api('/api/params').then(p => { this.hud.isMetric = !!p.IsMetric; }).catch(() => {});
@@ -167,9 +171,11 @@ class App {
     this.autoView(state);
   }
 
-  // Tesla-like: switch to a top view when parking (slow, reverse or obstacles close), back afterwards
+  // Tesla-like: switch to a top view when parking (slow, reverse or obstacles close), back afterwards.
+  // A view the user picks (or a camera they move) wins for AUTO_VIEW_HOLD_MS before auto view resumes.
   autoView(state) {
     if (this.settings.autoView === false || this.scene.interacting) return;
+    if (performance.now() - Math.max(this.manualViewAt, this.scene.lastInteract) < AUTO_VIEW_HOLD_MS) return;
     const op = state.op || {};
     const f = state.fisker;
     const v = op.carState ? op.carState.vEgo : (f && f.vehicle && f.vehicle.speedKph != null ? f.vehicle.speedKph / 3.6 : null);
@@ -191,6 +197,7 @@ class App {
   bindViewbar() {
     $$('#viewbar button[data-view]').forEach(b => b.addEventListener('click', () => {
       this.autoViewActive = false;
+      this.manualViewAt = performance.now();
       this.setSetting('view', b.dataset.view);
       this.setView(b.dataset.view);
     }));

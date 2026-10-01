@@ -338,6 +338,7 @@ export class RoadModel {
     // 4) lines to draw: measured ones that are shown, inferred ones for every other boundary
     const lanes = (side) => (this.t - this.count[side].at < COUNT_HOLD ? this.count[side].n : 0);
     const nl = lanes('left'), nr = lanes('right');
+    this.lastLanes = { nl, nr };
     const oncoming = this.oncomingLeft.v && this.t - this.oncomingLeft.at < COUNT_HOLD;
     const out = [];
     for (const id of shown) {
