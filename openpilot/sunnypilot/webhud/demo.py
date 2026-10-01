@@ -121,7 +121,7 @@ class DemoSource:
     limit = 55 if 6 < t < 46 else 65
     light_dist = 150 - 26 * (t - 20)
     light = 20 < t < 26
-    light_color = 1 if t < 23.5 else 3   # red, then green
+    green = t >= 23.5   # red, then green; the green arrives only in the plain light-color field, as some cars send it
     stop_dist = light_dist - 18
     cross_dist = 26 * (35 - t)
     frames.append(self._frame("ADAS_0x313", {"ADAS_Sts_ACC_ICC": 3 if engaged else 2, "ADAS_TJA_AutoSteerSts": 1,
@@ -133,7 +133,8 @@ class DemoSource:
     frames.append(self._frame("ADAS_0x311", {"ADAS_TSRSpeedLimit": limit, "ADAS_SpeedLimitUnit": 1}))
     frames.append(self._frame("ADAS_0x334", {"ADAS_FobdSign": 3 if 12 < t < 15 else 0}))
     frames.append(self._frame("ADAS_0x210", {
-      "ADAS_TLR_EgoLaneColor": light_color if light else 0, "ADAS_TLR_EgoLaneTyp": 1 if light else 0,
+      "ADAS_TLR_EgoLaneColor": 1 if light and not green else 0, "ADAS_TrafficLightShape": 3 if light and green else 0,
+      "ADAS_TLR_EgoLaneTyp": 1 if light else 0,
       "ADAS_TLR_EgoLaneSts": 2 if light else 0, "ADAS_TLRStructOrient": 1 if light else 0, "ADAS_TLRNumSpots": 3 if light else 0,
     }))
     frames.append(self._frame("ADAS_0x351", {"ADAS_TrafficLiDst": max(0, light_dist) if light else 0}))

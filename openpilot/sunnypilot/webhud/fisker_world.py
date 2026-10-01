@@ -452,11 +452,25 @@ class FiskerWorld:
 
   @staticmethod
   def _tlr(s: _Sig) -> dict:
-    color = s.i("ADAS_TLR_EgoLaneColor", 0)
+    # The lit light: the ego-lane color (with arrow / supplementary combinations) when the ADAS has
+    # one, else ADAS_TrafficLightShape (despite its name it carries Red/Amber/Green), else what the
+    # red-light warning / green-light reminder implies.
+    ego = s.i("ADAS_TLR_EgoLaneColor", 0)
+    plain = s.i("ADAS_TrafficLightShape", 0)
+    warn = s.i("ADAS_TLR_WarnReq", 0)
+    active = None
+    if 1 <= ego <= 7:
+      active = {"color": s.label("ADAS_TLR_EgoLaneColor"), "source": "egoLane"}
+    elif 1 <= plain <= 3:
+      active = {"color": s.label("ADAS_TrafficLightShape"), "source": "light"}
+    elif warn in (1, 2):
+      active = {"color": "Red" if warn == 1 else "Green", "source": "warning"}
     return {
       "state": s.enum("ADAS_Sts_TLR"),
-      "detected": bool(color) and color != 8,
+      "detected": active is not None,
+      "active": active,
       "color": s.label("ADAS_TLR_EgoLaneColor"),
+      "lightColor": s.label("ADAS_TrafficLightShape"),
       "shape": s.label("ADAS_TLR_EgoLaneTyp"),
       "status": s.label("ADAS_TLR_EgoLaneSts"),
       "warning": s.enum("ADAS_TLR_WarnReq"),

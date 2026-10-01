@@ -206,10 +206,11 @@ export class Hud {
     if (f) {
       const tlr = f.tlr;
       if (tlr && tlr.detected) {
-        const c = (tlr.color || '').toLowerCase();
-        const lamp = c.includes('red') ? 'red' : c.includes('amber') || c.includes('orange') ? 'amber' : c.includes('green') ? 'green' : '';
+        const color = (tlr.active && tlr.active.color) || tlr.color || '';
+        const c = color.toLowerCase();
+        const lamp = c.startsWith('red') ? 'red' : c.includes('amber') || c.includes('orange') ? 'amber' : c.includes('green') ? 'green' : '';
         const arrow = /arrow/i.test(tlr.shape || '') ? ` (${prettyLabel(tlr.shape).toLowerCase()})` : '';
-        rows.push(['tl', el('div.ri', el(`i.lamp.${lamp || 'none'}`), `${prettyLabel(tlr.color || 'Traffic')} light${arrow}`,
+        rows.push(['tl', el('div.ri', el(`i.lamp.${lamp || 'none'}`), `${prettyLabel(color || 'Traffic')} light${arrow}`,
           tlr.dist ? el('small', `${Math.round(tlr.dist)} m`) : null)]);
       }
       if (f.tsr && f.tsr.prohibited) rows.push(['ps', el('div.ri', '⛔ ', prettyLabel(f.tsr.prohibited))]);

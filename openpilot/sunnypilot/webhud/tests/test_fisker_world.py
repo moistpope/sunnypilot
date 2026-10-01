@@ -76,6 +76,19 @@ class TestFiskerWorld(OpenpilotTestCase):
     obj = self.world.state()["objects"][0]
     assert obj["x"] == 40.4 and obj["y"] == -1.2
 
+  def test_traffic_light_active_color(self):
+    def active(values):
+      self.world.update([self.frame("ADAS_0x210", {"ADAS_TLR_EgoLaneColor": 0, "ADAS_TrafficLightShape": 0, "ADAS_TLR_WarnReq": 0, **values})], 4.0)
+      tlr = self.world.state()["tlr"]
+      return tlr["active"], tlr["detected"]
+    # the ego-lane color wins, keeping its arrow / supplementary combination
+    assert active({"ADAS_TLR_EgoLaneColor": 5, "ADAS_TrafficLightShape": 3}) == ({"color": "Red_With_Supp_green", "source": "egoLane"}, True)
+    # no ego-lane color (none / unknown): the plain light color
+    assert active({"ADAS_TLR_EgoLaneColor": 8, "ADAS_TrafficLightShape": 2}) == ({"color": "Amber", "source": "light"}, True)
+    # neither: what the warning implies
+    assert active({"ADAS_TLR_WarnReq": 1}) == ({"color": "Red", "source": "warning"}, True)
+    assert active({}) == (None, False)
+
   def test_native_bus_preferred_and_echoes_ignored(self):
     w = self.world
     w.update([self.frame("ADAS_0x31C", {"ADAS_AccTrgSpdDisp": 50})], 1.0)

@@ -87,9 +87,13 @@ class TrafficLight {
 
   // which lamps are lit: [{i, color, shape}]
   static lit(tlr, spots, clock) {
-    const color = tlr.color || '';
+    // the active light (fisker_world picks it from the ego-lane color, the plain light color or the
+    // warning); the ego-lane status only speaks for the ego-lane color
+    const active = tlr.active || (tlr.detected ? { color: tlr.color, source: 'egoLane' } : null);
+    if (!active) return [];
+    const color = active.color || '';
     const shape = tlr.shape === 'Left_Arrow' ? 'left' : tlr.shape === 'Right_Arrow' ? 'right' : 'circle';
-    if (tlr.status === 'Off') return [];
+    if (tlr.status === 'Off' && active.source === 'egoLane') return [];
     if (tlr.status === 'Blinking' && clock % 1 > 0.5) return [];
     const out = [];
     const main = /^Red/.test(color) ? 0 : /Amber|Orange/.test(color) && !/^Red/.test(color) ? 1 : /Green/.test(color) ? 2 : -1;
