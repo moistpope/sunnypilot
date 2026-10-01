@@ -775,9 +775,7 @@ export class CarScene {
   }
 
   _tracks(dt) {
-    const h = this.renderer.getDrawingBufferSize(this._buf || (this._buf = new THREE.Vector2())).y;
-    const pxScale = h / (2 * Math.tan(this.camera.fov * DEG / 2));
-    this.tracks.update(dt, this.vehicle, this.ego, motorLoad(this.state), this.settings.showTracks !== false, pxScale);
+    this.tracks.update(dt, this.vehicle, this.ego, motorLoad(this.state), this.settings.showTracks !== false);
   }
 
   _camera(dt) {

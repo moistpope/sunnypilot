@@ -34,12 +34,13 @@ across the road at their distance. The camera doesn't classify stop or yield sig
 sends an ADASIS v2 map horizon (`ICC_0x250`..`0x255`, `0x361`) with map signs and lanes per
 direction; its sign type table isn't in the matrix, so it isn't used yet.
 
-*Power trails* (`static/js/tracks.js`, *Display*) lay glowing tire tracks behind the rear wheels,
-colored by how hard the motors are asked to pull when each bit is laid: blue at a light load through
-the spectrum to red at full power (150 kW demanded, or 6000 Nm of wheel torque for a hard launch;
-regen counts as light). Laid track keeps its color, so a burst of power slides back behind the car
+*Power trails* (`static/js/tracks.js`, *Display*): the rear tires paint the road as they roll,
+spraying flat dabs of paint across the tire, colored by how hard the motors are asked to pull when
+each is laid: blue at a light load through the spectrum to red at full power (150 kW demanded, or
+6000 Nm of wheel torque for a hard launch; regen counts as light), and denser with more overspray
+the harder the car pulls. Laid paint keeps its color, so a burst of power slides back behind the car
 as a red stretch. The trail grows with speed to one car length at 70 mph and fades out toward its
-end, and light motes kick up off the tires, more of them the harder the car pulls. The load is the
+end. The load is the
 driver's torque request per axle (`VCU_0x102`, wheel torque) times motor speed (`MCU_F_0x150`,
 `MCU_R_0x151`) over the ~11.5:1 drive ratio; on other cars it's estimated from openpilot's
 acceleration. The chase camera also backs off with speed, up to 1.5x its distance at 70 mph,
