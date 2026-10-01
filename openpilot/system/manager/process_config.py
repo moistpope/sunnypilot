@@ -71,6 +71,9 @@ def livestream(started: bool, params: Params, CP: car.CarParams) -> bool:
 def use_copyparty(started, params, CP: car.CarParams) -> bool:
   return bool(params.get_bool("EnableCopyparty"))
 
+def use_webhud(started, params, CP: car.CarParams) -> bool:
+  return bool(params.get_bool("EnableWebHud"))
+
 def sunnylink_ready_shim(started, params, CP: car.CarParams) -> bool:
   """Shim for sunnylink_ready to match the process manager signature."""
   return sunnylink_ready(params)
@@ -180,6 +183,9 @@ procs += [
 
   # locationd
   NativeProcess("locationd_llk", "openpilot/sunnypilot/selfdrive/locationd", ["./locationd"], only_onroad),
+
+  # web HUD for an in-car browser (http://sunnypilot.local:8088)
+  PythonProcess("webhud", "openpilot.sunnypilot.webhud.server", use_webhud),
 ]
 
 if os.path.exists("../../sunnypilot/sunnylink/uploader.py"):

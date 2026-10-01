@@ -70,6 +70,7 @@ PROCS = {
   "./pandad": 40.0,
   "openpilot.system.qcomgpsd.qcomgpsd": 1.0,
   "openpilot.common.hardware.comma.modem": 10.0,
+  "openpilot.sunnypilot.webhud.server": 1.0,  # idles until a browser connects
 }
 
 TIMINGS = {

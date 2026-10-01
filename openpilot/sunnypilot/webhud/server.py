@@ -1,0 +1,796 @@
+#!/usr/bin/env python3
+"""
+Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
+
+This file is part of sunnypilot and is licensed under the MIT License.
+See the LICENSE.md file in the root directory for more details.
+
+sunnypilot web HUD: a Tesla-style car view + settings page for an in-car browser.
+
+  http://sunnypilot.local:8088   (also :80 when the process may bind it)
+
+Serves a static single-page app, streams state over a WebSocket at 20 Hz, replays recorded routes,
+and exposes the editable CAN overrides. Stdlib only (http.server), like webrtcd: the AGNOS venv
+has no aiohttp.
+
+Dev on a PC:  python -m openpilot.sunnypilot.webhud.server --replay /path/to/rlog.zst
+"""
+import argparse
+import gzip
+import ipaddress
+import json
+import mimetypes
+import os
+import queue
+import shutil
+import socket
+import threading
+import time
+from collections.abc import Callable
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, unquote, urlparse
+
+from openpilot.common.swaglog import cloudlog
+from openpilot.sunnypilot.webhud.demo import DemoSource
+from openpilot.sunnypilot.webhud.fisker_world import FiskerWorld
+from openpilot.sunnypilot.webhud.mdns import MdnsPublisher, ipv4_interfaces
+from openpilot.sunnypilot.webhud.paths import STATIC_DIR, STATIC_ROOTS
+from openpilot.sunnypilot.webhud.sources import LiveSource, ReplaySource, list_routes
+from openpilot.sunnypilot.webhud.state import StateBuilder
+from openpilot.sunnypilot.webhud.websocket import WebSocket, accept_key
+
+VERSION = "1.0"
+DEFAULT_PORT = int(os.getenv("WEBHUD_PORT", "8088"))
+DEFAULT_HOSTNAME = os.getenv("WEBHUD_HOSTNAME", "sunnypilot")
+RATE_HZ = 20
+RAW_RATE_HZ = 5
+IDLE_STOP_S = 15.0          # stop reading the bus this long after the last client leaves
+MOVING_SPEED = 1.0          # m/s: above this, settings writes are refused and replay yields to live
+MAX_UPLOAD = 256 * 1024 * 1024
+MAX_UPLOADS_KEPT = 5
+GZIP_TYPES = ("text/", "application/javascript", "application/json", "image/svg+xml", "model/gltf-binary")
+mimetypes.add_type("model/gltf-binary", ".glb")
+mimetypes.add_type("application/javascript", ".js")
+
+# params the UI may read and write: key -> (type, validator)
+PARAM_ALLOWLIST: dict[str, tuple[type, Callable[[int], bool] | None]] = {
+  "LongitudinalPersonality": (int, lambda v: v in (0, 1, 2)),
+  "ExperimentalMode": (bool, None),
+  "IsMetric": (bool, None),
+}
+
+
+# ---- params (real on device, JSON file on a PC without the native lib) -------------------------
+
+class _DevParams:
+  def __init__(self, path: str):
+    self.path = path
+    self.lock = threading.Lock()
+
+  def _load(self) -> dict:
+    try:
+      with open(self.path) as f:
+        return json.load(f)
+    except (OSError, ValueError):
+      return {}
+
+  def get(self, key, return_default=False):
+    return self._load().get(key)
+
+  def get_bool(self, key):
+    return bool(self._load().get(key, False))
+
+  def put(self, key, value):
+    with self.lock:
+      d = self._load()
+      d[key] = value
+      os.makedirs(os.path.dirname(self.path), exist_ok=True)
+      with open(self.path, "w") as f:
+        json.dump(d, f)
+
+  def put_bool(self, key, value):
+    self.put(key, bool(value))
+
+  def remove(self, key):
+    with self.lock:
+      d = self._load()
+      d.pop(key, None)
+      with open(self.path, "w") as f:
+        json.dump(d, f)
+
+
+def open_params():
+  try:
+    from openpilot.common.params import Params
+    return Params()
+  except Exception:
+    from openpilot.common.hardware.hw import Paths
+    path = os.path.join(Paths.comma_home(), "webhud_dev_params.json")
+    cloudlog.warning(f"webhud: native params unavailable, using {path}")
+    return _DevParams(path)
+
+
+def data_roots() -> tuple[list[str], str]:
+  from openpilot.common.hardware.hw import Paths
+  log_root = Paths.log_root().rstrip("/")
+  upload_dir = os.path.join(os.path.dirname(log_root), "webhud_uploads")
+  return [log_root, upload_dir], upload_dir
+
+
+# ---- clients & engine -----------------------------------------------------------------------------
+
+class Client:
+  """One WebSocket viewer. A sender thread delivers only the newest frame, so a slow tablet never
+  stalls the engine or other viewers."""
+
+  def __init__(self, ws: WebSocket, peer: str):
+    self.ws = ws
+    self.peer = peer
+    self.raw_addrs: list[int] = []
+    self._pending: str | None = None
+    self._extra: queue.SimpleQueue[str] = queue.SimpleQueue()
+    self._cv = threading.Condition()
+    self.alive = True
+    threading.Thread(target=self._sender, name="webhud-send", daemon=True).start()
+
+  def push_state(self, text: str) -> None:
+    with self._cv:
+      self._pending = text
+      self._cv.notify()
+
+  def push(self, text: str) -> None:
+    """Messages that must not be coalesced (replies, notices)."""
+    self._extra.put(text)
+    with self._cv:
+      self._cv.notify()
+
+  def _sender(self) -> None:
+    while self.alive:
+      with self._cv:
+        while self.alive and self._pending is None and self._extra.empty():
+          self._cv.wait(1.0)
+        text, self._pending = self._pending, None
+      try:
+        while not self._extra.empty():
+          self.ws.send_text(self._extra.get_nowait())
+        if text is not None:
+          self.ws.send_text(text)
+      except Exception:
+        self.close()
+
+  def close(self) -> None:
+    self.alive = False
+    with self._cv:
+      self._cv.notify()
+    self.ws.close()
+
+
+class Engine:
+  def __init__(self, params, replay_path: str | None = None, demo: bool = False):
+    self.params = params
+    self.world = FiskerWorld()
+    self.builder = StateBuilder(self.world)
+    self.live = LiveSource(self.builder)
+    self.live_error: str | None = None
+    self.replay: ReplaySource | DemoSource | None = None
+    self.mode = "live"
+    self.notice: str | None = None
+    self.clients: set[Client] = set()
+    self.clients_lock = threading.Lock()
+    self.commands: queue.SimpleQueue = queue.SimpleQueue()
+    self.last_client_t = 0.0
+    self.monitor = _VehicleMonitor()
+    self.stop_event = threading.Event()
+    if replay_path:
+      self.commands.put(("load_path", replay_path))
+    elif demo:
+      self.commands.put(("demo",))
+
+  # client registry ----------------------------------------------------------
+  def add_client(self, c: Client) -> None:
+    with self.clients_lock:
+      self.clients.add(c)
+    self.last_client_t = time.monotonic()
+
+  def remove_client(self, c: Client) -> None:
+    with self.clients_lock:
+      self.clients.discard(c)
+    self.last_client_t = time.monotonic()
+
+  # commands (from HTTP/WS threads; executed on the engine thread) ------------
+  def command(self, *cmd) -> None:
+    self.commands.put(cmd)
+
+  def _handle(self, cmd: tuple) -> None:
+    kind = cmd[0]
+    if kind == "load_route":
+      _, name, segments, start = cmd
+      if self.monitor.moving:
+        self.notice = "Replay is unavailable while the car is moving"
+        return
+      self.replay = ReplaySource(self.builder, name, segments)
+      self.replay.seek(start)
+      self.replay.playing = True
+      self.mode = "replay"
+      self.live.stop()
+    elif kind == "load_path":
+      path = cmd[1]
+      if os.path.isdir(path):
+        routes = list_routes([path])
+        if routes:
+          self._handle(("load_route", routes[0]["name"], routes[0]["segments"], 0.0))
+      elif os.path.isfile(path):
+        self._handle(("load_route", os.path.basename(path), [{"n": 0, "path": path}], 0.0))
+    elif kind == "demo":
+      self.replay = DemoSource(self.builder)
+      self.mode = "replay"
+      self.live.stop()
+    elif kind == "live":
+      self.replay = None
+      self.mode = "live"
+      self.builder.reset()
+    elif self.replay is not None:
+      if kind == "play":
+        self.replay.playing = True
+      elif kind == "pause":
+        self.replay.playing = False
+      elif kind == "toggle":
+        self.replay.playing = not self.replay.playing
+      elif kind == "seek":
+        self.replay.seek(float(cmd[1]))
+      elif kind == "step":
+        self.replay.playing = False
+        self.replay.seek(self.replay.t + float(cmd[1]))
+      elif kind == "speed":
+        self.replay.set_speed(float(cmd[1]))
+
+  # main loop ----------------------------------------------------------------
+  def run(self) -> None:
+    period = 1.0 / RATE_HZ
+    last = time.monotonic()
+    raw_next = 0.0
+    while not self.stop_event.is_set():
+      now_wall = time.monotonic()
+      dt = min(now_wall - last, 0.5)
+      last = now_wall
+
+      while not self.commands.empty():
+        try:
+          self._handle(self.commands.get_nowait())
+        except Exception:
+          cloudlog.exception("webhud: command failed")
+
+      with self.clients_lock:
+        clients = [c for c in self.clients if c.alive]
+      self.monitor.tick()
+
+      if not clients:
+        if self.live.running and now_wall - self.last_client_t > IDLE_STOP_S:
+          self.live.stop()
+        time.sleep(0.25)
+        continue
+
+      try:
+        if self.mode == "replay" and self.replay is not None:
+          if self.monitor.moving:
+            self._handle(("live",))
+            self.notice = "Replay stopped: the car is moving"
+            continue
+          self.replay.tick(dt)
+          now = self.replay.now
+        else:
+          if not self.live.running:
+            try:
+              self.live.start()
+              self.live_error = None
+            except Exception as e:
+              self.live_error = f"{type(e).__name__}: {e}"
+          if self.live.running:
+            self.live.tick()
+          now = self.live.now
+        snap = self.builder.snapshot(now)
+      except Exception:
+        cloudlog.exception("webhud: engine tick failed")
+        time.sleep(0.5)
+        continue
+
+      snap["mode"] = self.mode
+      snap["replay"] = self.replay.status() if self.replay is not None else None
+      snap["server"] = {"liveError": self.live_error, "notice": self.notice, "moving": self.monitor.moving,
+                        "onroad": self.monitor.onroad, "clients": len(clients)}
+      text = json.dumps({"type": "state", "data": snap}, separators=(",", ":"))
+      for c in clients:
+        c.push_state(text)
+
+      if now_wall >= raw_next:
+        raw_next = now_wall + 1.0 / RAW_RATE_HZ
+        for c in clients:
+          if c.raw_addrs:
+            c.push(json.dumps({"type": "raw", "data": self.world.raw_messages(c.raw_addrs, now)}, separators=(",", ":")))
+
+      time.sleep(max(0.0, period - (time.monotonic() - now_wall)))
+
+
+class _VehicleMonitor:
+  """Watches the real car even while replaying, to gate replay and settings writes."""
+
+  def __init__(self):
+    self.sm = None
+    self.moving = False
+    self.onroad = False
+    self._next_try = 0.0
+
+  def tick(self) -> None:
+    if self.sm is None:
+      if time.monotonic() < self._next_try:
+        return
+      self._next_try = time.monotonic() + 30.0
+      try:
+        import openpilot.cereal.messaging as messaging
+        self.sm = messaging.SubMaster(["carState", "deviceState"])
+      except Exception:
+        return
+    self.sm.update(0)
+    self.onroad = bool(self.sm.alive["deviceState"] and self.sm["deviceState"].started)
+    self.moving = bool(self.sm.alive["carState"] and self.sm["carState"].vEgo > MOVING_SPEED)
+
+
+# ---- HTTP -------------------------------------------------------------------------------------------
+
+class HudServer(ThreadingHTTPServer):
+  daemon_threads = True
+  allow_reuse_address = True
+  engine: Engine
+  params: object
+  overrides_api: "OverridesApi"
+  hostname: str
+  port: int
+  mdns: MdnsPublisher | None
+
+
+class HudHandler(BaseHTTPRequestHandler):
+  protocol_version = "HTTP/1.1"
+  server: HudServer
+  _gzip_cache: dict[str, tuple[float, bytes, bytes]] = {}
+
+  def log_message(self, format, *args):  # noqa: A002
+    pass
+
+  # helpers --------------------------------------------------------------------
+  def _send(self, status: int, body: bytes, content_type: str, headers: dict | None = None) -> None:
+    self.send_response(status)
+    self.send_header("Content-Type", content_type)
+    self.send_header("Content-Length", str(len(body)))
+    for k, v in (headers or {}).items():
+      self.send_header(k, v)
+    self.end_headers()
+    if self.command != "HEAD":
+      self.wfile.write(body)
+
+  def _json(self, obj, status: int = 200) -> None:
+    self._send(status, json.dumps(obj, separators=(",", ":")).encode(), "application/json", {"Cache-Control": "no-store"})
+
+  def _error(self, status: int, message: str) -> None:
+    self._json({"error": message}, status)
+
+  def _body(self, limit: int = 1 << 20) -> bytes:
+    n = int(self.headers.get("Content-Length", 0) or 0)
+    if n > limit:
+      raise ValueError("body too large")
+    return self.rfile.read(n) if n else b""
+
+  def _json_body(self):
+    return json.loads(self._body() or b"{}")
+
+  def _write_allowed(self) -> bool:
+    """Writes come from the local network only, and never cross-origin (CSRF from a web page)."""
+    try:
+      if not ipaddress.ip_address(self.client_address[0]).is_private:
+        self._error(403, "writes are only accepted from the local network")
+        return False
+    except ValueError:
+      pass
+    origin = self.headers.get("Origin")
+    if origin and urlparse(origin).netloc != self.headers.get("Host"):
+      self._error(403, "cross-origin request")
+      return False
+    return True
+
+  # dispatch ---------------------------------------------------------------------
+  def do_GET(self):
+    self._dispatch("GET")
+
+  def do_HEAD(self):
+    self._dispatch("GET")
+
+  def do_POST(self):
+    self._dispatch("POST")
+
+  def do_PUT(self):
+    self._dispatch("PUT")
+
+  def do_DELETE(self):
+    self._dispatch("DELETE")
+
+  def _dispatch(self, method: str) -> None:
+    url = urlparse(self.path)
+    path = url.path
+    query = parse_qs(url.query)
+    try:
+      if method != "GET" and not self._write_allowed():
+        return
+      if path == "/ws" and method == "GET":
+        return self._websocket()
+      route = ROUTES.get((method, path))
+      if route is not None:
+        return route(self, query)
+      if method == "GET":
+        return self._static(path)
+      self._error(404, "not found")
+    except (ValueError, KeyError, TypeError) as e:
+      self._error(400, f"{type(e).__name__}: {e}")
+    except Exception as e:
+      cloudlog.exception(f"webhud: {method} {path} failed")
+      self._error(500, f"{type(e).__name__}: {e}")
+
+  # static -----------------------------------------------------------------------
+  def _static(self, path: str) -> None:
+    rel = unquote(path).lstrip("/") or "index.html"
+    prefix = next(p for p in STATIC_ROOTS if rel.startswith(p))
+    root = os.path.realpath(STATIC_ROOTS[prefix])
+    full = os.path.realpath(os.path.join(root, rel[len(prefix):]))
+    if not full.startswith(root + os.sep) or not os.path.isfile(full):
+      # unknown paths fall back to the app shell so deep links work
+      full, prefix = os.path.join(STATIC_DIR, "index.html"), ""
+    ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
+    # third-party libs and the car model rarely change; the app's own files always revalidate
+    headers = {"Cache-Control": "max-age=86400" if prefix else "no-cache"}
+    mtime = os.path.getmtime(full)
+    cached = self._gzip_cache.get(full)
+    if cached is None or cached[0] != mtime:
+      with open(full, "rb") as f:
+        raw = f.read()
+      gz = gzip.compress(raw, 6) if ctype.startswith(GZIP_TYPES) else b""
+      cached = (mtime, raw, gz)
+      self._gzip_cache[full] = cached
+    _, raw, gz = cached
+    if gz and "gzip" in self.headers.get("Accept-Encoding", ""):
+      headers["Content-Encoding"] = "gzip"
+      headers["Vary"] = "Accept-Encoding"
+      self._send(200, gz, ctype + ("; charset=utf-8" if ctype.startswith("text/") else ""), headers)
+    else:
+      self._send(200, raw, ctype + ("; charset=utf-8" if ctype.startswith("text/") else ""), headers)
+
+  # websocket --------------------------------------------------------------------
+  def _websocket(self) -> None:
+    key = self.headers.get("Sec-WebSocket-Key")
+    if self.headers.get("Upgrade", "").lower() != "websocket" or not key:
+      return self._error(400, "expected a websocket upgrade")
+    self.send_response(HTTPStatus.SWITCHING_PROTOCOLS)
+    self.send_header("Upgrade", "websocket")
+    self.send_header("Connection", "Upgrade")
+    self.send_header("Sec-WebSocket-Accept", accept_key(key))
+    self.end_headers()
+    self.wfile.flush()
+    self.close_connection = True
+
+    self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    ws = WebSocket(self.connection, self.rfile)
+    client = Client(ws, self.client_address[0])
+    engine = self.server.engine
+    engine.add_client(client)
+    client.push(json.dumps({"type": "hello", "data": status_payload(self.server)}))
+    try:
+      while True:
+        msg = ws.recv()
+        if msg is None:
+          break
+        self._ws_message(client, msg)
+    finally:
+      engine.remove_client(client)
+      client.close()
+
+  def _ws_message(self, client: Client, msg: str) -> None:
+    try:
+      data = json.loads(msg)
+    except ValueError:
+      return
+    kind = data.get("type")
+    if kind == "raw":
+      addrs = data.get("addrs") or []
+      client.raw_addrs = [int(a, 16) if isinstance(a, str) else int(a) for a in addrs][:200]
+    elif kind == "replay":
+      replay_command(self.server.engine, data)
+    elif kind == "ping":
+      client.push(json.dumps({"type": "pong", "t": data.get("t")}))
+
+
+def status_payload(server: HudServer) -> dict:
+  engine = server.engine
+  ips = [ip for _, ip in ipv4_interfaces().values()]
+  host = server.hostname if server.hostname.endswith(".local") else f"{server.hostname}.local"
+  ports = getattr(server, "all_ports", [server.port])
+  return {
+    "version": VERSION,
+    "hostname": host,
+    "mdns": server.mdns.backend if server.mdns else "disabled",
+    "urls": [f"http://{h}{'' if p == 80 else f':{p}'}" for p in ports for h in [host, *ips]],
+    "mode": engine.mode,
+    "brand": engine.builder.brand,
+    "liveError": engine.live_error,
+    "onroad": engine.monitor.onroad,
+    "moving": engine.monitor.moving,
+    "overrides": server.overrides_api.supported,
+  }
+
+
+def replay_command(engine: Engine, data: dict) -> None:
+  action = data.get("action")
+  if action == "load":
+    roots, _ = data_roots()
+    route = next((r for r in list_routes(roots) if r["name"] == data.get("route")), None)
+    if route is None:
+      raise KeyError(f"route {data.get('route')!r} not found")
+    segs = route["segments"]
+    start = float(data.get("t", 0.0))
+    if data.get("segment") is not None:
+      start = (int(data["segment"]) - segs[0]["n"]) * 60.0
+    engine.command("load_route", route["name"], segs, start)
+  elif action in ("play", "pause", "toggle", "live", "demo"):
+    engine.command(action)
+  elif action in ("seek", "step", "speed"):
+    engine.command(action, float(data["value"]))
+  else:
+    raise ValueError(f"unknown replay action {action!r}")
+
+
+# ---- REST endpoints -----------------------------------------------------------------------------
+
+def api_status(h: HudHandler, q) -> None:
+  h._json(status_payload(h.server))
+
+
+def api_routes(h: HudHandler, q) -> None:
+  roots, _ = data_roots()
+  routes = list_routes(roots)
+  for r in routes:
+    for s in r["segments"]:
+      s.pop("path", None)
+  h._json({"routes": routes})
+
+
+def api_replay(h: HudHandler, q) -> None:
+  replay_command(h.server.engine, h._json_body())
+  h._json({"ok": True})
+
+
+def api_upload(h: HudHandler, q) -> None:
+  """PUT raw rlog/qlog bytes (zst, bz2 or plain). Stored as its own one-segment route."""
+  n = int(h.headers.get("Content-Length", 0) or 0)
+  if n <= 0 or n > MAX_UPLOAD:
+    return h._error(413, f"upload must be 1..{MAX_UPLOAD} bytes")
+  name = os.path.basename(q.get("name", ["upload"])[0])
+  _, upload_dir = data_roots()
+  head = h.rfile.read(min(n, 4))
+  ext = ".zst" if head[:4] == b"\x28\xb5\x2f\xfd" else (".bz2" if head[:3] == b"BZh" else "")
+  kind = "qlog" if "qlog" in name else "rlog"
+  route = f"upload-{time.strftime('%Y%m%d-%H%M%S')}"
+  seg_dir = os.path.join(upload_dir, f"{route}--0")
+  os.makedirs(seg_dir, exist_ok=True)
+  dest = os.path.join(seg_dir, kind + ext)
+  with open(dest, "wb") as f:
+    f.write(head)
+    remaining = n - len(head)
+    while remaining > 0:
+      chunk = h.rfile.read(min(remaining, 1 << 20))
+      if not chunk:
+        break
+      f.write(chunk)
+      remaining -= len(chunk)
+  # keep only the newest uploads
+  dirs = sorted((d for d in os.scandir(upload_dir) if d.is_dir()), key=lambda d: d.stat().st_mtime, reverse=True)
+  for old in dirs[MAX_UPLOADS_KEPT:]:
+    shutil.rmtree(old.path, ignore_errors=True)
+  cloudlog.info(f"webhud: uploaded {name} -> {dest}")
+  h.server.engine.command("load_route", route, [{"n": 0, "path": dest}], 0.0)
+  h._json({"ok": True, "route": route})
+
+
+def api_dbc(h: HudHandler, q) -> None:
+  dbc = h.server.engine.world.dbc
+  h._json({"messages": [m.to_json() for m in sorted(dbc.messages.values(), key=lambda m: m.address)]})
+
+
+def api_params_get(h: HudHandler, q) -> None:
+  out = {}
+  for key, (typ, _) in PARAM_ALLOWLIST.items():
+    try:
+      out[key] = h.server.params.get_bool(key) if typ is bool else h.server.params.get(key, return_default=True)
+    except Exception:
+      out[key] = None
+  h._json(out)
+
+
+def api_params_put(h: HudHandler, q) -> None:
+  body = h._json_body()
+  for key, value in body.items():
+    if key not in PARAM_ALLOWLIST:
+      return h._error(400, f"{key} is not editable")
+    typ, check = PARAM_ALLOWLIST[key]
+    if typ is bool:
+      h.server.params.put_bool(key, bool(value))
+    else:
+      value = typ(value)
+      if check is not None and not check(value):
+        return h._error(400, f"invalid value for {key}")
+      h.server.params.put(key, value)
+  api_params_get(h, q)
+
+
+class OverridesApi:
+  def __init__(self, params, world: FiskerWorld, monitor: _VehicleMonitor):
+    from openpilot.sunnypilot.selfdrive.car.can_overrides import CanOverrides
+    self.params = params
+    self.world = world
+    self.monitor = monitor
+    try:
+      self.ov = CanOverrides.for_brand("fisker")
+    except Exception:
+      cloudlog.exception("webhud: CAN overrides unavailable")
+      self.ov = None
+
+  @property
+  def supported(self) -> bool:
+    return self.ov is not None
+
+  def stored(self) -> dict:
+    from openpilot.sunnypilot.selfdrive.car.can_overrides import PARAM
+    val = self.params.get(PARAM)
+    return val if isinstance(val, dict) else {}
+
+  def describe(self) -> dict:
+    from openpilot.sunnypilot.selfdrive.car.can_overrides import PROTECTED_SUFFIXES, signal_range
+    assert self.ov is not None
+    stored = self.stored()
+    effective = self.ov.resolve(stored)
+    tables = []
+    for t in self.ov.tables:
+      msg = self.ov.dbc.by_name[t.message]
+      live = self.world.decoded(msg.address) or {}
+      blocked = self.ov.passthrough(t)
+      sigs = []
+      for name, sig in msg.signals.items():
+        lo, hi = signal_range(sig)
+        sigs.append({
+          "name": name, "comment": sig.comment, "unit": sig.unit, "factor": sig.factor, "min": lo, "max": hi,
+          "values": {str(k): v for k, v in sig.values.items()},
+          "default": self.ov.defaults[t.message].get(name),
+          "override": effective[t.message].get(name),
+          "current": live.get(name),   # what the ICC itself is sending right now
+          "locked": name.endswith(PROTECTED_SUFFIXES) or name in blocked,
+        })
+      tables.append({"message": t.message, "address": msg.address, "description": t.description,
+                     "customized": t.message in stored, "signals": sigs})
+    return {"supported": True, "tables": tables, "editable": not self.monitor.moving}
+
+  def save(self, body: dict) -> tuple[int, dict]:
+    from openpilot.sunnypilot.selfdrive.car.can_overrides import PARAM
+    assert self.ov is not None
+    if self.monitor.moving:
+      return 409, {"error": "CAN overrides can't be changed while the car is moving"}
+    clean, errors = self.ov.validate(body)
+    if errors:
+      return 400, {"error": "; ".join(errors)}
+    stored = self.stored()
+    stored.update(clean)
+    self.params.put(PARAM, stored)
+    return 200, self.describe()
+
+  def reset(self, message: str | None) -> tuple[int, dict]:
+    from openpilot.sunnypilot.selfdrive.car.can_overrides import PARAM
+    if self.monitor.moving:
+      return 409, {"error": "CAN overrides can't be changed while the car is moving"}
+    stored = self.stored()
+    if message:
+      stored.pop(message, None)
+    if message and stored:
+      self.params.put(PARAM, stored)
+    else:
+      self.params.remove(PARAM)
+    return 200, self.describe()
+
+
+def api_overrides_get(h: HudHandler, q) -> None:
+  api = h.server.overrides_api
+  h._json(api.describe() if api.supported else {"supported": False, "tables": []})
+
+
+def api_overrides_put(h: HudHandler, q) -> None:
+  api = h.server.overrides_api
+  if not api.supported:
+    return h._error(404, "no CAN overrides for this car")
+  status, body = api.save(h._json_body())
+  h._json(body, status)
+
+
+def api_overrides_delete(h: HudHandler, q) -> None:
+  api = h.server.overrides_api
+  if not api.supported:
+    return h._error(404, "no CAN overrides for this car")
+  status, body = api.reset(q.get("message", [None])[0])
+  h._json(body, status)
+
+
+ROUTES = {
+  ("GET", "/api/status"): api_status,
+  ("GET", "/api/routes"): api_routes,
+  ("POST", "/api/replay"): api_replay,
+  ("PUT", "/api/upload"): api_upload,
+  ("GET", "/api/dbc"): api_dbc,
+  ("GET", "/api/params"): api_params_get,
+  ("PUT", "/api/params"): api_params_put,
+  ("GET", "/api/overrides"): api_overrides_get,
+  ("PUT", "/api/overrides"): api_overrides_put,
+  ("DELETE", "/api/overrides"): api_overrides_delete,
+}
+
+
+# ---- entry point -------------------------------------------------------------------------------
+
+def make_server(host: str, port: int, engine: Engine, params, overrides_api: OverridesApi, hostname: str) -> HudServer:
+  server = HudServer((host, port), HudHandler)
+  server.engine = engine
+  server.params = params
+  server.overrides_api = overrides_api
+  server.hostname = hostname
+  server.port = port
+  server.mdns = None
+  return server
+
+
+def main(argv: list[str] | None = None) -> None:
+  parser = argparse.ArgumentParser(description="sunnypilot web HUD")
+  parser.add_argument("--host", default="0.0.0.0")
+  parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+  parser.add_argument("--hostname", default=DEFAULT_HOSTNAME, help="mDNS name (<name>.local)")
+  parser.add_argument("--no-port80", action="store_true", help="don't also try to serve on port 80")
+  parser.add_argument("--no-mdns", action="store_true")
+  parser.add_argument("--replay", help="rlog file or segment/route directory to play on start")
+  parser.add_argument("--demo", action="store_true", help="start with the synthetic demo drive")
+  args = parser.parse_args(argv if argv is not None else [])
+
+  try:
+    os.nice(10)  # never compete with the driving stack
+  except OSError:
+    pass
+
+  params = open_params()
+  engine = Engine(params, args.replay, args.demo)
+  overrides_api = OverridesApi(params, engine.world, engine.monitor)
+
+  servers = [make_server(args.host, args.port, engine, params, overrides_api, args.hostname)]
+  if not args.no_port80 and args.port != 80:
+    try:
+      servers.append(make_server(args.host, 80, engine, params, overrides_api, args.hostname))
+    except OSError:
+      pass  # needs root or cap_net_bind_service; the main port is enough
+
+  mdns = None
+  if not args.no_mdns:
+    mdns = MdnsPublisher(args.hostname, args.port)
+    mdns.start()
+  ports = [s.port for s in servers]
+  for s in servers:
+    s.mdns = mdns
+    s.all_ports = ports  # type: ignore[attr-defined]
+    threading.Thread(target=s.serve_forever, name=f"webhud-http-{s.port}", daemon=True).start()
+  cloudlog.warning(f"webhud: serving http://{args.hostname}.local:{args.port} on ports {ports}")
+  print(f"webhud: http://{args.hostname}.local:{args.port} (ports {ports})", flush=True)
+
+  engine.run()
+
+
+if __name__ == "__main__":
+  import sys
+  main(sys.argv[1:])

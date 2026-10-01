@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#eceef1">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>sunnypilot HUD</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="scene"></canvas>
+
+  <!-- driving status: top-left card in landscape, full-width header in portrait -->
+  <section id="drive" class="card">
+    <div class="drive-top">
+      <div id="gear" class="gear"><span data-g="P">P</span><span data-g="R">R</span><span data-g="N">N</span><span data-g="D">D</span></div>
+      <div id="blinkers" class="blinkers"><i id="blink-l" class="blink left"></i><i id="blink-r" class="blink right"></i></div>
+      <div id="telltales" class="telltales"></div>
+    </div>
+    <div class="speed-row">
+      <div id="speed" class="speed">--</div>
+      <div id="speed-unit" class="speed-unit">mph</div>
+    </div>
+    <div class="assist-row">
+      <button id="lat-icon" class="assist-icon" title="Steering assist (MADS)" aria-label="Steering assist"></button>
+      <div id="setspeed" class="setspeed" title="ACC set speed"><b id="setspeed-val">--</b><small>MAX</small></div>
+      <div id="gap" class="gap" title="Following distance"><i></i><i></i><i></i><i></i></div>
+      <div id="limit" class="limit hidden" title="Speed limit"></div>
+    </div>
+    <div id="assist-text" class="assist-text"></div>
+  </section>
+
+  <!-- alerts -->
+  <div id="alerts" class="alerts"></div>
+
+  <!-- connection / mode chips -->
+  <div id="chips" class="chips">
+    <span id="chip-mode" class="chip">LIVE</span>
+    <span id="chip-conn" class="chip warn">connecting…</span>
+  </div>
+
+  <!-- traffic light / sign (top right) -->
+  <div id="roadinfo" class="roadinfo"></div>
+
+  <!-- view controls -->
+  <div id="viewbar" class="viewbar">
+    <button data-view="chase" class="on" title="Chase view">Chase</button>
+    <button data-view="top" title="Top-down view">Top</button>
+    <button data-view="close" title="Close-up view">Close</button>
+    <button data-view="far" title="Wide view">Wide</button>
+    <button id="btn-settings" class="icon" title="Settings" aria-label="Settings"></button>
+  </div>
+
+  <!-- replay transport -->
+  <div id="replaybar" class="replaybar card hidden">
+    <button id="rp-play" class="icon" aria-label="Play/pause"></button>
+    <button id="rp-back" class="small" title="Back 10 s">−10s</button>
+    <div class="rp-track">
+      <input id="rp-seek" type="range" min="0" max="60" step="0.1" value="0">
+      <div class="rp-times"><span id="rp-t">0:00</span><span id="rp-route"></span><span id="rp-dur">0:00</span></div>
+    </div>
+    <button id="rp-fwd" class="small" title="Forward 10 s">+10s</button>
+    <select id="rp-speed" title="Playback speed">
+      <option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option>
+      <option value="2">2×</option><option value="4">4×</option><option value="8">8×</option>
+    </select>
+    <button id="rp-live" class="small accent">Live</button>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- settings sheet -->
+  <aside id="settings" class="sheet hidden" aria-hidden="true">
+    <header>
+      <nav id="tabs">
+        <button data-tab="overrides" class="on">CAN settings</button>
+        <button data-tab="driving">Driving</button>
+        <button data-tab="display">Display</button>
+        <button data-tab="playback">Playback</button>
+        <button data-tab="signals">Signals</button>
+        <button data-tab="about">About</button>
+      </nav>
+      <button id="settings-close" class="icon close" aria-label="Close"></button>
+    </header>
+    <div id="tab-body" class="tab-body"></div>
+  </aside>
+</div>
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>

@@ -24,6 +24,7 @@ from openpilot.selfdrive.car.helpers import convert_carControlSP, convert_to_cap
 
 from openpilot.sunnypilot.mads.helpers import set_alternative_experience, set_car_specific_params
 from openpilot.sunnypilot.selfdrive.car import interfaces as sunnypilot_interfaces
+from openpilot.sunnypilot.selfdrive.car.can_overrides import CanOverrides
 
 REPLAY = "REPLAY" in os.environ
 
@@ -137,6 +138,11 @@ class Car:
       safety_config = structs.CarParams.SafetyConfig()
       safety_config.safetyModel = structs.CarParams.SafetyModel.noOutput
       self.CP.safetyConfigs = [safety_config]
+
+    # sunnypilot: CAN signal overrides (e.g. Fisker ICC settings relays), editable from the web HUD
+    self.can_overrides = None if self.CP.passive else CanOverrides.for_brand(self.CP.brand)
+    if self.can_overrides is not None:
+      self.can_overrides.poll(self.params)
 
     if self.CP.secOcRequired:
       # Copy user key if available
@@ -307,6 +313,8 @@ class Car:
       # sunnypilot
       self.dynamic_experimental_control = self.params.get_bool("DynamicExperimentalControl")
       self.v_cruise_helper.read_custom_set_speed_params()
+      if self.can_overrides is not None:
+        self.can_overrides.poll(self.params)
 
       time.sleep(0.1)
 
