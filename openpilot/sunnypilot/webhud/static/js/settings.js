@@ -207,7 +207,8 @@ export class Settings {
       this.app.segmented([['model', 'Original'], ['#1d1f24', 'Black'], ['#e8e9eb', 'White'], ['#6e7781', 'Gray'], ['#3a5a8c', 'Blue'], ['#7d2b2b', 'Red'], ['#5f6b4e', 'Green']],
         s.egoColor, v => set('egoColor', v))));
     const toggles = [
-      ['showGround', 'Road surface', 'Textured road that moves under the car with its speed and steering.'],
+      ['showGround', 'Ground texture', 'Fine textured ground that moves under the car with its speed and steering.'],
+      ['showRoad', 'Inferred road', 'Fill in the road and lanes the cameras don\'t report, following the last known lanes and your path.'],
       ['showPath', 'Planned path', 'Blue band along openpilot\'s path while steering is engaged.'],
       ['showUss', 'Parking sensors', 'Ultrasonic zone arcs around the car at low speed.'],
       ['showOpLeads', 'openpilot leads', 'Show radarState leads the ADAS object list doesn\'t already cover.'],

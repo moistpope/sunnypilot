@@ -7,7 +7,7 @@ import { VehicleState } from './vehicle.js';
 
 const DEFAULTS = {
   theme: 'auto', units: 'auto', laneSource: 'auto', egoColor: 'model', view: 'chase',
-  showPath: true, showUss: true, showOpLeads: true, autoView: true, showGround: true,
+  showPath: true, showUss: true, showOpLeads: true, autoView: true, showGround: true, showRoad: true,
   laneHeadingSign: 1, laneCurvatureSign: 1, objectHeadingSign: 1,
 };
 

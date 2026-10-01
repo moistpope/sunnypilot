@@ -12,12 +12,15 @@ const STALE_MS = 1500;
 // every 0.4 s, so they are mirrored as-is. A source that reports a solid "on" instead gets a local
 // flash after a second, so the HUD still blinks.
 class Flasher {
-  constructor() { this.raw = false; this.since = 0; }
+  constructor() { this.raw = false; this.since = 0; this.lastOn = -1e9; }
   update(raw, t, live) {
     if (raw !== this.raw) { this.raw = raw; this.since = t; }
+    if (raw) this.lastOn = t;
     if (raw && live && t - this.since > 1.0) return (t - this.since) % 0.8 < 0.4;
     return raw;
   }
+  // indicating: lit within the last flash period (lamps that double as tail lamps go dark between flashes)
+  active(t) { return t - this.lastOn < 0.9; }
 }
 
 export class VehicleState {
@@ -28,7 +31,7 @@ export class VehicleState {
     this.v = 0;          // m/s, signed animation speed (negative in reverse, x replay rate, 0 when paused)
     this.steerDeg = 0;   // steering wheel angle, + = left
     this.gear = null;
-    this.lamps = { left: false, right: false, brake: false, reverse: false, low: false, high: false, drl: false, position: false };
+    this.lamps = { left: false, right: false, leftActive: false, rightActive: false, brake: false, reverse: false, low: false, high: false, drl: false, position: false };
   }
 
   update(state, ageMs, dt) {
@@ -55,6 +58,8 @@ export class VehicleState {
     this.lamps = {
       left: this.flash.left.update(rawLeft, this.t, live),
       right: this.flash.right.update(rawRight, this.t, live),
+      leftActive: this.flash.left.active(this.t),
+      rightActive: this.flash.right.active(this.t),
       // the BCM brake-lamp output also lights for regen/one-pedal braking, not just the pedal
       brake: L.brake != null ? !!L.brake : !!(cs && cs.brakePressed),
       reverse: L.reverse != null ? !!L.reverse : this.gear === 'reverse',

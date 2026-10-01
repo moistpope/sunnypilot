@@ -5,6 +5,8 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { OrbitControls } from '../vendor/OrbitControls.js';
 import { makeEgo, makeObject, fitScale, loadEgoModel } from './models.js';
+import { applyLamps } from './lamps.js';
+import { RoadModel, linePoints } from './road.js';
 import { STEER_RATIO } from './vehicle.js';
 
 const EGO_LEN = 4.775;
@@ -12,97 +14,75 @@ const EGO_W = 1.98;
 const MODEL_X_OFFSET = -1.6;      // comma device sits ~1.6 m behind the front bumper
 const DASH = 3.0, GAP = 9.0;      // US lane dash pattern (10 ft / 30 ft)
 const RECENTER_S = 5;             // pan springs back to the car after this long untouched
-const TILE = 8;                   // m covered by one copy of the road-surface texture
-const GROUND_SIZE = 60 * TILE;    // textured plane under the car; fog hides its edge
+const TILE = 48;                  // m: every layer of the road surface repeats over this
+const GROUND_SIZE = 10 * TILE;    // textured plane under the car; fog hides its edge
+const REAR_AXLE_Z = EGO_LEN - 0.93;   // until the model reports its own
 const DEG = Math.PI / 180;
 
-// Light asphalt: fine aggregate speckle, soft wear patches and a few crack-seal lines, which make
-// forward/backward motion and turning readable. Nothing in it has a direction: the plane turns with
-// the integrated heading while lane lines stay car-relative, so straight joints would end up
-// crossing the lanes after a bend. Seeded, so switching theme doesn't reshuffle it; drawn wrapped
-// so the tile repeats seamlessly.
-function groundTexture(dark, anisotropy) {
-  const N = 512;
-  const c = document.createElement('canvas');
-  c.width = c.height = N;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = dark ? '#15181d' : '#e3e6ea';
-  ctx.fillRect(0, 0, N, N);
-  let seed = 1234567;
-  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const dot = (x, y, r, fill) => {
-    ctx.fillStyle = fill;
-    for (const dx of [-N, 0, N]) {
-      for (const dy of [-N, 0, N]) {
-        if (x + dx + r < 0 || x + dx - r > N || y + dy + r < 0 || y + dy - r > N) continue;
-        ctx.beginPath();
-        ctx.arc(x + dx, y + dy, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
+// Tileable value-noise fBm (period = the texture), as a grey canvas texture.
+function noiseTexture(size, cells, octaves, gain, seed, anisotropy) {
+  const hash = (x, y, o) => {
+    let h = (x * 374761393 + y * 668265263 + o * 2147483647 + seed * 144269) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
   };
-  // broad, soft-edged patches: wear and repairs
-  for (let i = 0; i < 18; i++) {
-    const x = rnd() * N, y = rnd() * N, r = 40 + rnd() * 90, a = 0.02 + rnd() * 0.03;
-    for (const dx of [-N, 0, N]) {
-      for (const dy of [-N, 0, N]) {
-        const g = ctx.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
-        g.addColorStop(0, dark ? `rgba(255,255,255,${a * 0.6})` : `rgba(60,66,76,${a})`);
-        g.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(x + dx - r, y + dy - r, 2 * r, 2 * r);
+  const val = new Float32Array(size * size);
+  let amp = 1, total = 0;
+  for (let o = 0; o < octaves; o++) {
+    const n = cells << o;
+    for (let py = 0; py < size; py++) {
+      const fy = py / size * n, iy = Math.floor(fy), ty = fy - iy, sy = ty * ty * (3 - 2 * ty);
+      for (let px = 0; px < size; px++) {
+        const fx = px / size * n, ix = Math.floor(fx), tx = fx - ix, sx = tx * tx * (3 - 2 * tx);
+        const x0 = ix % n, x1 = (ix + 1) % n, y0 = iy % n, y1 = (iy + 1) % n;
+        const a = hash(x0, y0, o), b = hash(x1, y0, o), c = hash(x0, y1, o), d = hash(x1, y1, o);
+        val[py * size + px] += amp * (a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy);
       }
     }
+    total += amp;
+    amp *= gain;
   }
-  // aggregate
-  for (let i = 0; i < 5200; i++) {
-    const light = rnd() < 0.4;
-    const a = 0.06 + rnd() * 0.16;
-    dot(rnd() * N, rnd() * N, 0.6 + rnd() * 1.5,
-      light ? (dark ? `rgba(255,255,255,${a * 0.5})` : `rgba(255,255,255,${a * 2})`) : (dark ? `rgba(0,0,0,${a * 2.5})` : `rgba(48,54,64,${a})`));
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(size, size);
+  let lo = Infinity, hi = -Infinity;
+  for (const v of val) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  for (let i = 0; i < val.length; i++) {
+    const g = Math.round(255 * (val[i] - lo) / (hi - lo || 1));
+    img.data.set([g, g, g, 255], i * 4);
   }
-  // crack sealant: short meandering strokes
-  ctx.strokeStyle = dark ? 'rgba(0,0,0,0.26)' : 'rgba(40,44,52,0.09)';
-  ctx.lineCap = ctx.lineJoin = 'round';
-  for (let i = 0; i < 2; i++) {
-    const pts = [[rnd() * N, rnd() * N]];
-    let dir = rnd() * Math.PI * 2;
-    for (let k = 0; k < 8 + rnd() * 8; k++) {
-      dir += (rnd() - 0.5) * 1.2;
-      const [x, y] = pts[pts.length - 1];
-      pts.push([x + Math.cos(dir) * 14, y + Math.sin(dir) * 14]);
-    }
-    ctx.lineWidth = 2 + rnd() * 2;
-    for (const dx of [-N, 0, N]) {
-      for (const dy of [-N, 0, N]) {
-        ctx.beginPath();
-        pts.forEach(([x, y], k) => (k ? ctx.lineTo(x + dx, y + dy) : ctx.moveTo(x + dx, y + dy)));
-        ctx.stroke();
-      }
-    }
-  }
+  ctx.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(GROUND_SIZE / TILE, GROUND_SIZE / TILE);
   tex.anisotropy = anisotropy;
-  tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
-let poolTexture = null;
-function poolTex() {
-  if (poolTexture) return poolTexture;
-  const c = document.createElement('canvas');
-  c.width = c.height = 128;
-  const ctx = c.getContext('2d');
-  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-  g.addColorStop(0, 'rgba(255,255,255,1)');
-  g.addColorStop(0.5, 'rgba(255,255,255,0.45)');
-  g.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 128, 128);
-  poolTexture = new THREE.CanvasTexture(c);
-  return poolTexture;
+// The road surface: a fine, soft "cloud" rather than slabs. Fine grain (2 m tile) over two soft
+// cloud layers (12 m and 48 m), mixed in the shader from the plane's own coordinates, so it reads as
+// a fine surface near the car and never shows a repeating pattern. Nothing in it has a direction:
+// the plane turns with the integrated heading while lane lines stay car-relative.
+function groundMaterial(anisotropy) {
+  const uniforms = {
+    tGrain: { value: noiseTexture(256, 24, 4, 0.6, 7, anisotropy) },
+    tCloud: { value: noiseTexture(256, 4, 5, 0.55, 3, anisotropy) },
+    uContrast: { value: 0.1 },
+  };
+  const m = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, uniforms);
+    sh.vertexShader = 'varying vec2 vGround;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = position.xz;');
+    sh.fragmentShader = 'varying vec2 vGround;\nuniform sampler2D tGrain;\nuniform sampler2D tCloud;\nuniform float uContrast;\n' +
+      sh.fragmentShader.replace('#include <map_fragment>', `
+        float grain = texture2D(tGrain, vGround / 2.0).r;
+        float mid = texture2D(tCloud, vGround / 12.0 + vec2(0.37, 0.61)).r;
+        float cloud = texture2D(tCloud, vGround / 48.0).r;
+        float n = (cloud - 0.5) * 0.6 + (mid - 0.5) * 0.45 + (grain - 0.5) * 0.8;
+        diffuseColor.rgb *= 1.0 + n * uContrast;`);
+  };
+  m.userData.uniforms = uniforms;
+  return m;
 }
 
 // headlight throw: narrow and bright at the bumper (bottom), widening and fading down the road (top)
@@ -131,8 +111,8 @@ function beamTex() {
   return beamTexture;
 }
 
-// light thrown on the road (headlights, reversing lamps, brake lights), stretched by scale
-function lightPool(color, map = poolTex()) {
+// light thrown on the road, stretched by scale
+function lightPool(color, map) {
   const m = new THREE.Mesh(
     new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
     new THREE.MeshBasicMaterial({ map, color, transparent: true, depthWrite: false }),
@@ -144,9 +124,9 @@ function lightPool(color, map = poolTex()) {
 }
 
 const THEMES = {
-  light: { bg: 0xeceef1, object: 0xc6cad1, lead: 0x4f5562, line: 0x8e949d, edge: 0x6c727b, yellow: 0xdcaa2e,
+  light: { bg: 0xeceef1, ground: 0xe2e5e9, road: 0x1a1d22, object: 0xc6cad1, lead: 0x4f5562, line: 0x8e949d, edge: 0x6c727b, yellow: 0xdcaa2e,
     blue: 0x3e6ae1, red: 0xe5413a, path: 0x3e6ae1, model: 0xa7adb5, hemiSky: 0xffffff, hemiGround: 0xb8bcc4 },
-  dark: { bg: 0x101216, object: 0x50565f, lead: 0xd5dae2, line: 0x6b717a, edge: 0x8a9099, yellow: 0xc9982a,
+  dark: { bg: 0x101216, ground: 0x181b20, road: 0x2c3038, object: 0x50565f, lead: 0xd5dae2, line: 0x6b717a, edge: 0x8a9099, yellow: 0xc9982a,
     blue: 0x5b86ff, red: 0xff5a4f, path: 0x5b86ff, model: 0x4d535c, hemiSky: 0x8a93a6, hemiGround: 0x1a1d22 },
 };
 
@@ -214,15 +194,6 @@ function lineMaterial(color, opacity = 1) {
   return new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, depthWrite: false, side: THREE.DoubleSide });
 }
 
-// y(x) for a Fisker lane line: offset + heading + curvature (radius in m)
-function fiskerLinePoints(line, xFrom, xTo, step, signs) {
-  const tanH = Math.tan((line.heading || 0) * signs.heading * Math.PI / 180);
-  const k = line.radius ? signs.curvature / line.radius : 0;
-  const pts = [];
-  for (let x = xFrom; x <= xTo + 1e-6; x += step) pts.push([x, line.y0 + tanH * x + 0.5 * k * x * x]);
-  return pts;
-}
-
 function dashed(pts, phase) {
   // split a polyline into dashes by arc length; phase (distance driven) keeps them fixed to the road
   const out = [];
@@ -280,14 +251,14 @@ export class CarScene {
     // texture stays put on the "road" while the car drives over it; the plane itself is re-centered
     // under the car in whole tiles so it never runs out.
     this.world = new THREE.Group();
-    this.ground = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    this.ground = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE).rotateX(-Math.PI / 2), groundMaterial(this.renderer.capabilities.getMaxAnisotropy()));
     this.ground.position.y = -0.01;
     this.world.add(this.ground);
     this.scene.add(this.world);
-    this.pose = { x: 0, y: 0, h: 0 };   // m, m, rad; x forward / y left at h = 0
+    this.pose = { x: 0, y: 0, h: 0 };   // rear axle: m, m, rad; x forward / y left at h = 0
 
-    this.pools = { head: lightPool(0xfff1cf, beamTex()), reverse: lightPool(0xffffff), brake: lightPool(0xff2a1f) };
-    this.scene.add(...Object.values(this.pools));
+    this.headBeam = lightPool(0xfff1cf, beamTex());
+    this.scene.add(this.headBeam);
 
     // procedural Ocean until the detailed glTF model has loaded (or if it can't be)
     this.ego = makeEgo();
@@ -307,6 +278,9 @@ export class CarScene {
       modelEdge: lineMaterial(0x6c727b, 0.5), path: lineMaterial(0x3e6ae1, 0.16), slot: lineMaterial(0x3e6ae1, 0.8),
       ussRed: lineMaterial(0xe5413a, 0.9), ussAmber: lineMaterial(0xf0a020, 0.9), ussYellow: lineMaterial(0xe8d23a, 0.85),
       ussGreen: lineMaterial(0x2fa84f, 0.6), bsd: lineMaterial(0xe5413a, 0.22),
+      // inferred (procedural) lane lines and the road surface
+      lineSoft: lineMaterial(0x8e949d, 0.55), lineYellowSoft: lineMaterial(0xdcaa2e, 0.5), lineBlueSoft: lineMaterial(0x3e6ae1, 0.5),
+      road: lineMaterial(0x000000, 0.06),
     };
     this.ribbons = {};
     for (const key of Object.keys(this.mats)) {
@@ -314,8 +288,10 @@ export class CarScene {
       this.scene.add(this.ribbons[key].mesh);
     }
     this.ribbons.path.mesh.renderOrder = 1;
+    this.ribbons.road.mesh.renderOrder = 0;
+    this.road = new RoadModel();
 
-    this.objects = new Map();   // key -> {group, target:{x,y,h}, cls, alpha, seen}
+    this.objects = new Map();   // key -> track (see _track)
     this.labels = new Map();
     this.theme = THEMES.light;
     this.odometer = 0;
@@ -350,18 +326,20 @@ export class CarScene {
     const t = this.theme;
     this.scene.background = new THREE.Color(t.bg);
     this.scene.fog = new THREE.Fog(t.bg, 70, 190);
-    if (this.ground.material.map) this.ground.material.map.dispose();
-    this.ground.material.map = groundTexture(dark, this.renderer.capabilities.getMaxAnisotropy());
-    this.ground.material.needsUpdate = true;
-    // light pools add up on a dark road; on a light one they tint it instead
-    for (const pool of Object.values(this.pools)) {
-      pool.material.blending = dark ? THREE.AdditiveBlending : THREE.NormalBlending;
-      pool.material.opacity = dark ? 0.55 : 0.22;
-      pool.material.needsUpdate = true;
-    }
+    this.ground.material.color.set(t.ground);
+    this.ground.material.userData.uniforms.uContrast.value = dark ? 0.85 : 0.15;
+    // headlight light adds up on a dark road; on a light one it tints it instead
+    this.headBeam.material.blending = dark ? THREE.AdditiveBlending : THREE.NormalBlending;
+    this.headBeam.material.opacity = dark ? 0.45 : 0.2;
+    this.headBeam.material.needsUpdate = true;
     this.hemi.color.set(t.hemiSky);
     this.hemi.groundColor.set(t.hemiGround);
     this.mats.line.color.set(t.line);
+    this.mats.lineSoft.color.set(t.line);
+    this.mats.lineYellowSoft.color.set(t.yellow);
+    this.mats.lineBlueSoft.color.set(t.blue);
+    this.mats.road.color.set(t.road);
+    this.mats.road.opacity = dark ? 0.35 : 0.07;
     this.mats.lineBlue.color.set(t.blue);
     this.mats.lineYellow.color.set(t.yellow);
     this.mats.lineRed.color.set(t.red);
@@ -416,6 +394,7 @@ export class CarScene {
   update(state, settings) {
     this.state = state;
     this.settings = settings;
+    this.stateSeq = (this.stateSeq || 0) + 1;
   }
 
   _laneGeometry(dt) {
@@ -425,53 +404,53 @@ export class CarScene {
     const s = this.settings;
     const cs = op.carState || {};
     const phase = this.odometer % (DASH + GAP);   // advanced in _ground, so dashes and road move together
-    const signs = { heading: s.laneHeadingSign || 1, curvature: s.laneCurvatureSign || 1 };
 
     const latActive = !!((op.carControl && op.carControl.latActive) || (op.selfdriveStateSP && op.selfdriveStateSP.mads && op.selfdriveStateSP.mads.active));
     const hmi = f && f.lanes ? f.lanes.hmi : null;
-    const pieces = { line: [], lineBlue: [], lineYellow: [], lineRed: [], edge: [], model: [], modelEdge: [] };
+    const pieces = { line: [], lineBlue: [], lineYellow: [], lineRed: [], lineSoft: [], lineYellowSoft: [], lineBlueSoft: [], edge: [], model: [], modelEdge: [] };
     const xTo = 90, xFrom = -12;
 
-    const fiskerLines = (f && f.lanes ? f.lanes.lines : []).filter(l => l.valid);
-    const useFisker = s.laneSource === 'fisker' || s.laneSource === 'both' || (s.laneSource !== 'model' && fiskerLines.length >= 1);
-    const useModel = s.laneSource === 'model' || s.laneSource === 'both' || (s.laneSource !== 'fisker' && fiskerLines.length === 0);
-
-    if (useFisker) {
-      for (const line of fiskerLines) {
-        const pts = fiskerLinePoints(line, xFrom, xTo, 2, signs);
-        if (line.roadEdge) { pieces.edge.push(pts); continue; }
-        const ego = line.id === 'L1' || line.id === 'R1';
-        let key = line.color === 'yellow' ? 'lineYellow' : 'line';
-        const side = line.id === 'L1' ? hmi && hmi.left : line.id === 'R1' ? hmi && hmi.right : null;
-        if (ego && (latActive || (side && side.color === 'blue'))) key = 'lineBlue';
-        if (ego && side && (side.color === 'red' || (side.flash && this.clock % 0.6 < 0.3))) key = 'lineRed';
-        const t = line.type;   // 2 dashed, 3 Botts dots, 4..7 double lines
-        const solid = (p) => pieces[key].push(p);
-        const dash = (p) => dashed(p, phase).forEach(d => pieces[key].push(d));
-        if (t === 2 || t === 3) dash(pts);
-        else if (t >= 4 && t <= 7) {
-          const a = offsetLine(pts, 0.11), b = offsetLine(pts, -0.11);
-          (t === 5 || t === 6 ? dash : solid)(a);
-          (t === 4 || t === 5 ? dash : solid)(b);
-        } else solid(pts);
-      }
+    // smoothed + procedurally completed road (road.js)
+    const road = this.road.update(st, this.vehicle, s, dt);
+    const anchor = linePoints(road.anchor.c, xFrom, xTo, 2);
+    const fromCenter = (d) => offsetLine(anchor, d - road.anchor.offset);
+    this.ribbons.road.set(s.showRoad === false ? [] : [fromCenter(road.surface.offset)], road.surface.width, 0.006);
+    for (const line of road.lines) {
+      if (line.inferred && s.showRoad === false) continue;
+      const pts = line.inferred ? fromCenter(line.offset) : linePoints(line.c, xFrom, xTo, 2);
+      if (line.edge) { pieces.edge.push(pts); continue; }
+      const ego = line.id === 'L1' || line.id === 'R1';
+      let key = line.color === 'yellow' ? 'lineYellow' : 'line';
+      const side = line.id === 'L1' ? hmi && hmi.left : line.id === 'R1' ? hmi && hmi.right : null;
+      if (ego && (latActive || (side && side.color === 'blue'))) key = 'lineBlue';
+      if (ego && side && (side.color === 'red' || (side.flash && this.clock % 0.6 < 0.3))) key = 'lineRed';
+      if (line.inferred) key = { line: 'lineSoft', lineYellow: 'lineYellowSoft', lineBlue: 'lineBlueSoft', lineRed: 'lineRed' }[key];
+      const t = line.type;   // 2 dashed, 3 Botts dots, 4..7 double lines
+      const solid = (p) => pieces[key].push(p);
+      const dash = (p) => dashed(p, phase).forEach(d => pieces[key].push(d));
+      if (t === 2 || t === 3) dash(pts);
+      else if (t >= 4 && t <= 7) {
+        const a = offsetLine(pts, 0.11), b = offsetLine(pts, -0.11);
+        (t === 5 || t === 6 ? dash : solid)(a);
+        (t === 4 || t === 5 ? dash : solid)(b);
+      } else solid(pts);
     }
-    if (useModel && op.modelV2) {
+    // 'both': openpilot's raw lane lines on top, thin
+    if (s.laneSource === 'both' && op.modelV2) {
       const md = op.modelV2;
       const probs = md.laneLineProbs || [];
       (md.laneLines || []).forEach((pts, i) => {
-        if (!pts.length || (probs[i] || 0) < 0.25) return;
-        const p = densify(pts.map(([x, y]) => [x + MODEL_X_OFFSET, y]), 2);
-        const ego = i === 1 || i === 2;
-        // the model doesn't classify markings, so its lines are drawn solid
-        pieces[useFisker ? 'model' : (ego && latActive ? 'lineBlue' : 'line')].push(p);
+        if (pts.length && (probs[i] || 0) >= 0.25) pieces.model.push(densify(pts.map(([x, y]) => [x + MODEL_X_OFFSET, y]), 2));
       });
       (md.roadEdges || []).forEach((pts, i) => {
         const std = (md.roadEdgeStds || [])[i];
-        if (pts.length && (std == null || std < 1.0)) pieces[useFisker ? 'modelEdge' : 'edge'].push(densify(pts.map(([x, y]) => [x + MODEL_X_OFFSET, y]), 2));
+        if (pts.length && (std == null || std < 1.0)) pieces.modelEdge.push(densify(pts.map(([x, y]) => [x + MODEL_X_OFFSET, y]), 2));
       });
     }
     this.ribbons.line.set(pieces.line, 0.14);
+    this.ribbons.lineSoft.set(pieces.lineSoft, 0.13);
+    this.ribbons.lineYellowSoft.set(pieces.lineYellowSoft, 0.14);
+    this.ribbons.lineBlueSoft.set(pieces.lineBlueSoft, 0.18);
     this.ribbons.lineBlue.set(pieces.lineBlue, 0.2);
     this.ribbons.lineYellow.set(pieces.lineYellow, 0.15);
     this.ribbons.lineRed.set(pieces.lineRed, 0.22);
@@ -546,86 +525,130 @@ export class CarScene {
     this.ribbons.slot.set(slots, 0.1, 0.02);
   }
 
+  // Objects are tracked, not just drawn: an alpha-beta filter per object estimates its relative
+  // velocity from the ~10-20 Hz, 0.5 m-quantized ADAS positions and extrapolates between updates,
+  // so cars glide instead of stepping. Size, heading and class are smoothed too, and an object has
+  // to be missing for a moment before it fades.
   _objects(dt) {
     const st = this.state || {};
     const f = st.fisker;
     const op = st.op || {};
     const s = this.settings;
     const t = this.theme;
-    const seen = new Set();
-    const list = [];
+    const now = this.clock;
+    const fresh = this.stateSeq !== this.objSeq;
+    this.objSeq = this.stateSeq;
 
-    for (const o of (f && f.objects) || []) {
-      list.push({ key: 'f' + o.id, x: o.x, y: o.y, h: (o.heading || 0) * (s.objectHeadingSign || 1), cls: o.cls, w: o.w, l: o.l, hgt: o.h,
-        lead: o.flags.includes('accPrimary') || o.flags.includes('leading'), threat: o.flags.some(fl => ['bsd', 'dow', 'aeb', 'raeb', 'bacm', 'elka'].includes(fl)),
-        brake: o.brake, label: `${o.cls} #${o.id}` });
-    }
-    // openpilot's leads, unless the ADAS already reports an object there
-    const rs = op.radarState;
-    const engaged = !!(op.selfdriveState && op.selfdriveState.enabled);
-    if (rs && s.showOpLeads !== false) {
-      [rs.leadOne, rs.leadTwo].forEach((ld, i) => {
-        if (!ld || !ld.present) return;
-        const dup = list.some(o => Math.abs(o.x - ld.dRel) < 4 && Math.abs(o.y - ld.yRel) < 2);
-        if (!dup) list.push({ key: 'op' + i, x: ld.dRel, y: ld.yRel, h: 0, cls: 'car', w: 1.9, l: 4.6, hgt: 1.5, lead: i === 0 && engaged, threat: false, label: `lead ${ld.dRel.toFixed(0)} m` });
-      });
+    if (fresh) {
+      const list = [];
+      for (const o of (f && f.objects) || []) {
+        list.push({ key: 'f' + o.id, x: o.x, y: o.y, h: (o.heading || 0) * (s.objectHeadingSign || 1), cls: o.cls, w: o.w, l: o.l, hgt: o.h,
+          lead: o.flags.includes('accPrimary') || o.flags.includes('leading'), threat: o.flags.some(fl => ['bsd', 'dow', 'aeb', 'raeb', 'bacm', 'elka'].includes(fl)),
+          label: `${o.cls} #${o.id}` });
+      }
+      // openpilot's leads, unless the ADAS already reports an object there
+      const rs = op.radarState;
+      const engaged = !!(op.selfdriveState && op.selfdriveState.enabled);
+      if (rs && s.showOpLeads !== false) {
+        [rs.leadOne, rs.leadTwo].forEach((ld, i) => {
+          if (!ld || !ld.present) return;
+          const dup = list.some(o => Math.abs(o.x - ld.dRel) < 4 && Math.abs(o.y - ld.yRel) < 2);
+          if (!dup) list.push({ key: 'op' + i, x: ld.dRel, y: ld.yRel, vx: ld.vRel, h: 0, cls: 'car', w: 1.9, l: 4.6, hgt: 1.5, lead: i === 0 && engaged, threat: false, label: `lead ${ld.dRel.toFixed(0)} m` });
+        });
+      }
+      for (const o of list) this._track(o, now);
     }
 
-    for (const o of list) {
-      seen.add(o.key);
-      let e = this.objects.get(o.key);
-      if (!e || e.cls !== o.cls) {
-        if (e) this.scene.remove(e.pivot);
-        // low cars get the sedan body, everything else car-sized the SUV body
-        const group = makeObject(o.cls === 'car' && o.hgt > 0.5 && o.hgt < 1.55 ? 'sedan' : o.cls, t.object);
-        const pivot = new THREE.Group();
-        group.position.z = -group.userData.length / 2;   // pivot at the object's center
-        pivot.add(group);
-        this.scene.add(pivot);
-        e = { pivot, group, cls: o.cls, alpha: 0, x: o.x, y: o.y, h: o.h, color: null };
-        this.objects.set(o.key, e);
-      }
-      fitScale(e.group, o.cls, o.w, o.l, o.hgt);
-      const L = e.group.userData.length * e.group.scale.z;
-      // the ADAS measures to the nearest point: a car ahead is reported at its rear bumper
-      const cx = o.x > 2 ? o.x + L / 2 : o.x < -2 ? o.x - L / 2 : o.x;
-      e.tx = cx; e.ty = o.y; e.th = o.h * Math.PI / 180;
-      e.dead = false;
-      const color = o.threat ? t.red : o.lead ? t.lead : t.object;
-      if (e.color !== color) {
-        for (const m of e.group.userData.paint) m.color.set(color);
-        e.color = color;
-      }
-      e.label = o.label;
-    }
+    const kDisp = 1 - Math.exp(-dt / 0.06), kSlow = 1 - Math.exp(-dt / 0.4), kHead = 1 - Math.exp(-dt / 0.25);
     for (const [key, e] of this.objects) {
-      if (!seen.has(key)) e.dead = true;
-    }
+      const dead = now - e.lastSeen > 0.5;
+      // extrapolate from the last update (not too far), then ease the drawn position onto it
+      const ahead = Math.min(0.35, now - e.tmeas);
+      const tx = e.x + e.vx * ahead, ty = e.y + e.vy * ahead;
+      if (e.alpha === 0) { e.dx = tx; e.dy = ty; e.dh = e.th; }
+      e.dx += (tx - e.dx) * kDisp;
+      e.dy += (ty - e.dy) * kDisp;
+      e.dh += (((e.th - e.dh + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI) * kHead;
+      for (const d of ['w', 'l', 'hgt']) e.dim[d] += (e.mdim[d] - e.dim[d]) * kSlow;
+      fitScale(e.group, e.cls, e.dim.w, e.dim.l, e.dim.hgt);
 
-    // smooth motion + fade in/out
-    const k = 1 - Math.exp(-dt * 10);
-    for (const [key, e] of this.objects) {
-      if (e.tx !== undefined) {
-        if (e.alpha === 0) { e.x = e.tx; e.y = e.ty; e.h = e.th; }
-        e.x += (e.tx - e.x) * k; e.y += (e.ty - e.y) * k;
-        e.h += (((e.th - e.h + Math.PI) % (2 * Math.PI)) - Math.PI) * k;
-      }
-      e.alpha = Math.max(0, Math.min(1, e.alpha + (e.dead ? -dt * 3 : dt * 4)));
-      if (e.alpha <= 0 && e.dead) {
+      e.alpha = Math.max(0, Math.min(1, e.alpha + (dead ? -dt * 3 : dt * 4)));
+      if (e.alpha <= 0 && dead) {
         this.scene.remove(e.pivot);
         this.objects.delete(key);
         continue;
       }
-      const [X, Z] = toScene(e.x, e.y);
+      // the ADAS measures to the nearest point: a car ahead is reported at its rear bumper
+      const L = e.group.userData.length * e.group.scale.z;
+      const cx = e.dx > 2 ? e.dx + L / 2 : e.dx < -2 ? e.dx - L / 2 : e.dx;
+      const [X, Z] = toScene(cx, e.dy);
       e.pivot.position.set(X, 0, Z);
-      e.pivot.rotation.y = e.h;
+      e.pivot.rotation.y = e.dh;
       const sc = 0.85 + 0.15 * e.alpha;
       e.pivot.scale.set(sc, sc, sc);
+      const color = e.threat ? t.red : e.lead ? t.lead : t.object;
+      if (e.color !== color) {
+        for (const m of e.group.userData.paint) m.color.set(color);
+        e.color = color;
+      }
       for (const m of e.group.userData.paint) { m.opacity = e.alpha; m.transparent = e.alpha < 1; }
     }
   }
 
-  // integrate the car's motion and move the road surface (and lane dashes) under it
+  _objectModel(e, kind) {
+    if (e.pivot) this.scene.remove(e.pivot);
+    const group = makeObject(kind, this.theme.object);
+    const pivot = new THREE.Group();
+    group.position.z = -group.userData.length / 2;   // pivot at the object's center
+    pivot.add(group);
+    this.scene.add(pivot);
+    Object.assign(e, { pivot, group, kind, color: null });
+  }
+
+  _track(o, now) {
+    // low cars get the sedan body, everything else car-sized the SUV body
+    const kindOf = (cls, hgt) => (cls === 'car' && hgt > 0.5 && hgt < 1.55 ? 'sedan' : cls);
+    let e = this.objects.get(o.key);
+    if (!e) {
+      const dim = { w: o.w || 0, l: o.l || 0, hgt: o.hgt || 0 };
+      e = { alpha: 0, x: o.x, y: o.y, vx: o.vx || 0, vy: 0, th: o.h * DEG, tmeas: now, raw: null, cls: o.cls,
+        mdim: { ...dim }, dim, cand: null, candAt: now };
+      this._objectModel(e, kindOf(o.cls, o.hgt));
+      this.objects.set(o.key, e);
+    }
+    e.lastSeen = now;
+    e.lead = o.lead; e.threat = o.threat; e.label = o.label;
+    e.mdim = { w: o.w || 0, l: o.l || 0, hgt: o.hgt || 0 };
+    e.th = o.h * DEG;
+    // a class change has to persist before the model is swapped
+    const kind = kindOf(o.cls, e.dim.hgt);
+    if (kind !== e.kind) {
+      if (e.cand !== kind) { e.cand = kind; e.candAt = now; }
+      else if (now - e.candAt > 0.6) { e.cls = o.cls; this._objectModel(e, kind); e.cand = null; }
+    } else e.cand = null;
+
+    // same reading as last time: the ADAS hasn't updated yet (unless it's been a while)
+    const raw = `${o.x},${o.y}`;
+    if (raw === e.raw && now - e.tmeas < 0.25) return;
+    e.raw = raw;
+    const dtm = Math.min(0.5, Math.max(0.02, now - e.tmeas));
+    const px = e.x + e.vx * dtm, py = e.y + e.vy * dtm;
+    const rx = o.x - px, ry = o.y - py;
+    if (Math.hypot(rx, ry) > 5 + 0.08 * Math.abs(o.x)) {
+      // jumped (reused id, or reacquired): restart the track there
+      e.x = o.x; e.y = o.y; e.vx = o.vx || 0; e.vy = 0;
+    } else {
+      const A = 0.45, B = 0.12;
+      e.x = px + A * rx; e.y = py + A * ry;
+      e.vx = Math.max(-45, Math.min(45, e.vx + B * rx / dtm));
+      e.vy = Math.max(-12, Math.min(12, e.vy + B * ry / dtm));
+    }
+    e.tmeas = now;
+  }
+
+  // Integrate the car's motion and move the road surface (and lane dashes) under it. The pose is
+  // the rear axle's (kinematic bicycle model: the rear axle moves along the heading), so turns
+  // pivot about it like the real car.
   _ground(dt) {
     const vs = this.vehicle;
     const v = vs ? vs.v : 0;
@@ -639,10 +662,11 @@ export class CarScene {
     if (Math.abs(p.y) > wrap) p.y -= Math.sign(p.y) * wrap;
     this.odometer += v * dt;
 
-    // `world` = inverse of the car's pose, in scene axes (X = -y, Z = -x)
+    // `world` = inverse of the rear axle's pose, in scene axes (X = -y, Z = -x), about the axle
     const c = Math.cos(p.h), s = Math.sin(p.h);
+    const zr = this.ego.userData.rearAxleZ ?? REAR_AXLE_Z;
     this.world.rotation.y = -p.h;
-    this.world.position.set(p.y * c - p.x * s, 0, p.y * s + p.x * c);
+    this.world.position.set(p.y * c - p.x * s, 0, p.y * s + p.x * c + zr);
     this.ground.position.set(Math.round(-p.y / TILE) * TILE, -0.01, Math.round(-p.x / TILE) * TILE);
     this.ground.visible = this.settings.showGround !== false;
   }
@@ -653,12 +677,7 @@ export class CarScene {
     if (!vs) return;
     const L = vs.lamps;
 
-    for (const [key, lamp] of Object.entries(ud.blink)) lamp.visible = key[1] === 'l' ? L.left : L.right;
-    for (const lamp of ud.reverse) lamp.visible = L.reverse;
-    for (const lamp of ud.brake) lamp.visible = L.brake;
-    for (const m of ud.tailMats) m.emissiveIntensity = L.brake ? 2.6 : (L.position || L.low) ? 0.35 : 0;
-    for (const m of ud.chmslMats) m.emissiveIntensity = L.brake ? 2.6 : 0;
-    for (const m of ud.headMats) m.emissiveIntensity = L.high ? 2.4 : L.low ? 1.7 : (L.drl || L.position) ? 0.8 : 0;
+    if (ud.lamps) applyLamps(ud.lamps, L);
 
     // wheels roll with the distance travelled; the front pair follows the road-wheel angle.
     // Past ~30 km/h (at 60 fps) the per-frame turn is capped at a fraction of the spoke pitch, so the rims
@@ -672,18 +691,11 @@ export class CarScene {
       if (w.front) w.steer.rotation.y += (steer - w.steer.rotation.y) * k;
     }
 
-    // light on the road
-    const P = this.pools;
+    // headlight throw on the road ahead (low/high beam only)
     const beam = L.high ? 28 : 15;
-    P.head.visible = L.low || L.high;
-    P.head.scale.set(L.high ? 4.2 : 3.6, 1, beam);
-    P.head.position.z = -beam / 2 - 0.3;
-    P.reverse.visible = L.reverse;
-    P.reverse.scale.set(2.8, 1, 4.5);
-    P.reverse.position.z = EGO_LEN + 2.4;
-    P.brake.visible = L.brake;
-    P.brake.scale.set(2.6, 1, 2.6);
-    P.brake.position.z = EGO_LEN + 1.1;
+    this.headBeam.visible = L.low || L.high;
+    this.headBeam.scale.set(L.high ? 4.2 : 3.6, 1, beam);
+    this.headBeam.position.z = -beam / 2 - 0.3;
   }
 
   _camera(dt) {

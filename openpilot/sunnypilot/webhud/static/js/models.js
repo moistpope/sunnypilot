@@ -3,6 +3,7 @@
 // matching the ADAS/openpilot convention (distances measured from the front bumper).
 import * as THREE from '../vendor/three.module.min.js';
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
+import { Lamp, LAMP, conform, centerline, splitMesh } from './lamps.js';
 
 const geoCache = new Map();
 function cached(key, make) {
@@ -148,13 +149,6 @@ export function softShadow(w, l) {
   return m;
 }
 
-function lightBar(w, h, d, color, intensity = 0) {
-  return new THREE.Mesh(
-    cached(`bar${w}${h}${d}`, () => new THREE.BoxGeometry(w, h, d)),
-    new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: intensity, roughness: 0.4 }),
-  );
-}
-
 // A car-like vehicle built from a profile spec. Returns a Group sized to spec, front bumper at z=0.
 function vehicle(spec, paint, opts = {}) {
   const g = new THREE.Group();
@@ -184,82 +178,37 @@ function vehicle(spec, paint, opts = {}) {
   const shadow = softShadow(spec.width, spec.length);
   shadow.position.z = spec.length / 2;
   g.add(shadow);
-  g.userData = { paint: [paint], length: spec.length, width: spec.width, height: spec.height, wheels };
+  g.userData = { paint: [paint], length: spec.length, width: spec.width, height: spec.height, wheels, rearAxleZ: spec.length - Math.min(...spec.axles) };
   return g;
 }
 
-// ---- lamps ------------------------------------------------------------------------------------
+// ---- ego ---------------------------------------------------------------------------------------
 
-let glowTexture = null;
-function glowTex() {
-  if (glowTexture) return glowTexture;
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const ctx = c.getContext('2d');
-  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, 'rgba(255,255,255,1)');
-  g.addColorStop(0.25, 'rgba(255,255,255,0.55)');
-  g.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 64, 64);
-  glowTexture = new THREE.CanvasTexture(c);
-  return glowTexture;
-}
-
-// a small lit lens plus a camera-facing halo, toggled with .visible; size null = halo only
-function lamp(color, size = [0.14, 0.07, 0.06], halo = [0.55, 0.55]) {
-  const g = new THREE.Group();
-  if (size) {
-    g.add(new THREE.Mesh(
-      cached(`lens${size}`, () => new THREE.BoxGeometry(...size)),
-      new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2.0, roughness: 0.3 }),
-    ));
-  }
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: glowTex(), color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.9,
-  }));
-  glow.scale.set(halo[0], halo[1], 1);
-  g.add(glow);
-  g.visible = false;
-  return g;
-}
-
-// turn signals at the four corners, brake-light glow and reversing lamps at the back; positions in ego space
-function addLamps(g, spots) {
-  const blink = {};
-  for (const [key, pos] of Object.entries(spots.blink)) {
-    const b = lamp(0xffa000);
-    b.position.set(...pos);
-    g.add(b);
-    blink[key] = b;
-  }
-  const place = (pos, l) => { l.position.set(...pos); g.add(l); return l; };
-  const reverse = spots.reverse.map(pos => place(pos, lamp(0xffffff, [0.16, 0.06, 0.04], [0.6, 0.6])));
-  // the tail lenses themselves only glow brighter, which reads poorly at a distance: add a wide halo
-  const brake = spots.brake.map(pos => place(pos, lamp(0xff2418, null, [0.95, 0.38])));
-  return { blink, reverse, brake };
-}
-
+// procedural Ocean, used until the glTF model has loaded (or if it can't be)
 export function makeEgo(color = 0x2a2d33) {
   const paint = new THREE.MeshStandardMaterial({ color, roughness: 0.38, metalness: 0.35 });
   const g = vehicle(OCEAN, paint, { bevel: 0.14 });
   const L = OCEAN.length, W = OCEAN.width;
-  // full-width light signatures, like the Ocean's
-  // the bevel grows the body ~0.1 m past its profile, so the light bars sit just outside that
-  const tail = lightBar(W - 0.25, 0.06, 0.04, 0xff2a1f, 0.6);
-  tail.position.set(0, 1.02, L + 0.11);
-  const head = lightBar(W - 0.3, 0.045, 0.04, 0xf2f6ff, 0.9);
-  head.position.set(0, 0.86, -0.11);
-  g.add(tail, head);
-  const x = W / 2 - 0.08;
-  Object.assign(g.userData, addLamps(g, {
-    blink: { fl: [-x, 0.86, -0.12], fr: [x, 0.86, -0.12], rl: [-x, 1.02, L + 0.13], rr: [x, 1.02, L + 0.13] },
-    reverse: [[-0.45, 0.6, L + 0.12], [0.45, 0.6, L + 0.12]],
-    brake: [[-x + 0.3, 1.02, L + 0.15], [x - 0.3, 1.02, L + 0.15]],
-  }));
-  g.userData.headMats = [head.material];
-  g.userData.tailMats = [tail.material];
-  g.userData.chmslMats = [];
+  const lamps = {
+    drl: new Lamp(LAMP.white, 0x8d939b), tail: new Lamp(LAMP.red, 0x4a0c0a), reverse: new Lamp(LAMP.white, 0x6a6e74),
+    frontL: new Lamp(LAMP.amber, 0x3a3127), frontR: new Lamp(LAMP.amber, 0x3a3127),
+    rearL: new Lamp(LAMP.amber, 0x4a0c0a), rearR: new Lamp(LAMP.amber, 0x4a0c0a),
+  };
+  // the bevel grows the body ~0.1 m past its profile, so the lenses sit just outside that
+  const box = (lamp, w, h, x, y, z) => {
+    const m = new THREE.Mesh(cached(`lens${w}/${h}`, () => new THREE.BoxGeometry(w, h, 0.03)), lamp.lens);
+    m.position.set(x, y, z);
+    g.add(m);
+  };
+  box(lamps.drl, W - 0.3, 0.045, 0, 0.86, -0.11);
+  box(lamps.tail, W - 0.25, 0.06, 0, 1.02, L + 0.11);
+  for (const s of [-1, 1]) {
+    const side = s < 0 ? 'L' : 'R';
+    box(lamps['front' + side], 0.22, 0.05, s * 0.66, 0.6, -0.1);
+    box(lamps['rear' + side], 0.26, 0.04, s * 0.62, 0.58, L + 0.11);
+    box(lamps.reverse, 0.1, 0.04, s * 0.4, 0.58, L + 0.11);
+  }
+  g.userData.lamps = lamps;
   return g;
 }
 
@@ -269,8 +218,18 @@ export function makeEgo(color = 0x2a2d33) {
 const OCEAN_GLTF = {
   paint: ['Material.001'],
   head: ['Material.004'],     // full-width front light bar
-  tail: ['Material.005'],     // tail light strips
+  tail: ['Material.005'],     // tail light strips, wrapping onto the rear quarters
   chmsl: ['Material.006'],    // third brake light
+  body: ['Material.001', 'Material.002', 'Material.003', 'Material.010'],   // surfaces lamps can be laid on
+  // Lamps the model has no geometry for, laid onto the body. Left-side polylines in ego space (x < 0
+  // is the car's left; mirrored for the right), pushed along `dir` until they meet the surface.
+  // Placed from photos of the real car.
+  added: {
+    front: { pts: [[-0.55, 0.665], [-0.7, 0.665], [-0.78, 0.655], [-0.82, 0.62], [-0.845, 0.55], [-0.86, 0.48]], z: -0.4, dir: 1, width: 0.024, glow: 0.07 },   // amber, along the lower intakes
+    mirror: { pts: [[-0.95, 1.13], [-1.02, 1.135], [-1.045, 1.16], [-1.05, 1.2]], z: 1.4, dir: 1, width: 0.018, glow: 0.05 },   // amber, mirror caps
+    rear: { pts: [[-0.52, 0.564], [-0.64, 0.56], [-0.76, 0.552]], z: 5.2, dir: -1, width: 0.03, glow: 0.07 },   // lower rear: amber indicator / red tail
+    reverse: { pts: [[-0.42, 0.566], [-0.5, 0.565]], z: 5.2, dir: -1, width: 0.032, glow: 0.07 },
+  },
   wheel: ['MA_tire_003', 'Material.007', 'Material.008', 'Material.009'],   // tire + rim parts, per wheel
   spokes: 5,
   // The rims are black mirror-metal, which renders flat black without an environment map. A satin
@@ -282,6 +241,74 @@ const OCEAN_GLTF = {
     'MA_tire_003': { color: 0x1b1c1f, metalness: 0, roughness: 0.9 },
   },
 };
+
+// Turn the model's light meshes into switchable lamps and lay the missing ones onto the body.
+function oceanLamps(g, meshes, L) {
+  const lens = { clear: 0x9aa0a8, red: 0x5a0d0b, darkRed: 0x3c0a08, amber: 0x2e2a26 };
+  const lamps = {
+    drl: new Lamp(LAMP.white, lens.clear), head: new Lamp(LAMP.white, lens.clear),
+    tail: new Lamp(LAMP.red, lens.red), chmsl: new Lamp(LAMP.red, lens.darkRed), reverse: new Lamp(LAMP.white, 0x5c6066),
+  };
+  for (const s of ['L', 'R']) {   // per side: names like markerL / markerR
+    lamps['marker' + s] = new Lamp(LAMP.red, lens.red);
+    lamps['front' + s] = new Lamp(LAMP.amber, lens.amber);
+    lamps['mirror' + s] = new Lamp(LAMP.amber, 0x3a3833);
+    lamps['rear' + s] = new Lamp(LAMP.amber, lens.red);
+  }
+  g.updateMatrixWorld(true);
+  const center = new THREE.Vector3(0, 0.8, L / 2);
+  const size = new THREE.Vector3();
+  const side = (list, s) => list.filter(t => Math.sign(t.c.x) === s);
+  const glowAlong = (lamp, list, order, width, step = 0.02, extend = 0.02) => {
+    const c = centerline(list, order, center, step);
+    lamp.addGlow(g, c.points, c.normals, width, extend);
+  };
+
+  // front light bar: the two short vertical bars in each housing are the headlights, the long
+  // horizontal bar is the DRL
+  for (const mesh of meshes.head) {
+    const parts = splitMesh(mesh, t => (t.box.getSize(size), size.x < 0.03 && size.y > 0.03 ? lamps.head.lens : lamps.drl.lens));
+    for (const s of [-1, 1]) {
+      glowAlong(lamps.drl, side(parts.get(lamps.drl.lens) || [], s), c => Math.abs(c.x) + c.z, 0.05, 0.03);
+      const bars = new Map();
+      for (const t of side(parts.get(lamps.head.lens) || [], s)) {
+        const k = Math.round(t.c.x / 0.04);
+        if (!bars.has(k)) bars.set(k, []);
+        bars.get(k).push(t);
+      }
+      for (const bar of bars.values()) glowAlong(lamps.head, bar, c => c.y, 0.045, 0.02, 0.025);
+    }
+  }
+  // tail strips: the part wrapped onto the rear quarter is the side marker
+  for (const mesh of meshes.tail) {
+    const marker = (t) => t.c.z < L - 0.3;
+    const parts = splitMesh(mesh, t => (marker(t) ? lamps['marker' + (t.c.x < 0 ? 'L' : 'R')].lens : lamps.tail.lens));
+    for (const s of [-1, 1]) {
+      glowAlong(lamps.tail, side(parts.get(lamps.tail.lens) || [], s), c => Math.abs(c.x), 0.055);
+      const m = lamps['marker' + (s < 0 ? 'L' : 'R')];
+      glowAlong(m, parts.get(m.lens) || [], c => -c.z, 0.055);
+    }
+  }
+  for (const mesh of meshes.chmsl) {
+    const parts = splitMesh(mesh, () => lamps.chmsl.lens);
+    glowAlong(lamps.chmsl, parts.get(lamps.chmsl.lens) || [], c => c.x, 0.05, 0.04);
+  }
+
+  // lamps the model doesn't have, laid flush on the body (raycast double-sided, then restored)
+  const sides = meshes.body.map(m => m.material.side);
+  meshes.body.forEach(m => { m.material.side = THREE.DoubleSide; });
+  for (const [name, spec] of Object.entries(OCEAN_GLTF.added)) {
+    for (const s of [-1, 1]) {
+      const lamp = lamps[name] || lamps[name + (s < 0 ? 'L' : 'R')];
+      const pts = spec.pts.map(([x, y]) => [x * -s, y, spec.z]);
+      const c = conform(meshes.body, pts, [0, 0, spec.dir]);
+      lamp.addStrip(g, c.points, c.normals, spec.width, spec.glow);
+    }
+  }
+  meshes.body.forEach((m, i) => { m.material.side = sides[i]; });
+  for (const lamp of Object.values(lamps)) lamp.set(0);
+  return lamps;
+}
 
 export function loadEgoModel(url) {
   return new Promise((resolve, reject) => {
@@ -300,23 +327,20 @@ export function loadEgoModel(url) {
       g.updateMatrixWorld(true);
       const L = OCEAN.length, W = OCEAN.width;
 
-      // materials by role, plus the extent of each light so lamps sit on the real light bars
-      const roles = { paint: new Set(), head: new Set(), tail: new Set(), chmsl: new Set() };
-      const extent = { head: new THREE.Box3(), tail: new THREE.Box3() };
+      // materials by role; light and body meshes for the lamps
+      const paint = new Set();
+      const meshes = { head: [], tail: [], chmsl: [], body: [] };
       const wheelMeshes = [];
       model.traverse((o) => {
         if (!o.isMesh) return;
         const name = o.material.name;
-        for (const role of Object.keys(roles)) if (OCEAN_GLTF[role].includes(name)) roles[role].add(o.material);
-        const light = OCEAN_GLTF.head.includes(name) ? 'head' : OCEAN_GLTF.tail.includes(name) ? 'tail' : null;
-        if (light) extent[light].union(new THREE.Box3().setFromObject(o));
+        if (OCEAN_GLTF.paint.includes(name)) paint.add(o.material);
+        for (const role of Object.keys(meshes)) if (OCEAN_GLTF[role].includes(name)) meshes[role].push(o);
         if (OCEAN_GLTF.wheel.includes(name)) wheelMeshes.push(o);
         const finish = OCEAN_GLTF.finish[name];
         if (finish) { o.material.color.setHex(finish.color); o.material.metalness = finish.metalness; o.material.roughness = finish.roughness; }
       });
-      const [paint, headMats, tailMats, chmslMats] = ['paint', 'head', 'tail', 'chmsl'].map(r => [...roles[r]]);
-      for (const m of headMats) { m.emissive = new THREE.Color(0xf2f6ff); m.emissiveIntensity = 0; }
-      for (const m of [...tailMats, ...chmslMats]) { m.emissive = new THREE.Color(0xff1a10); m.emissiveIntensity = 0; }
+      const lamps = oceanLamps(g, meshes, L);
 
       // Re-hang each wheel's tire + rim meshes on steer -> spin pivots at the tire's center.
       // attach() keeps their world transform, so nothing moves until the pivots rotate.
@@ -344,22 +368,14 @@ export function loadEgoModel(url) {
         wheels.push({ steer, spin, r: box.getSize(new THREE.Vector3()).y / 2, front: key.endsWith('f'), spokes: OCEAN_GLTF.spokes });
       }
 
-      // turn signals at the outer ends of the front light bar and the tail strips
-      const h = extent.head.isEmpty() ? null : extent.head, t = extent.tail.isEmpty() ? null : extent.tail;
-      const hx = h ? Math.max(-h.min.x, h.max.x) - 0.07 : W / 2 - 0.1, hy = h ? (h.min.y + h.max.y) / 2 : 0.95, hz = h ? h.min.z - 0.03 : 0.2;
-      const tx = t ? Math.max(-t.min.x, t.max.x) - 0.07 : W / 2 - 0.1, ty = t ? (t.min.y + t.max.y) / 2 : 1.05, tz = t ? t.max.z + 0.03 : L - 0.1;
-      Object.assign(g.userData, addLamps(g, {
-        blink: { fl: [-hx, hy, hz], fr: [hx, hy, hz], rl: [-tx, ty, tz], rr: [tx, ty, tz] },
-        reverse: [[-0.5, 0.62, L + 0.02], [0.5, 0.62, L + 0.02]],
-        brake: [[-tx + 0.22, ty, tz + 0.02], [tx - 0.22, ty, tz + 0.02]],
-      }));
-
       const shadow = softShadow(W, L);
       shadow.position.z = L / 2;
       g.add(shadow);
+      const rear = wheels.filter(w => !w.front);
       Object.assign(g.userData, {
-        paint, headMats, tailMats, chmslMats, wheels, length: L, width: W, height: OCEAN.height, gltf: true,
-        originalPaint: paint.map(m => m.color.clone()),
+        paint: [...paint], lamps, wheels, length: L, width: W, height: OCEAN.height, gltf: true,
+        rearAxleZ: rear.length ? rear.reduce((a, w) => a + w.steer.position.z, 0) / rear.length : L - OCEAN.axles[0],
+        originalPaint: [...paint].map(m => m.color.clone()),
       });
       resolve(g);
     }, undefined, reject);

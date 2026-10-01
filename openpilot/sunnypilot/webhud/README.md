@@ -5,10 +5,18 @@ Ocean's own center screen. Shows speed, gear, MADS steering state, ACC set speed
 limit, alerts, the ADAS module's lane lines and object list in 3D, parking sensors, and lets you edit
 the CAN overrides in `opendbc/car/fisker/values.py` and replay recorded routes.
 
-The ego car mirrors the real one: a textured road surface moves under it with speed and steering
-(dead-reckoned with the bicycle model from `steeringAngleDeg`), the wheels roll and the front pair
-steers, and the head/tail/brake/reversing lamps and turn signals follow the BCM's lamp outputs
-(`BCM_0x335`, falling back to carState). The road surface can be turned off under *Display*.
+The ego car mirrors the real one: a fine textured ground moves under it with speed and steering
+(dead-reckoned about the rear axle with the bicycle model from `steeringAngleDeg`), the wheels roll
+and the front pair steers, and its lamps light on the body itself, following the BCM's lamp
+outputs (`BCM_0x335`, falling back to carState): DRL bar, headlights, front/mirror/rear turn
+indicators, tail, brake, third brake light, rear-quarter markers (lit with the tail, bright when
+braking, flashing with the indicator) and reversing lamps (`static/js/lamps.js`).
+
+Lanes and objects are filtered before drawing (`static/js/road.js`, `scene.js`): lane lines are
+carried with the car's motion and eased toward each measurement by confidence, with hysteresis on
+validity; objects are tracked with an alpha-beta filter. Lanes the cameras don't report are filled
+in as a softer, inferred road following the last known lanes (width, count, oncoming lane) or the
+car's own path. Ground texture and inferred road can be turned off under *Display*.
 
 **Open:** `http://sunnypilot.local:8088` (or `http://<device-ip>:8088`; port 80 is also served when
 the process is allowed to bind it). Toggle: *Settings → Developer → Web HUD* (`EnableWebHud`, on by
