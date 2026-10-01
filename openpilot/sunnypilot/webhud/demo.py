@@ -6,16 +6,22 @@ See the LICENSE.md file in the root directory for more details.
 
 Synthetic drive for previewing the web HUD without a car (server --demo). It encodes real ADASBUS
 frames through the DBC, so the Fisker parser is exercised end to end, and fills in the openpilot
-services the HUD reads. A 60 s loop: highway cruising with ACC + steering engaged, a motorcycle
-passing through the left blind spot, a red light, then a parking maneuver in reverse.
+services the HUD reads. A 60 s loop: highway cruising with ACC + steering engaged (a climb at 4-10 s and
+a full-power pass at 26-30 s), a motorcycle passing through the left blind spot, a red light, then a
+parking maneuver in reverse.
 """
 import math
 
-from openpilot.sunnypilot.webhud.fisker_world import BUS_CAM, BUS_PT
+from openpilot.sunnypilot.webhud.fisker_world import BUS_CAM, BUS_PT, DRIVE_RATIO, TIRE_RADIUS
 from openpilot.sunnypilot.webhud.state import StateBuilder
 
 LOOP_S = 60.0
 LANE_W = 3.6
+
+
+def _bump(t: float, start: float, end: float) -> float:
+  """0 -> 1 -> 0 over [start, end]."""
+  return math.sin(math.pi * (t - start) / (end - start)) ** 2 if start < t < end else 0.0
 
 
 class DemoSource:
@@ -157,6 +163,7 @@ class DemoSource:
       "BCM_BrkLampOutpCmd": int(braking), "BCM_RvsLampOutpCmd": int(parking),
     }))
     frames.append(self._frame("EPS_0x1C2", {"EPS_SteerWhlAgSig": steer_deg}))
+    frames += self._motors(t, v, parking, braking)
     self.builder.feed_can(frames, self.clock)
 
     # openpilot services, as the extractors would produce them
@@ -177,6 +184,22 @@ class DemoSource:
     self._svc("modelV2", {"laneLines": md_lines, "laneLineProbs": [0.6, 0.95, 0.95, 0.6], "roadEdges": [], "roadEdgeStds": [],
                           "path": [[x, lat_at(x, 0)] for x in xs], "leads": [], "laneChangeState": "off", "laneChangeDirection": "none"})
     self._svc("radarState", {"leadOne": {"present": False}, "leadTwo": {"present": False}})
+
+  def _motors(self, t: float, v: float, parking: bool, braking: bool) -> list[tuple[int, bytes, int]]:
+    # power asked of the motors: ~18 kW cruising, a climb, a full-power pass, regen while braking
+    kw = 2.0 if parking else -45.0 if braking else 18.0 + 60 * _bump(t, 4, 10) + 200 * _bump(t, 26, 30)
+    rpm = v / TIRE_RADIUS * DRIVE_RATIO * 30 / math.pi * (-1 if parking else 1)
+    motor_tq = kw * 1000 / (rpm * math.pi / 30) if abs(rpm) > 1 else 0.0
+    frames = [self._frame("VCU_0x102", {
+      "VCU_DrvrFrntMotTqReq": round(0.45 * motor_tq * DRIVE_RATIO), "VCU_DrvrFrntMotTqReqVld": 1,
+      "VCU_DrvrReMotTqReq": round(0.55 * motor_tq * DRIVE_RATIO), "VCU_DrvrReMotTqReqVld": 1,
+    })]
+    for msg, mcu, share in (("MCU_F_0x150", "MCU_F", 0.45), ("MCU_R_0x151", "MCU_R", 0.55)):
+      frames.append(self._frame(msg, {
+        f"{mcu}_CrtSpd": round(rpm), f"{mcu}_CrtSpdSigVld": 1, f"{mcu}_CrtTq": round(0.95 * share * motor_tq * 2) / 2,
+        f"{mcu}_CrtTqVld": 1, f"{mcu}_CrtRotDir": 2 if parking else 1,
+      }))
+    return frames
 
   def _svc(self, which: str, data: dict) -> None:
     self.builder.services[which] = data

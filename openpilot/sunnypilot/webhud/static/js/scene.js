@@ -8,6 +8,7 @@ import { makeEgo, makeObject, fitScale, loadEgoModel } from './models.js';
 import { applyLamps } from './lamps.js';
 import { RoadModel, linePoints } from './road.js';
 import { RoadFurniture } from './furniture.js';
+import { PowerTrails, motorLoad } from './tracks.js';
 import { STEER_RATIO } from './vehicle.js';
 
 const EGO_LEN = 4.775;
@@ -15,6 +16,8 @@ const EGO_W = 1.98;
 const MODEL_X_OFFSET = -1.6;      // comma device sits ~1.6 m behind the front bumper
 const DASH = 3.0, GAP = 9.0;      // US lane dash pattern (10 ft / 30 ft)
 const RECENTER_S = 5;             // pan springs back to the car after this long untouched
+const CHASE_SPEED_DOLLY = 0.5;    // chase camera backs off this much farther (x its distance) at 70 mph
+const DOLLY_FULL_SPEED = 31.3;    // m/s
 const TILE = 48;                  // m: every layer of the road surface repeats over this
 const GROUND_SIZE = 10 * TILE;    // textured plane under the car; fog hides its edge
 const REAR_AXLE_Z = EGO_LEN - 0.93;   // until the model reports its own
@@ -311,6 +314,7 @@ export class CarScene {
     this.ribbons.zebra = new Ribbon(this.mats.marking, 256);
     this.scene.add(this.ribbons.zebra.mesh);
     this.furniture = new RoadFurniture(this.scene, this.world);
+    this.tracks = new PowerTrails(this.world);
 
     this.objects = new Map();   // key -> track (see _track)
     this.labels = new Map();
@@ -333,6 +337,7 @@ export class CarScene {
     this.controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
     this.controls.target.copy(this.target);
     this.lastInteract = -1e9;
+    this.chaseDolly = 1;   // chase distance multiplier, grows with speed
     this.controls.addEventListener('start', () => { this.interacting = true; this.viewAnim = null; });
     this.controls.addEventListener('end', () => { this.interacting = false; this.lastInteract = performance.now(); });
 
@@ -354,6 +359,7 @@ export class CarScene {
     this.headBeam.material.blending = dark ? THREE.AdditiveBlending : THREE.NormalBlending;
     this.headBeam.material.opacity = dark ? 0.45 : 0.2;
     this.headBeam.material.needsUpdate = true;
+    this.tracks.setTheme(dark);
     this.hemi.color.set(t.hemiSky);
     this.hemi.groundColor.set(t.hemiGround);
     this.mats.line.color.set(t.line);
@@ -390,7 +396,7 @@ export class CarScene {
   setView(name, instant = false) {
     const v = VIEWS[name] || VIEWS.chase;
     this.view = name;
-    const to = new THREE.Spherical(v.r, v.phi, v.theta);
+    const to = new THREE.Spherical(v.r * (name === 'chase' ? this.chaseDolly : 1), v.phi, v.theta);
     const from = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.controls.target));
     this.viewAnim = instant ? null : { from, to, t: 0, targetFrom: this.controls.target.clone(), offFrom: this.viewOffset.y, offTo: v.offY };
     if (instant) {
@@ -762,8 +768,26 @@ export class CarScene {
     this.headBeam.position.z = -beam / 2 - 0.3;
   }
 
+  _tracks(dt) {
+    const h = this.renderer.getDrawingBufferSize(this._buf || (this._buf = new THREE.Vector2())).y;
+    const pxScale = h / (2 * Math.tan(this.camera.fov * DEG / 2));
+    this.tracks.update(dt, this.vehicle, this.ego, motorLoad(this.state), this.settings.showTracks !== false, pxScale);
+  }
+
   _camera(dt) {
     const now = performance.now();
+    // the chase view backs off as speed builds, showing more road ahead; scaling the current offset
+    // keeps whatever zoom the user set, and the view animation targets the scaled distance
+    const speed = this.vehicle ? this.vehicle.speed : 0;
+    const dolly = 1 + CHASE_SPEED_DOLLY * Math.min(1, speed / DOLLY_FULL_SPEED);
+    const prevDolly = this.chaseDolly;
+    this.chaseDolly += (dolly - prevDolly) * (1 - Math.exp(-dt * 1.2));
+    if (this.view === 'chase' && !this.viewAnim && !this.interacting) {
+      const off = this.camera.position.clone().sub(this.controls.target).multiplyScalar(this.chaseDolly / prevDolly);
+      this.camera.position.copy(this.controls.target).add(off);
+    } else if (this.viewAnim && this.view === 'chase') {
+      this.viewAnim.to.radius *= this.chaseDolly / prevDolly;
+    }
     if (this.viewAnim) {
       const a = this.viewAnim;
       a.t = Math.min(1, a.t + dt / 0.6);
@@ -809,6 +833,7 @@ export class CarScene {
     this._uss();
     this._objects(dt);
     this._ego(dt);
+    this._tracks(dt);
     this.renderer.render(this.scene, this.camera);
   }
 }

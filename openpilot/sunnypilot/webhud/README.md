@@ -34,6 +34,17 @@ across the road at their distance. The camera doesn't classify stop or yield sig
 sends an ADASIS v2 map horizon (`ICC_0x250`..`0x255`, `0x361`) with map signs and lanes per
 direction; its sign type table isn't in the matrix, so it isn't used yet.
 
+*Power trails* (`static/js/tracks.js`, *Display*) lay glowing tire tracks behind the rear wheels,
+colored by how hard the motors are asked to pull when each bit is laid: blue at a light load through
+the spectrum to red at full power (150 kW demanded, or 6000 Nm of wheel torque for a hard launch;
+regen counts as light). Laid track keeps its color, so a burst of power slides back behind the car
+as a red stretch. The trail grows with speed to one car length at 70 mph and fades out toward its
+end, and light motes kick up off the tires, more of them the harder the car pulls. The load is the
+driver's torque request per axle (`VCU_0x102`, wheel torque) times motor speed (`MCU_F_0x150`,
+`MCU_R_0x151`) over the ~11.5:1 drive ratio; on other cars it's estimated from openpilot's
+acceleration. The chase camera also backs off with speed, up to 1.5x its distance at 70 mph,
+keeping any zoom you set.
+
 **Open:** `http://sunnypilot.local:8088` (or `http://<device-ip>:8088`; port 80 is also served when
 the process is allowed to bind it). Toggle: *Settings → Developer → Web HUD* (`EnableWebHud`, on by
 default).
@@ -63,7 +74,7 @@ Bus 2 (ADAS module) unless noted; the full set is in the *Signals* tab.
 - **Signs & lights:** `0x311` TSR speed limit (+ unit), `0x210` sign condition, no-passing, traffic light color/shape, `0x351` traffic light distance, lead turn signal/brake, `0x334` prohibition signs, camera blockage.
 - **Parking:** `0x352` ultrasonic zones (front/rear/left/right × 4), `0x356/0x359` park-distance (cm), `0x2C7..0x2EA` APA slots, `0x2CD` curb warnings, `0x316` surround-view state.
 - **Driver monitoring:** `0x527`. **Camera:** `0x32B`.
-- **Vehicle (bus 0):** `VCU_0x214` gear/ready/pedal, `ICC_0x531` cluster speed + unit, `BCM_0x335` lamp outputs, `EPS_0x1C2` steering angle, `BCM_0x343` doors/locks/windows, `PLGM_0x471` liftgate, `ECC_0x373` outside temp, `VCU_0x358` regen/e-pedal, `ICC_0x52A`/`ICC_0x35B` the ICC's own settings (shown next to the overrides).
+- **Vehicle (bus 0):** `VCU_0x102` driver torque request per axle, `MCU_F_0x150`/`MCU_R_0x151` motor torque + speed, `VCU_0x214` gear/ready/pedal, `ICC_0x531` cluster speed + unit, `BCM_0x335` lamp outputs, `EPS_0x1C2` steering angle, `BCM_0x343` doors/locks/windows, `PLGM_0x471` liftgate, `ECC_0x373` outside temp, `VCU_0x358` regen/e-pedal, `ICC_0x52A`/`ICC_0x35B` the ICC's own settings (shown next to the overrides).
 
 Not documented in the matrix, so exposed as display toggles (*Display → Geometry calibration*): the
 sign of lane curvature and of object heading (lane heading grows to the right, verified on the car).

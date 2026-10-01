@@ -15,9 +15,10 @@ import re
 
 from openpilot.sunnypilot.webhud.paths import DBC_PATH as OUT
 
-# Non-ADAS messages to keep (everything opendbc's fisker_ocean_adas.dbc uses, plus body/HMI state).
+# Non-ADAS messages to keep (everything opendbc's fisker_ocean_adas.dbc uses, plus body/HMI state and
+# the drive motors' torque requests and actual torque / speed for the power trails).
 EXTRA_MESSAGES = {
-  "GW_Syn_All", "YRS_0x112", "YRS_0x113", "ESP_0x114", "ESP_0x115", "ESP_0x116", "ESP_0x120",
+  "GW_Syn_All", "VCU_0x102", "MCU_F_0x150", "MCU_R_0x151", "YRS_0x112", "YRS_0x113", "ESP_0x114", "ESP_0x115", "ESP_0x116", "ESP_0x120",
   "ACU_0x159", "EPS_0x1C2", "EPS_0x1C4", "VCU_0x214", "VCU_0x219", "ESP_0x318", "BCM_0x321",
   "BCM_0x333", "BCM_0x335", "BCM_0x343", "VCU_0x358", "ICC_0x35B", "BCM_0x364", "ECC_0x373",
   "PLGM_0x471", "FCM_0x487", "MFS_0x514", "ICC_0x52A", "ICC_0x531",

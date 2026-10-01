@@ -42,6 +42,15 @@ PDC_SENSORS = ("LS", "LC", "LM", "RM", "RC", "RS")  # left side .. right side
 LANE_HEADING_CENTER_DEG = 90.0
 LANE_NO_DISPLAY = 3200.0
 
+# Drive motors: VCU_0x102 carries the driver's torque request per axle, MCU_F/MCU_R each motor's
+# actual torque and speed. The requests are wheel torque: on the car they run ~11.5x the motors' own
+# torque, the same ratio as motor rpm to wheel rpm (289 rpm per m/s on ~0.39 m tires), so request x
+# motor speed / ratio is the power asked for.
+DRIVE_RATIO = 11.5
+TIRE_RADIUS = 0.39   # m
+MOTOR_SPD_INVALID = 32767.0   # raw 65535
+MOTOR_TQ_MAX = 512.0          # raw 2047 (512.5) = invalid
+
 
 def _r(v, nd=2):
   return None if v is None else round(float(v), nd)
@@ -172,6 +181,7 @@ class FiskerWorld:
       "dms": self._dms(s),
       "warnings": self._warnings(s),
       "camera": self._camera(s),
+      "power": self._power(s),
     }
 
   @staticmethod
@@ -560,6 +570,34 @@ class FiskerWorld:
       "ambient": s.label("ADAS_AmbLi"),
       "blind": s.i("ADAS_FrntCamBli"),
       "fault": s.enum("ADAS_FrntCamFlt"),
+    }
+
+  @staticmethod
+  def _power(s: _Sig) -> dict:
+    road_w = s("ESP_VehSpd")   # motor rad/s implied by road speed, when a motor's own speed is missing
+    road_w = None if road_w is None else road_w / 3.6 / TIRE_RADIUS * DRIVE_RATIO
+    axles = {}
+    demand = actual = None
+    for key, mcu, req_name in (("front", "MCU_F", "VCU_DrvrFrntMotTqReq"), ("rear", "MCU_R", "VCU_DrvrReMotTqReq")):
+      rpm = s(f"{mcu}_CrtSpd")
+      if rpm is None or rpm >= MOTOR_SPD_INVALID or s.i(f"{mcu}_CrtSpdSigVld") != 1:
+        rpm = None
+      tq = s(f"{mcu}_CrtTq")
+      if tq is None or tq > MOTOR_TQ_MAX or s.i(f"{mcu}_CrtTqVld") != 1:
+        tq = None
+      req = s(req_name) if s.i(req_name + "Vld") == 1 else None
+      w = rpm * math.pi / 30 if rpm is not None else road_w
+      if req is not None and w is not None:
+        demand = (demand or 0.0) + req * w / DRIVE_RATIO / 1000
+      if tq is not None and rpm is not None:
+        actual = (actual or 0.0) + tq * rpm * math.pi / 30 / 1000
+      axles[key] = {"tqReq": _r(req, 0), "tq": _r(tq, 1), "rpm": _r(rpm, 0)}
+    reqs = [a["tqReq"] for a in axles.values() if a["tqReq"] is not None]
+    return {
+      "demandKw": _r(demand, 1),   # + driving, - regen
+      "kw": _r(actual, 1),
+      "tqReq": sum(reqs) if reqs else None,   # wheel torque requested, both axles, Nm
+      **axles,
     }
 
 

@@ -44,6 +44,16 @@ BO_ 32 GW_Syn_All: 8 GW
  SG_ Syn_MACInfo_Byte1_All : 55|8@0+ (1,0) [0|255] ""  ADAS,PKC
  SG_ Syn_MACInfo_Byte2_All : 63|8@0+ (1,0) [0|255] ""  ADAS,PKC
 
+BO_ 258 VCU_0x102: 8 GW
+ SG_ VCU_102_CheckSum : 7|8@0+ (1,0) [0|255] ""  FCM
+ SG_ VCU_102_AliveCounter : 11|4@0+ (1,0) [0|14] ""  FCM
+ SG_ VCU_DrvrFrntMotTqReqVld : 13|2@0+ (1,0) [0|3] ""  ADASBUS_Virtual_ECU
+ SG_ VCU_DrvrReMotTqReqVld : 15|2@0+ (1,0) [0|3] ""  ADASBUS_Virtual_ECU
+ SG_ VCU_DrvrFrntMotTqReq : 23|16@0+ (1,-32768) [-32768|32767] "Nm"  ADASBUS_Virtual_ECU
+ SG_ VCU_DrvrReMotTqReq : 39|16@0+ (1,-32768) [-32768|32767] "Nm"  ADASBUS_Virtual_ECU
+ SG_ VCU_CoastTqReq : 55|14@0+ (1,-16383) [-16383|0] "Nm"  FCM
+ SG_ VCU_CoastTqReqVld : 57|2@0+ (1,0) [0|3] ""  FCM
+
 BO_ 274 YRS_0x112: 8 GW
  SG_ YRS_112_CheckSum : 7|8@0+ (1,0) [0|255] ""  ADAS,FCM
  SG_ YRS_112_AliveCounter : 11|4@0+ (1,0) [0|14] ""  ADAS,FCM
@@ -165,6 +175,35 @@ BO_ 289 ADAS_0x121: 8 ADAS
  SG_ ADAS_121_SSecOC_MAC_Byte0 : 47|8@0+ (1,0) [0|255] ""  GW
  SG_ ADAS_121_SSecOC_MAC_Byte1 : 55|8@0+ (1,0) [0|255] ""  GW
  SG_ ADAS_121_SSecOC_MAC_Byte2 : 63|8@0+ (1,0) [0|255] ""  GW
+
+BO_ 336 MCU_F_0x150: 8 GW
+ SG_ MCU_F_150_CheckSum : 7|8@0+ (1,0) [0|255] ""  ADAS
+ SG_ MCU_F_150_AliveCounter : 11|4@0+ (1,0) [0|14] ""  ADAS
+ SG_ MCU_F_CrtTqVld : 13|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ MCU_F_CrtRotDir : 15|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ MCU_F_CrtSpd : 23|16@0+ (1,-32768) [-32768|32767] "rpm"  ADAS,FCM,PKC
+ SG_ MCU_F_CrtTq : 36|11@0+ (0.5,-511) [-511|512] "Nm"  ADAS
+ SG_ MCU_F_CrtSpdSigVld : 38|2@0+ (1,0) [0|3] ""  ADAS,FCM,PKC
+ SG_ MCU_F_CrtMod : 51|4@0+ (1,0) [0|15] ""  ADASBUS_Virtual_ECU
+ SG_ MCU_F_HVActvDchaSts : 58|3@0+ (1,0) [0|7] ""  ADASBUS_Virtual_ECU
+ SG_ MCU_F_SlipCtrlActMode : 60|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ MCU_F_AlrmLamp_FS : 61|1@0+ (1,0) [0|1] ""  ADASBUS_Virtual_ECU
+ SG_ MCU_F_HVChkEndFlg : 63|1@0+ (1,0) [0|1] ""  ADASBUS_Virtual_ECU
+
+BO_ 337 MCU_R_0x151: 8 GW
+ SG_ MCU_R_151_CheckSum : 7|8@0+ (1,0) [0|255] ""  ADAS,ADASBUS_Virtual_ECU
+ SG_ MCU_R_151_AliveCounter : 11|4@0+ (1,0) [0|14] ""  ADAS,ADASBUS_Virtual_ECU
+ SG_ MCU_R_CrtTqVld : 13|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ MCU_R_CrtRotDir : 15|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ MCU_R_CrtSpd : 23|16@0+ (1,-32768) [-32768|32767] "rpm"  ADAS,FCM,PKC
+ SG_ MCU_R_CrtTq : 36|11@0+ (0.5,-511) [-511|512] "Nm"  ADAS
+ SG_ MCU_R_CrtSpdSigVld : 38|2@0+ (1,0) [0|3] ""  ADAS,FCM,PKC
+ SG_ MCU_R_CrtMod : 51|4@0+ (1,0) [0|15] ""  ADASBUS_Virtual_ECU
+ SG_ MCU_R_Decoup_State : 55|4@0+ (1,0) [0|15] ""  ADASBUS_Virtual_ECU
+ SG_ MCU_R_HVActvDchaSts : 58|3@0+ (1,0) [0|7] ""  ADASBUS_Virtual_ECU
+ SG_ MCU_R_SlipCtrlActMode : 60|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ MCU_R_AlrmLamp_FS : 61|1@0+ (1,0) [0|1] ""  ADASBUS_Virtual_ECU
+ SG_ MCU_R_HVChkEndFlg : 63|1@0+ (1,0) [0|1] ""  ADASBUS_Virtual_ECU
 
 BO_ 345 ACU_0x159: 8 GW
  SG_ ACU_159_CheckSum : 7|8@0+ (1,0) [0|255] ""  ADAS,FCM
@@ -1563,6 +1602,14 @@ CM_ SG_ 32 Syn_RstCntrVal_Byte2_All "Reset Counter Value";
 CM_ SG_ 32 Syn_MACInfo_Byte0_All "Synchronization message Mac Info";
 CM_ SG_ 32 Syn_MACInfo_Byte1_All "Synchronization message Mac Info";
 CM_ SG_ 32 Syn_MACInfo_Byte2_All "Synchronization message Mac Info";
+CM_ SG_ 258 VCU_102_CheckSum "VCU_102_message checksum ( E2E data ID: 0xBE )";
+CM_ SG_ 258 VCU_102_AliveCounter "VCU_102 _Message counterVCU_102_AliveCounter";
+CM_ SG_ 258 VCU_DrvrFrntMotTqReqVld "Effective position of driver's torque request for front drive motor (wheel end torque)";
+CM_ SG_ 258 VCU_DrvrReMotTqReqVld "Effective position of the driver's torque request for the rear drive motor (wheel end torque)";
+CM_ SG_ 258 VCU_DrvrFrntMotTqReq "Driver torque request for front drive motor (wheel end torque)";
+CM_ SG_ 258 VCU_DrvrReMotTqReq "Driver torque request for rear drive motor (wheel end torque)";
+CM_ SG_ 258 VCU_CoastTqReq "Coasting torque request";
+CM_ SG_ 258 VCU_CoastTqReqVld "Coasting torque request validity";
 CM_ SG_ 274 YRS_112_CheckSum "YRS_112_Message Checksum (E2E data ID: 0xA1)";
 CM_ SG_ 274 YRS_112_AliveCounter "YRS_112_ AliveCounter";
 CM_ SG_ 274 YRS_YawRateCalSts "Yaw rate sensor calibration state Indicates Yaw Rate Sensor Calibration State.";
@@ -1665,6 +1712,31 @@ CM_ SG_ 289 ADAS_121_SSecOC_Fresh_Byte0 "Short SecOC Fresh signal byte 0 on CAN"
 CM_ SG_ 289 ADAS_121_SSecOC_MAC_Byte0 "Short SecOC MAC signal byte 0 on CAN";
 CM_ SG_ 289 ADAS_121_SSecOC_MAC_Byte1 "Short SecOC MAC signal byte 1 on CAN";
 CM_ SG_ 289 ADAS_121_SSecOC_MAC_Byte2 "Short SecOC MAC signal byte 2 on CAN";
+CM_ SG_ 336 MCU_F_150_CheckSum "Front MCU_150_Message checksum(E2E data ID: 0x29)";
+CM_ SG_ 336 MCU_F_150_AliveCounter "MCU_150_Message Counter FrontMCU_F_150_AliveCounter";
+CM_ SG_ 336 MCU_F_CrtTqVld "Effective torque of front drive motorMotorFTorquevalidflag";
+CM_ SG_ 336 MCU_F_CrtRotDir "Current rotation direction of front drive motorMotorFRotingdirection";
+CM_ SG_ 336 MCU_F_CrtSpd "Current speed of front drive motorMotorFSpeed";
+CM_ SG_ 336 MCU_F_CrtTq "Current torque of front drive motorMotorFTorque";
+CM_ SG_ 336 MCU_F_CrtSpdSigVld "Effective position of front drive motor current speed signalMotorFSpeedsignalvalidflag";
+CM_ SG_ 336 MCU_F_CrtMod "Current operating mode of front drive motorMotorFworkingmode";
+CM_ SG_ 336 MCU_F_HVActvDchaSts "High-voltage active discharge state of front MCUHVActiveDischargeState";
+CM_ SG_ 336 MCU_F_SlipCtrlActMode "the Anti-Slip Control (ASC or ASR on german) state";
+CM_ SG_ 336 MCU_F_AlrmLamp_FS "Warning lamp_front drive motor (functional safety)";
+CM_ SG_ 336 MCU_F_HVChkEndFlg "High voltage detection completion flag of front MCUMCUFHVCheckStates";
+CM_ SG_ 337 MCU_R_151_CheckSum "Rear MCU_151_Message checksum (E2E data ID: 0x34)";
+CM_ SG_ 337 MCU_R_151_AliveCounter "Rear MCU_151_Message counterMCU_R_151_AliveCounter";
+CM_ SG_ 337 MCU_R_CrtTqVld "Effective torque of rear drive motorMotorRTorquevalidflag";
+CM_ SG_ 337 MCU_R_CrtRotDir "Current rotation direction of rear drive motorMotorRRotingdirection";
+CM_ SG_ 337 MCU_R_CrtSpd "Current speed of rear drive motorMotorRSpeed";
+CM_ SG_ 337 MCU_R_CrtTq "Current torque of rear drive motorMotorRTorque";
+CM_ SG_ 337 MCU_R_CrtSpdSigVld "Effective position of current speed signal of rear drive motorMotorRSpeedsignalvalidflag";
+CM_ SG_ 337 MCU_R_CrtMod "Current working mode of rear drive motorMotorRworkingmode";
+CM_ SG_ 337 MCU_R_Decoup_State "Disconnect status";
+CM_ SG_ 337 MCU_R_HVActvDchaSts "High-voltage active discharge state of rear MCUHVActiveDischargeState";
+CM_ SG_ 337 MCU_R_SlipCtrlActMode "the Anti-Slip Control (ASC or ASR on german) state";
+CM_ SG_ 337 MCU_R_AlrmLamp_FS "Warning lamp_rear drive motor (functional safety)";
+CM_ SG_ 337 MCU_R_HVChkEndFlg "High voltage detection completion flag of rear drive motor controllerMCURHVCheckStates";
 CM_ SG_ 345 ACU_159_CheckSum "ACU_0x159_Message Checksum ( E2E data ID: 0x97)";
 CM_ SG_ 345 ACU_159_AliveCounter "ACU_0x159_Message counterACU_159_AliveCounter";
 CM_ SG_ 345 ACU_Pass_OCS_St "Passenger Occupant Status OCS (not for China)";
@@ -2632,6 +2704,7 @@ CM_ SG_ 1674 CMRR_FR_SwVersS "CMRR_FR software version number and two digits";
 CM_ SG_ 1674 CMRR_FR_PartVers "CMRR_FR part number";
 CM_ SG_ 1674 CMRR_FR_HwVers "CMRR_FR hardware version two digits";
 CM_ SG_ 1674 CMRR_FR_SwVersM "CMRR_FR major software version two digits";
+BA_ "GenMsgCycleTime" BO_ 258 10;
 BA_ "GenMsgCycleTime" BO_ 274 10;
 BA_ "GenMsgCycleTime" BO_ 275 10;
 BA_ "GenMsgCycleTime" BO_ 276 20;
@@ -2641,6 +2714,8 @@ BA_ "GenMsgCycleTime" BO_ 279 10;
 BA_ "GenMsgCycleTime" BO_ 280 10;
 BA_ "GenMsgCycleTime" BO_ 288 10;
 BA_ "GenMsgCycleTime" BO_ 289 10;
+BA_ "GenMsgCycleTime" BO_ 336 10;
+BA_ "GenMsgCycleTime" BO_ 337 10;
 BA_ "GenMsgCycleTime" BO_ 345 100;
 BA_ "GenMsgCycleTime" BO_ 448 10;
 BA_ "GenMsgCycleTime" BO_ 450 10;
@@ -2720,6 +2795,9 @@ BA_ "GenMsgCycleTime" BO_ 1664 1000;
 BA_ "GenMsgCycleTime" BO_ 1671 1000;
 BA_ "GenMsgCycleTime" BO_ 1673 1000;
 BA_ "GenMsgCycleTime" BO_ 1674 1000;
+VAL_ 258 VCU_DrvrFrntMotTqReqVld 0 "Initializing" 1 "Valid" 2 "Invalid" 3 "Reserved" ;
+VAL_ 258 VCU_DrvrReMotTqReqVld 0 "Initializing" 1 "Valid" 2 "Invalid" 3 "Reserved" ;
+VAL_ 258 VCU_CoastTqReqVld 0 "Initializing" 1 "Valid" 2 "Invalid" 3 "Reserved" ;
 VAL_ 274 YRS_YawRateCalSts 0 "Sensor_Not_Calibrated" 1 "Sensor_Calibrated" ;
 VAL_ 274 YRS_YawRateSnsrSts 0 "Initializing" 1 "Valid" 2 "Invalid" 3 "Reserved" ;
 VAL_ 274 YRS_LatSnsrSts 0 "Initializing" 1 "Valid" 2 "Invalid" 3 "Reserved" ;
@@ -2789,6 +2867,27 @@ VAL_ 288 ESP_ActvSig_ABS 0 "ABS_Standby" 1 "ABS_Actually_Operating" ;
 VAL_ 288 ESP_MstCylPVld 0 "Initializing" 1 "Valid" 2 "Invalid" 3 "Reserved" ;
 VAL_ 288 ESP_MstCylPOffsVld 0 "Initializing" 1 "Valid" 2 "Invalid" 3 "Reserved" ;
 VAL_ 289 ADAS_LgtCtrl_AccelVld 0 "Initializing" 1 "Valid" 2 "Invalid" 3 "Reserved" ;
+VAL_ 336 MCU_F_CrtTqVld 0 "Initializing" 1 "Valid" 2 "Invalid" 3 "Reserved" ;
+VAL_ 336 MCU_F_CrtRotDir 0 "Standstill" 1 "Forward_rotation_(forward_mode)" 2 "Reverse_(reverse_mode)" 3 "Invalid" ;
+VAL_ 336 MCU_F_CrtSpd 65535 "Invalid" ;
+VAL_ 336 MCU_F_CrtTq 2047 "Invalid" ;
+VAL_ 336 MCU_F_CrtSpdSigVld 0 "Initializing" 1 "Valid" 2 "Invalid" 3 "Reserved" ;
+VAL_ 336 MCU_F_CrtMod 0 "Initialization_(function)" 1 "LV_ready" 2 "Standby" 3 "reserved" 4 "Torque_mode" 5 "Speed_control" 6 "reserved" 7 "Internal_inverter_error" 8 "reserved" 9 "Service_job" 10 "Postrun:" 11 "Sleep_Ready" 12 "Reserved" 13 "Reserved" 14 "Init_(dbc_init_value)" 15 "Invalid" ;
+VAL_ 336 MCU_F_HVActvDchaSts 0 "Not_discharged" 1 "Discharging" 2 "Discharge_complete" 3 "Discharge_failure" 4 "Reserved" 5 "Reserved" 6 "Init_(dbc_init_value)" 7 "Invalid" ;
+VAL_ 336 MCU_F_SlipCtrlActMode 0 "Slip_control_deactivated" 1 "Slip_control_idling" 2 "Slip_control_working" 3 "Fault" ;
+VAL_ 336 MCU_F_AlrmLamp_FS 0 "Disable" 1 "Enable" ;
+VAL_ 336 MCU_F_HVChkEndFlg 0 "Not_completed" 1 "Completed" ;
+VAL_ 337 MCU_R_CrtTqVld 0 "Initializing" 1 "Valid" 2 "Invalid" 3 "Reserved" ;
+VAL_ 337 MCU_R_CrtRotDir 0 "Standstill" 1 "Forward_rotation_(forward_mode)" 2 "Reverse_(reverse_mode)" 3 "Invalid" ;
+VAL_ 337 MCU_R_CrtSpd 65535 "Invalid" ;
+VAL_ 337 MCU_R_CrtTq 2047 "Invalid" ;
+VAL_ 337 MCU_R_CrtSpdSigVld 0 "Initializing" 1 "Valid" 2 "Invalid" 3 "Reserved" ;
+VAL_ 337 MCU_R_CrtMod 0 "Initialization_(function)" 1 "LV_ready" 2 "Standby" 3 "reserved" 4 "Torque_mode" 5 "Speed_control" 6 "reserved" 7 "Internal_inverter_error" 8 "reserved" 9 "Service_job" 10 "Postrun:" 11 "Sleep_Ready" 12 "Reserved" 13 "Reserved" 14 "Init_(dbc_init_value)" 15 "Invalid" ;
+VAL_ 337 MCU_R_Decoup_State 0 "Init" 1 "Disconnect" 2 "Connect_in_progress" 3 "Synchronized" 4 "Connected" 5 "Disconnect_in_progress" 6 "Fault_disconnected" 7 "Fault_connected" 8 "Fault_connect_state_unknown" 9 "Connect_conditions_not_fulfilled" ;
+VAL_ 337 MCU_R_HVActvDchaSts 0 "Not_discharged" 1 "Discharging" 2 "Discharge_complete" 3 "Discharge_failure" 4 "Reserved" 5 "Reserved" 6 "Init_(dbc_init_value)" 7 "Invalid" ;
+VAL_ 337 MCU_R_SlipCtrlActMode 0 "Slip_control_deactivated" 1 "Slip_control_idling" 2 "Slip_control_working" 3 "Fault" ;
+VAL_ 337 MCU_R_AlrmLamp_FS 0 "Disable" 1 "Enable" ;
+VAL_ 337 MCU_R_HVChkEndFlg 0 "Not_completed" 1 "Completed" ;
 VAL_ 345 ACU_Pass_OCS_St 0 "Seat_not_occupied" 1 "Seat_occupied" 2 "Fault" 3 "Invalid" ;
 VAL_ 345 ACU_AirBagSysAlrmLampSts 0 "Warning_lamp_off" 1 "Warning_lamp_on" 2 "Warning_lamp_blinking" 3 "Invalid" ;
 VAL_ 345 ACU_Pass_Airbag_LED 0 "LED_1_2_OFF/OFF" 1 "LED_1_2_ON/OFF" 2 "LED_1_2_OFF/ON" 3 "LED_1_2_ON/ON" 4 "LED_1_2_Blinking" 5 "not_used" 6 "not_used" 7 "Invalid" ;

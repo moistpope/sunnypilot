@@ -89,6 +89,27 @@ class TestFiskerWorld(OpenpilotTestCase):
     assert active({"ADAS_TLR_WarnReq": 1}) == ({"color": "Red", "source": "warning"}, True)
     assert active({}) == (None, False)
 
+  def test_motor_power(self):
+    self.world.update([
+      self.frame("VCU_0x102", {"VCU_DrvrFrntMotTqReq": 1044, "VCU_DrvrFrntMotTqReqVld": 1,
+                               "VCU_DrvrReMotTqReq": 1301, "VCU_DrvrReMotTqReqVld": 1}),
+      self.frame("MCU_F_0x150", {"MCU_F_CrtSpd": 1500, "MCU_F_CrtSpdSigVld": 1, "MCU_F_CrtTq": 84, "MCU_F_CrtTqVld": 1}),
+      self.frame("MCU_R_0x151", {"MCU_R_CrtSpd": 1500, "MCU_R_CrtSpdSigVld": 1, "MCU_R_CrtTq": 103.5, "MCU_R_CrtTqVld": 1}),
+    ], 5.0)
+    power = self.world.state()["power"]
+    assert power["tqReq"] == 2345 and power["front"] == {"tqReq": 1044, "tq": 84.0, "rpm": 1500}
+    assert power["demandKw"] == 32.0       # 2345 Nm at the wheels x 157 rad/s at the motors / 11.5
+    assert power["kw"] == 29.5             # 187.5 Nm x 157 rad/s
+    # an invalid request drops out; a motor without its speed falls back to road speed
+    self.world.update([
+      self.frame("VCU_0x102", {"VCU_DrvrFrntMotTqReq": -500, "VCU_DrvrFrntMotTqReqVld": 1, "VCU_DrvrReMotTqReqVld": 2}),
+      self.frame("MCU_F_0x150", {"MCU_F_CrtSpdSigVld": 2}),
+      self.frame("ESP_0x318", {"ESP_VehSpd": 36}),
+    ], 5.1)
+    power = self.world.state()["power"]
+    assert power["tqReq"] == -500 and power["rear"]["tqReq"] is None and power["front"]["rpm"] is None
+    assert power["demandKw"] == -12.8      # regen: -500 Nm x 10 m/s / 0.39 m
+
   def test_native_bus_preferred_and_echoes_ignored(self):
     w = self.world
     w.update([self.frame("ADAS_0x31C", {"ADAS_AccTrgSpdDisp": 50})], 1.0)
