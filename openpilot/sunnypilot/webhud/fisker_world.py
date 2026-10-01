@@ -209,7 +209,7 @@ class FiskerWorld:
         "hazard": s.i("BCM_DangerAlrmLampSwtSts"), "low": s.i("BCM_LoBeamOutpCmd"), "high": s.i("BCM_HiBeamOutpCmd"),
         "brake": s.i("BCM_BrkLampOutpCmd"), "reverse": s.i("BCM_RvsLampOutpCmd"),
         "fogFront": s.i("BCM_FrntFogLampOutpCmd"), "fogRear": s.i("BCM_ReFogLampOutpCmd"),
-        "drl": s.i("BCM_LeDRLOutpCmd"), "switch": s.label("BCM_ExtLampSwtSts"),
+        "drl": s.i("BCM_LeDRLOutpCmd"), "position": s.i("BCM_PosnLampOutpCmd"), "switch": s.label("BCM_ExtLampSwtSts"),
         "autoHighBeam": s.i("ADAS_AHBA_LiSigReq"),
       },
       "wiperSpeed": s.i("BCM_FrntWiprSpd"),

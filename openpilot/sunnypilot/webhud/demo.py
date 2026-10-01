@@ -58,6 +58,11 @@ class DemoSource:
       v = 1.2
     radius = 900.0 * (1 if math.sin(t / 9) > 0 else -1) if not parking else 0.0
     k = 0.0 if radius == 0 else 1.0 / radius
+    # steering wheel angle for that curvature (bicycle model, ratio 15); swing the wheel while parking
+    steer_deg = 220 * math.sin((t - 46) * 0.8) if parking else math.degrees(math.atan(k * 2.921)) * 15
+    # lamp outputs the way the BCM sends them: turn lamps flash on/off every 0.4 s
+    blink_left = 30 < t < 34 and (t - 30) % 0.8 < 0.4
+    braking = 40 < t < 47
 
     frames = []
     lanes = [  # id prefix, msg, offset, type, color
@@ -131,16 +136,20 @@ class DemoSource:
     frames.append(self._frame("ICC_0x531", {"ICC_DispVehSpd": round(v * 2.23694), "ICC_DispVehSpdUnit": 1}))
     frames.append(self._frame("VCU_0x214", {"VCU_GearSig": 3 if parking else 4, "VCU_RdyLamp": 1}))
     frames.append(self._frame("ECC_0x373", {"ECC_OutdT": 21.5, "ECC_OutdTVld": 1}))
-    frames.append(self._frame("BCM_0x335", {"BCM_LoBeamOutpCmd": 1, "BCM_LeTrunLampOutpCmd": int(30 < t < 34)}))
+    frames.append(self._frame("BCM_0x335", {
+      "BCM_LoBeamOutpCmd": 1, "BCM_PosnLampOutpCmd": 3, "BCM_LeTrunLampOutpCmd": int(blink_left),
+      "BCM_BrkLampOutpCmd": int(braking), "BCM_RvsLampOutpCmd": int(parking),
+    }))
+    frames.append(self._frame("EPS_0x1C2", {"EPS_SteerWhlAgSig": steer_deg}))
     self.builder.feed_can(frames, self.clock)
 
     # openpilot services, as the extractors would produce them
     xs = [0, 2, 5, 10, 16, 24, 34, 46, 60, 76, 94, 115]
     md_lines = [[[x, lat_at(x, o)] for x in xs] for o in (1.0, 0.5, -0.5, -1.0)]
     self._svc("carState", {
-      "vEgo": v, "vEgoCluster": v, "aEgo": 0.0, "gear": "reverse" if parking else "drive", "steeringAngleDeg": -k * 2.9 * 15 * 57.3,
-      "leftBlinker": 30 < t < 34, "rightBlinker": False, "leftBlindspot": bool(bsd_left), "rightBlindspot": False,
-      "brakePressed": False, "gasPressed": False, "doorOpen": False, "seatbeltUnlatched": False, "standstill": False,
+      "vEgo": v, "vEgoCluster": v, "aEgo": 0.0, "gear": "reverse" if parking else "drive", "steeringAngleDeg": steer_deg,
+      "leftBlinker": blink_left, "rightBlinker": False, "leftBlindspot": bool(bsd_left), "rightBlindspot": False,
+      "brakePressed": braking, "gasPressed": False, "doorOpen": False, "seatbeltUnlatched": False, "standstill": False,
       "cruise": {"enabled": engaged, "available": True, "speed": 26.8, "speedCluster": 26.8, "standstill": False},
       "vCruise": 96.6, "vCruiseCluster": 96.6,
     })

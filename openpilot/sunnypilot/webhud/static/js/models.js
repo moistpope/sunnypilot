@@ -107,10 +107,17 @@ function wheel(r, w, dark) {
     rimMaterial,
   );
   g.add(rim);
+  // three bars through the hub (six arms), so a spinning wheel reads as spinning
+  for (let i = 0; i < 3; i++) {
+    const spoke = new THREE.Mesh(cached(`spoke${r}${w}`, () => new THREE.BoxGeometry(w + 0.04, r * 1.18, r * 0.16)), spokeMaterial);
+    spoke.rotation.x = i * Math.PI / 3;
+    g.add(spoke);
+  }
   return g;
 }
 
 const rimMaterial = new THREE.MeshStandardMaterial({ color: 0x8a9099, roughness: 0.35, metalness: 0.6 });
+const spokeMaterial = new THREE.MeshStandardMaterial({ color: 0x5a6069, roughness: 0.4, metalness: 0.5 });
 const tireMaterial = new THREE.MeshStandardMaterial({ color: 0x1c1d20, roughness: 0.9 });
 const glassMaterial = new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.18, metalness: 0.4 });
 
@@ -159,19 +166,78 @@ function vehicle(spec, paint, opts = {}) {
   glass.position.z = spec.length;
   g.add(body, glass);
 
+  // each wheel hangs off steer (yaw, front axle only) -> spin (roll about the axle, X)
   const tw = 0.26 * (spec.width / 1.9);
+  const wheels = [];
+  const frontAxle = Math.max(...spec.axles);
   for (const ax of spec.axles) {
     for (const side of [-1, 1]) {
-      const wl = wheel(spec.wheelR, tw, tireMaterial);
-      wl.position.set(side * (spec.width / 2 - tw / 2 + 0.03), spec.wheelR, spec.length - ax);
-      g.add(wl);
+      const steer = new THREE.Group();
+      steer.position.set(side * (spec.width / 2 - tw / 2 + 0.03), spec.wheelR, spec.length - ax);
+      const spin = new THREE.Group();
+      spin.add(wheel(spec.wheelR, tw, tireMaterial));
+      steer.add(spin);
+      g.add(steer);
+      wheels.push({ steer, spin, r: spec.wheelR, front: ax === frontAxle, spokes: 6 });
     }
   }
   const shadow = softShadow(spec.width, spec.length);
   shadow.position.z = spec.length / 2;
   g.add(shadow);
-  g.userData = { paint: [paint], length: spec.length, width: spec.width, height: spec.height };
+  g.userData = { paint: [paint], length: spec.length, width: spec.width, height: spec.height, wheels };
   return g;
+}
+
+// ---- lamps ------------------------------------------------------------------------------------
+
+let glowTexture = null;
+function glowTex() {
+  if (glowTexture) return glowTexture;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.25, 'rgba(255,255,255,0.55)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  glowTexture = new THREE.CanvasTexture(c);
+  return glowTexture;
+}
+
+// a small lit lens plus a camera-facing halo, toggled with .visible; size null = halo only
+function lamp(color, size = [0.14, 0.07, 0.06], halo = [0.55, 0.55]) {
+  const g = new THREE.Group();
+  if (size) {
+    g.add(new THREE.Mesh(
+      cached(`lens${size}`, () => new THREE.BoxGeometry(...size)),
+      new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2.0, roughness: 0.3 }),
+    ));
+  }
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTex(), color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.9,
+  }));
+  glow.scale.set(halo[0], halo[1], 1);
+  g.add(glow);
+  g.visible = false;
+  return g;
+}
+
+// turn signals at the four corners, brake-light glow and reversing lamps at the back; positions in ego space
+function addLamps(g, spots) {
+  const blink = {};
+  for (const [key, pos] of Object.entries(spots.blink)) {
+    const b = lamp(0xffa000);
+    b.position.set(...pos);
+    g.add(b);
+    blink[key] = b;
+  }
+  const place = (pos, l) => { l.position.set(...pos); g.add(l); return l; };
+  const reverse = spots.reverse.map(pos => place(pos, lamp(0xffffff, [0.16, 0.06, 0.04], [0.6, 0.6])));
+  // the tail lenses themselves only glow brighter, which reads poorly at a distance: add a wide halo
+  const brake = spots.brake.map(pos => place(pos, lamp(0xff2418, null, [0.95, 0.38])));
+  return { blink, reverse, brake };
 }
 
 export function makeEgo(color = 0x2a2d33) {
@@ -185,29 +251,37 @@ export function makeEgo(color = 0x2a2d33) {
   const head = lightBar(W - 0.3, 0.045, 0.04, 0xf2f6ff, 0.9);
   head.position.set(0, 0.86, -0.11);
   g.add(tail, head);
-  g.userData.blink = addBlinkers(g, W, L, [[0.1, 0.86], [L - 0.05, 1.02]]);
+  const x = W / 2 - 0.08;
+  Object.assign(g.userData, addLamps(g, {
+    blink: { fl: [-x, 0.86, -0.12], fr: [x, 0.86, -0.12], rl: [-x, 1.02, L + 0.13], rr: [x, 1.02, L + 0.13] },
+    reverse: [[-0.45, 0.6, L + 0.12], [0.45, 0.6, L + 0.12]],
+    brake: [[-x + 0.3, 1.02, L + 0.15], [x - 0.3, 1.02, L + 0.15]],
+  }));
+  g.userData.headMats = [head.material];
   g.userData.tailMats = [tail.material];
+  g.userData.chmslMats = [];
   return g;
 }
 
-// amber indicators at the four corners; [[z, y] front, [z, y] rear]
-function addBlinkers(g, W, L, spots) {
-  const blink = {};
-  const [[zf, yf], [zr, yr]] = spots;
-  for (const [key, x, z, y] of [['fl', -1, zf, yf], ['fr', 1, zf, yf], ['rl', -1, zr, yr], ['rr', 1, zr, yr]]) {
-    const b = lightBar(0.14, 0.07, 0.22, 0xffa000, 1.5);
-    b.position.set(x * (W / 2 + 0.06), y, z);
-    b.visible = false;
-    g.add(b);
-    blink[key] = b;
-  }
-  return blink;
-}
-
-// The Fisker Ocean glTF model (static/models/fisker_ocean.glb, CC BY 4.0 LagzDesign). The file is
-// Y-up with the nose at +X; turn it to face -Z, scale it to the real car's length and put the
-// front bumper at z=0 on the ground, like the procedural models.
-const OCEAN_GLTF = { paint: ['Material.001'], tail: ['Material.005', 'Material.006'], head: ['Material.004'] };
+// The Fisker Ocean glTF model (third_party/webhud/models/fisker_ocean.glb, CC BY 4.0 LagzDesign). The
+// file is Y-up with the nose at +X; turn it to face -Z, scale it to the real car's length and put
+// the front bumper at z=0 on the ground, like the procedural models.
+const OCEAN_GLTF = {
+  paint: ['Material.001'],
+  head: ['Material.004'],     // full-width front light bar
+  tail: ['Material.005'],     // tail light strips
+  chmsl: ['Material.006'],    // third brake light
+  wheel: ['MA_tire_003', 'Material.007', 'Material.008', 'Material.009'],   // tire + rim parts, per wheel
+  spokes: 5,
+  // The rims are black mirror-metal, which renders flat black without an environment map. A satin
+  // finish with lighter spokes makes them visibly turn.
+  finish: {
+    'Material.007': { color: 0x2c3036, metalness: 0.3, roughness: 0.45 },   // aero disc
+    'Material.008': { color: 0xa3aab4, metalness: 0.4, roughness: 0.35 },   // the five spokes
+    'Material.009': { color: 0x454a52, metalness: 0.3, roughness: 0.5 },    // hub
+    'MA_tire_003': { color: 0x1b1c1f, metalness: 0, roughness: 0.9 },
+  },
+};
 
 export function loadEgoModel(url) {
   return new Promise((resolve, reject) => {
@@ -221,29 +295,72 @@ export function loadEgoModel(url) {
       box.setFromObject(model);
       model.position.set(-(box.min.x + box.max.x) / 2, -box.min.y, -box.min.z);
 
-      const mats = new Map();
-      model.traverse((o) => {
-        if (!o.isMesh) return;
-        for (const m of Array.isArray(o.material) ? o.material : [o.material]) mats.set(m.uuid, m);
-      });
-      const paint = [], tailMats = [];
-      for (const m of mats.values()) {
-        if (OCEAN_GLTF.paint.includes(m.name)) paint.push(m);
-        if (OCEAN_GLTF.tail.includes(m.name)) { m.emissive = new THREE.Color(0xff1a10); m.emissiveIntensity = 0.6; tailMats.push(m); }
-        if (OCEAN_GLTF.head.includes(m.name)) { m.emissive = new THREE.Color(0xf2f6ff); m.emissiveIntensity = 0.8; }
-      }
-
       const g = new THREE.Group();
       g.add(model);
+      g.updateMatrixWorld(true);
       const L = OCEAN.length, W = OCEAN.width;
+
+      // materials by role, plus the extent of each light so lamps sit on the real light bars
+      const roles = { paint: new Set(), head: new Set(), tail: new Set(), chmsl: new Set() };
+      const extent = { head: new THREE.Box3(), tail: new THREE.Box3() };
+      const wheelMeshes = [];
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        const name = o.material.name;
+        for (const role of Object.keys(roles)) if (OCEAN_GLTF[role].includes(name)) roles[role].add(o.material);
+        const light = OCEAN_GLTF.head.includes(name) ? 'head' : OCEAN_GLTF.tail.includes(name) ? 'tail' : null;
+        if (light) extent[light].union(new THREE.Box3().setFromObject(o));
+        if (OCEAN_GLTF.wheel.includes(name)) wheelMeshes.push(o);
+        const finish = OCEAN_GLTF.finish[name];
+        if (finish) { o.material.color.setHex(finish.color); o.material.metalness = finish.metalness; o.material.roughness = finish.roughness; }
+      });
+      const [paint, headMats, tailMats, chmslMats] = ['paint', 'head', 'tail', 'chmsl'].map(r => [...roles[r]]);
+      for (const m of headMats) { m.emissive = new THREE.Color(0xf2f6ff); m.emissiveIntensity = 0; }
+      for (const m of [...tailMats, ...chmslMats]) { m.emissive = new THREE.Color(0xff1a10); m.emissiveIntensity = 0; }
+
+      // Re-hang each wheel's tire + rim meshes on steer -> spin pivots at the tire's center.
+      // attach() keeps their world transform, so nothing moves until the pivots rotate.
+      const clusters = new Map();
+      for (const m of wheelMeshes) {
+        const box = new THREE.Box3().setFromObject(m);
+        const c = box.getCenter(new THREE.Vector3());
+        const key = `${c.x < 0 ? 'l' : 'r'}${c.z < L / 2 ? 'f' : 'b'}`;
+        if (!clusters.has(key)) clusters.set(key, { meshes: [], tire: new THREE.Box3(), all: new THREE.Box3() });
+        const cl = clusters.get(key);
+        cl.meshes.push(m);
+        cl.all.union(box);
+        if (m.material.name === OCEAN_GLTF.wheel[0]) cl.tire.union(box);
+      }
+      const wheels = [];
+      for (const [key, cl] of clusters) {
+        const box = cl.tire.isEmpty() ? cl.all : cl.tire;
+        const steer = new THREE.Group();
+        steer.position.copy(box.getCenter(new THREE.Vector3()));
+        const spin = new THREE.Group();
+        steer.add(spin);
+        g.add(steer);
+        g.updateMatrixWorld(true);
+        for (const m of cl.meshes) spin.attach(m);
+        wheels.push({ steer, spin, r: box.getSize(new THREE.Vector3()).y / 2, front: key.endsWith('f'), spokes: OCEAN_GLTF.spokes });
+      }
+
+      // turn signals at the outer ends of the front light bar and the tail strips
+      const h = extent.head.isEmpty() ? null : extent.head, t = extent.tail.isEmpty() ? null : extent.tail;
+      const hx = h ? Math.max(-h.min.x, h.max.x) - 0.07 : W / 2 - 0.1, hy = h ? (h.min.y + h.max.y) / 2 : 0.95, hz = h ? h.min.z - 0.03 : 0.2;
+      const tx = t ? Math.max(-t.min.x, t.max.x) - 0.07 : W / 2 - 0.1, ty = t ? (t.min.y + t.max.y) / 2 : 1.05, tz = t ? t.max.z + 0.03 : L - 0.1;
+      Object.assign(g.userData, addLamps(g, {
+        blink: { fl: [-hx, hy, hz], fr: [hx, hy, hz], rl: [-tx, ty, tz], rr: [tx, ty, tz] },
+        reverse: [[-0.5, 0.62, L + 0.02], [0.5, 0.62, L + 0.02]],
+        brake: [[-tx + 0.22, ty, tz + 0.02], [tx - 0.22, ty, tz + 0.02]],
+      }));
+
       const shadow = softShadow(W, L);
       shadow.position.z = L / 2;
       g.add(shadow);
-      g.userData = {
-        paint, tailMats, length: L, width: W, height: OCEAN.height, gltf: true,
+      Object.assign(g.userData, {
+        paint, headMats, tailMats, chmslMats, wheels, length: L, width: W, height: OCEAN.height, gltf: true,
         originalPaint: paint.map(m => m.color.clone()),
-        blink: addBlinkers(g, W, L, [[0.3, 0.95], [L - 0.3, 1.05]]),
-      };
+      });
       resolve(g);
     }, undefined, reject);
   });

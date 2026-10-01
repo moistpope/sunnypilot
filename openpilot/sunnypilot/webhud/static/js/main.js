@@ -3,10 +3,11 @@ import { $, $$, el, api, fmtTime, iconSvg, setClass, setText, store, save } from
 import { CarScene } from './scene.js';
 import { Hud } from './hud.js';
 import { Settings } from './settings.js';
+import { VehicleState } from './vehicle.js';
 
 const DEFAULTS = {
   theme: 'auto', units: 'auto', laneSource: 'auto', egoColor: 'model', view: 'chase',
-  showPath: true, showUss: true, showOpLeads: true, autoView: true,
+  showPath: true, showUss: true, showOpLeads: true, autoView: true, showGround: true,
   laneHeadingSign: 1, laneCurvatureSign: 1, objectHeadingSign: 1,
 };
 
@@ -23,6 +24,7 @@ class App {
 
     this.scene = new CarScene($('#scene'));
     this.hud = new Hud();
+    this.vehicle = new VehicleState();
     this.ui = new Settings(this);
     this.applyTheme();
     this.scene.setEgoColor(this.settings.egoColor);
@@ -40,8 +42,9 @@ class App {
       requestAnimationFrame(loop);   // schedule first: one bad frame must not stop the HUD
       const dt = (now - last) / 1000;
       last = now;
-      try { this.scene.frame(dt); } catch (e) { this.reportError(e); }
-      try { if (this.state) this.hud.update(this.state, this.settings, dt); } catch (e) { this.reportError(e); }
+      try { this.vehicle.update(this.state, now - this.lastStateAt, dt); } catch (e) { this.reportError(e); }
+      try { this.scene.frame(dt, this.vehicle); } catch (e) { this.reportError(e); }
+      try { if (this.state) this.hud.update(this.state, this.settings, this.vehicle); } catch (e) { this.reportError(e); }
     };
     requestAnimationFrame(loop);
     setInterval(() => this.watchdog(), 1000);

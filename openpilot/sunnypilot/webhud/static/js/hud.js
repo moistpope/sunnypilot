@@ -24,7 +24,6 @@ export class Hud {
     this.blinkL = $('#blink-l');
     this.blinkR = $('#blink-r');
     this.gears = $$('#gear span');
-    this.blinkPhase = 0;
     this.tt = {};
     for (const name of ['beam', 'belt', 'door', 'hands', 'eye', 'bsd', 'aeb', 'warn']) {
       this.tt[name] = icon(name);
@@ -43,13 +42,12 @@ export class Hud {
     return this.isMetric ? 'kmh' : 'mph';
   }
 
-  update(state, settings, dt = 0.05) {
+  update(state, settings, vehicle) {
     const op = state.op || {};
     const f = state.fisker;
     const cs = op.carState;
     const unit = this.unitFor(settings, f);
     const conv = unit === 'kmh' ? MS_TO_KPH : MS_TO_MPH;
-    this.blinkPhase += dt * 1.6;
 
     // speed: what the cluster shows (ICC display speed via carState.vEgoCluster), else Fisker CAN
     let v = null;
@@ -63,11 +61,10 @@ export class Hud {
     const g = GEAR_LETTER[(cs && cs.gear) || ''] || GEAR_LETTER[(f && f.vehicle && f.vehicle.gear) || ''] || '';
     this.gears.forEach(s => setClass(s, 'on', s.dataset.g === g));
 
-    // blinkers
+    // blinkers mirror the car's flashing lamp outputs (see vehicle.js)
     const lights = (f && f.vehicle && f.vehicle.lights) || {};
-    const on = this.blinkPhase % 1 < 0.55;
-    setClass(this.blinkL, 'on', on && ((cs && cs.leftBlinker) || lights.left || lights.hazard));
-    setClass(this.blinkR, 'on', on && ((cs && cs.rightBlinker) || lights.right || lights.hazard));
+    setClass(this.blinkL, 'on', vehicle.lamps.left);
+    setClass(this.blinkR, 'on', vehicle.lamps.right);
 
     this._assist(op, f, unit, conv);
     this._limit(op, f, unit, conv, v);

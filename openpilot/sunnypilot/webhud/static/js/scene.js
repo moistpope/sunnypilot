@@ -5,12 +5,143 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { OrbitControls } from '../vendor/OrbitControls.js';
 import { makeEgo, makeObject, fitScale, loadEgoModel } from './models.js';
+import { STEER_RATIO } from './vehicle.js';
 
 const EGO_LEN = 4.775;
 const EGO_W = 1.98;
 const MODEL_X_OFFSET = -1.6;      // comma device sits ~1.6 m behind the front bumper
 const DASH = 3.0, GAP = 9.0;      // US lane dash pattern (10 ft / 30 ft)
 const RECENTER_S = 5;             // pan springs back to the car after this long untouched
+const TILE = 8;                   // m covered by one copy of the road-surface texture
+const GROUND_SIZE = 60 * TILE;    // textured plane under the car; fog hides its edge
+const DEG = Math.PI / 180;
+
+// Light asphalt: fine aggregate speckle, soft wear patches and a few crack-seal lines, which make
+// forward/backward motion and turning readable. Nothing in it has a direction: the plane turns with
+// the integrated heading while lane lines stay car-relative, so straight joints would end up
+// crossing the lanes after a bend. Seeded, so switching theme doesn't reshuffle it; drawn wrapped
+// so the tile repeats seamlessly.
+function groundTexture(dark, anisotropy) {
+  const N = 512;
+  const c = document.createElement('canvas');
+  c.width = c.height = N;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = dark ? '#15181d' : '#e3e6ea';
+  ctx.fillRect(0, 0, N, N);
+  let seed = 1234567;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const dot = (x, y, r, fill) => {
+    ctx.fillStyle = fill;
+    for (const dx of [-N, 0, N]) {
+      for (const dy of [-N, 0, N]) {
+        if (x + dx + r < 0 || x + dx - r > N || y + dy + r < 0 || y + dy - r > N) continue;
+        ctx.beginPath();
+        ctx.arc(x + dx, y + dy, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  };
+  // broad, soft-edged patches: wear and repairs
+  for (let i = 0; i < 18; i++) {
+    const x = rnd() * N, y = rnd() * N, r = 40 + rnd() * 90, a = 0.02 + rnd() * 0.03;
+    for (const dx of [-N, 0, N]) {
+      for (const dy of [-N, 0, N]) {
+        const g = ctx.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
+        g.addColorStop(0, dark ? `rgba(255,255,255,${a * 0.6})` : `rgba(60,66,76,${a})`);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(x + dx - r, y + dy - r, 2 * r, 2 * r);
+      }
+    }
+  }
+  // aggregate
+  for (let i = 0; i < 5200; i++) {
+    const light = rnd() < 0.4;
+    const a = 0.06 + rnd() * 0.16;
+    dot(rnd() * N, rnd() * N, 0.6 + rnd() * 1.5,
+      light ? (dark ? `rgba(255,255,255,${a * 0.5})` : `rgba(255,255,255,${a * 2})`) : (dark ? `rgba(0,0,0,${a * 2.5})` : `rgba(48,54,64,${a})`));
+  }
+  // crack sealant: short meandering strokes
+  ctx.strokeStyle = dark ? 'rgba(0,0,0,0.26)' : 'rgba(40,44,52,0.09)';
+  ctx.lineCap = ctx.lineJoin = 'round';
+  for (let i = 0; i < 2; i++) {
+    const pts = [[rnd() * N, rnd() * N]];
+    let dir = rnd() * Math.PI * 2;
+    for (let k = 0; k < 8 + rnd() * 8; k++) {
+      dir += (rnd() - 0.5) * 1.2;
+      const [x, y] = pts[pts.length - 1];
+      pts.push([x + Math.cos(dir) * 14, y + Math.sin(dir) * 14]);
+    }
+    ctx.lineWidth = 2 + rnd() * 2;
+    for (const dx of [-N, 0, N]) {
+      for (const dy of [-N, 0, N]) {
+        ctx.beginPath();
+        pts.forEach(([x, y], k) => (k ? ctx.lineTo(x + dx, y + dy) : ctx.moveTo(x + dx, y + dy)));
+        ctx.stroke();
+      }
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(GROUND_SIZE / TILE, GROUND_SIZE / TILE);
+  tex.anisotropy = anisotropy;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+let poolTexture = null;
+function poolTex() {
+  if (poolTexture) return poolTexture;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.5, 'rgba(255,255,255,0.45)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  poolTexture = new THREE.CanvasTexture(c);
+  return poolTexture;
+}
+
+// headlight throw: narrow and bright at the bumper (bottom), widening and fading down the road (top)
+let beamTexture = null;
+function beamTex() {
+  if (beamTexture) return beamTexture;
+  const W = 64, H = 128;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    const d = 1 - y / (H - 1);                      // 0 at the bumper, 1 at the far end
+    const half = 0.32 + 0.68 * Math.sqrt(d);        // half-width of the throw, as a fraction
+    const along = Math.min(1, d * 6) * Math.pow(1 - d, 1.4);
+    for (let x = 0; x < W; x++) {
+      const u = Math.abs(x / (W - 1) * 2 - 1) / half;
+      const a = u >= 1 ? 0 : along * (1 - u * u);
+      const i = (y * W + x) * 4;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
+      img.data[i + 3] = Math.round(255 * a);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  beamTexture = new THREE.CanvasTexture(c);
+  return beamTexture;
+}
+
+// light thrown on the road (headlights, reversing lamps, brake lights), stretched by scale
+function lightPool(color, map = poolTex()) {
+  const m = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map, color, transparent: true, depthWrite: false }),
+  );
+  m.position.y = 0.012;
+  m.renderOrder = 1;
+  m.visible = false;
+  return m;
+}
 
 const THEMES = {
   light: { bg: 0xeceef1, object: 0xc6cad1, lead: 0x4f5562, line: 0x8e949d, edge: 0x6c727b, yellow: 0xdcaa2e,
@@ -145,9 +276,18 @@ export class CarScene {
     this.sun.position.set(6, 14, 9);   // from behind the default camera so the car's rear and roof are lit
     this.scene.add(this.hemi, this.sun, new THREE.AmbientLight(0xffffff, 0.35));
 
-    this.ground = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xeceef1 }));
+    // World-anchored road surface. `world` carries the inverse of the car's integrated pose, so the
+    // texture stays put on the "road" while the car drives over it; the plane itself is re-centered
+    // under the car in whole tiles so it never runs out.
+    this.world = new THREE.Group();
+    this.ground = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff }));
     this.ground.position.y = -0.01;
-    this.scene.add(this.ground);
+    this.world.add(this.ground);
+    this.scene.add(this.world);
+    this.pose = { x: 0, y: 0, h: 0 };   // m, m, rad; x forward / y left at h = 0
+
+    this.pools = { head: lightPool(0xfff1cf, beamTex()), reverse: lightPool(0xffffff), brake: lightPool(0xff2a1f) };
+    this.scene.add(...Object.values(this.pools));
 
     // procedural Ocean until the detailed glTF model has loaded (or if it can't be)
     this.ego = makeEgo();
@@ -179,8 +319,9 @@ export class CarScene {
     this.labels = new Map();
     this.theme = THEMES.light;
     this.odometer = 0;
-    this.blinkPhase = 0;
+    this.clock = 0;
     this.state = null;
+    this.vehicle = null;
     this.settings = {};
 
     this.controls = new OrbitControls(this.camera, canvas);
@@ -209,7 +350,15 @@ export class CarScene {
     const t = this.theme;
     this.scene.background = new THREE.Color(t.bg);
     this.scene.fog = new THREE.Fog(t.bg, 70, 190);
-    this.ground.material.color.set(t.bg);
+    if (this.ground.material.map) this.ground.material.map.dispose();
+    this.ground.material.map = groundTexture(dark, this.renderer.capabilities.getMaxAnisotropy());
+    this.ground.material.needsUpdate = true;
+    // light pools add up on a dark road; on a light one they tint it instead
+    for (const pool of Object.values(this.pools)) {
+      pool.material.blending = dark ? THREE.AdditiveBlending : THREE.NormalBlending;
+      pool.material.opacity = dark ? 0.55 : 0.22;
+      pool.material.needsUpdate = true;
+    }
     this.hemi.color.set(t.hemiSky);
     this.hemi.groundColor.set(t.hemiGround);
     this.mats.line.color.set(t.line);
@@ -275,9 +424,7 @@ export class CarScene {
     const f = st.fisker;
     const s = this.settings;
     const cs = op.carState || {};
-    const v = cs.vEgo || (f && f.vehicle && f.vehicle.speedKph != null ? f.vehicle.speedKph / 3.6 : 0);
-    this.odometer += v * dt;
-    const phase = this.odometer % (DASH + GAP);
+    const phase = this.odometer % (DASH + GAP);   // advanced in _ground, so dashes and road move together
     const signs = { heading: s.laneHeadingSign || 1, curvature: s.laneCurvatureSign || 1 };
 
     const latActive = !!((op.carControl && op.carControl.latActive) || (op.selfdriveStateSP && op.selfdriveStateSP.mads && op.selfdriveStateSP.mads.active));
@@ -297,7 +444,7 @@ export class CarScene {
         let key = line.color === 'yellow' ? 'lineYellow' : 'line';
         const side = line.id === 'L1' ? hmi && hmi.left : line.id === 'R1' ? hmi && hmi.right : null;
         if (ego && (latActive || (side && side.color === 'blue'))) key = 'lineBlue';
-        if (ego && side && (side.color === 'red' || (side.flash && this.blinkPhase % 1 < 0.5))) key = 'lineRed';
+        if (ego && side && (side.color === 'red' || (side.flash && this.clock % 0.6 < 0.3))) key = 'lineRed';
         const t = line.type;   // 2 dashed, 3 Botts dots, 4..7 double lines
         const solid = (p) => pieces[key].push(p);
         const dash = (p) => dashed(p, phase).forEach(d => pieces[key].push(d));
@@ -478,19 +625,65 @@ export class CarScene {
     }
   }
 
+  // integrate the car's motion and move the road surface (and lane dashes) under it
+  _ground(dt) {
+    const vs = this.vehicle;
+    const v = vs ? vs.v : 0;
+    const p = this.pose;
+    p.h += v * (vs ? vs.curvature : 0) * dt;
+    p.x += v * Math.cos(p.h) * dt;
+    p.y += v * Math.sin(p.h) * dt;
+    // keep the numbers small; the texture repeats every TILE so whole-tile jumps are invisible
+    const wrap = TILE * 1000;
+    if (Math.abs(p.x) > wrap) p.x -= Math.sign(p.x) * wrap;
+    if (Math.abs(p.y) > wrap) p.y -= Math.sign(p.y) * wrap;
+    this.odometer += v * dt;
+
+    // `world` = inverse of the car's pose, in scene axes (X = -y, Z = -x)
+    const c = Math.cos(p.h), s = Math.sin(p.h);
+    this.world.rotation.y = -p.h;
+    this.world.position.set(p.y * c - p.x * s, 0, p.y * s + p.x * c);
+    this.ground.position.set(Math.round(-p.y / TILE) * TILE, -0.01, Math.round(-p.x / TILE) * TILE);
+    this.ground.visible = this.settings.showGround !== false;
+  }
+
   _ego(dt) {
-    const st = this.state || {};
-    const cs = (st.op && st.op.carState) || {};
-    const lights = st.fisker && st.fisker.vehicle ? st.fisker.vehicle.lights : {};
-    this.blinkPhase += dt * 1.6;
-    const on = this.blinkPhase % 1 < 0.55;
-    const left = cs.leftBlinker || lights.left || lights.hazard;
-    const right = cs.rightBlinker || lights.right || lights.hazard;
-    const b = this.ego.userData.blink;
-    b.fl.visible = b.rl.visible = !!left && on;
-    b.fr.visible = b.rr.visible = !!right && on;
-    const braking = cs.brakePressed || lights.brake;
-    for (const m of this.ego.userData.tailMats) m.emissiveIntensity = braking ? 2.4 : 0.6;
+    const vs = this.vehicle;
+    const ud = this.ego.userData;
+    if (!vs) return;
+    const L = vs.lamps;
+
+    for (const [key, lamp] of Object.entries(ud.blink)) lamp.visible = key[1] === 'l' ? L.left : L.right;
+    for (const lamp of ud.reverse) lamp.visible = L.reverse;
+    for (const lamp of ud.brake) lamp.visible = L.brake;
+    for (const m of ud.tailMats) m.emissiveIntensity = L.brake ? 2.6 : (L.position || L.low) ? 0.35 : 0;
+    for (const m of ud.chmslMats) m.emissiveIntensity = L.brake ? 2.6 : 0;
+    for (const m of ud.headMats) m.emissiveIntensity = L.high ? 2.4 : L.low ? 1.7 : (L.drl || L.position) ? 0.8 : 0;
+
+    // wheels roll with the distance travelled; the front pair follows the road-wheel angle.
+    // Past ~30 km/h (at 60 fps) the per-frame turn is capped at a fraction of the spoke pitch, so the rims
+    // read as spinning fast instead of strobing backwards (the wagon-wheel effect).
+    const steer = THREE.MathUtils.clamp(vs.steerDeg / STEER_RATIO * DEG, -0.6, 0.6);
+    const k = 1 - Math.exp(-dt * 15);   // steering arrives at 20 Hz; ease between samples
+    for (const w of ud.wheels || []) {
+      const cap = 0.3 * Math.PI * 2 / (w.spokes || 5);
+      const turn = THREE.MathUtils.clamp(vs.v * dt / w.r, -cap, cap);
+      w.spin.rotation.x = (w.spin.rotation.x - turn) % (Math.PI * 2);
+      if (w.front) w.steer.rotation.y += (steer - w.steer.rotation.y) * k;
+    }
+
+    // light on the road
+    const P = this.pools;
+    const beam = L.high ? 28 : 15;
+    P.head.visible = L.low || L.high;
+    P.head.scale.set(L.high ? 4.2 : 3.6, 1, beam);
+    P.head.position.z = -beam / 2 - 0.3;
+    P.reverse.visible = L.reverse;
+    P.reverse.scale.set(2.8, 1, 4.5);
+    P.reverse.position.z = EGO_LEN + 2.4;
+    P.brake.visible = L.brake;
+    P.brake.scale.set(2.6, 1, 2.6);
+    P.brake.position.z = EGO_LEN + 1.1;
   }
 
   _camera(dt) {
@@ -529,9 +722,12 @@ export class CarScene {
     this.controls.update();
   }
 
-  frame(dt) {
+  frame(dt, vehicle) {
     dt = Math.min(dt, 0.1);
+    this.clock += dt;
+    this.vehicle = vehicle;
     this._camera(dt);
+    this._ground(dt);
     this._laneGeometry(dt);
     this._uss();
     this._objects(dt);

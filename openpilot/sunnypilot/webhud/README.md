@@ -5,6 +5,11 @@ Ocean's own center screen. Shows speed, gear, MADS steering state, ACC set speed
 limit, alerts, the ADAS module's lane lines and object list in 3D, parking sensors, and lets you edit
 the CAN overrides in `opendbc/car/fisker/values.py` and replay recorded routes.
 
+The ego car mirrors the real one: a textured road surface moves under it with speed and steering
+(dead-reckoned with the bicycle model from `steeringAngleDeg`), the wheels roll and the front pair
+steers, and the head/tail/brake/reversing lamps and turn signals follow the BCM's lamp outputs
+(`BCM_0x335`, falling back to carState). The road surface can be turned off under *Display*.
+
 **Open:** `http://sunnypilot.local:8088` (or `http://<device-ip>:8088`; port 80 is also served when
 the process is allowed to bind it). Toggle: *Settings → Developer → Web HUD* (`EnableWebHud`, on by
 default).
@@ -34,7 +39,7 @@ Bus 2 (ADAS module) unless noted; the full set is in the *Signals* tab.
 - **Signs & lights:** `0x311` TSR speed limit (+ unit), `0x210` sign condition, no-passing, traffic light color/shape, `0x351` traffic light distance, lead turn signal/brake, `0x334` prohibition signs, camera blockage.
 - **Parking:** `0x352` ultrasonic zones (front/rear/left/right × 4), `0x356/0x359` park-distance (cm), `0x2C7..0x2EA` APA slots, `0x2CD` curb warnings, `0x316` surround-view state.
 - **Driver monitoring:** `0x527`. **Camera:** `0x32B`.
-- **Vehicle (bus 0):** `VCU_0x214` gear/ready/pedal, `ICC_0x531` cluster speed + unit, `BCM_0x335` lights, `BCM_0x343` doors/locks/windows, `PLGM_0x471` liftgate, `ECC_0x373` outside temp, `VCU_0x358` regen/e-pedal, `ICC_0x52A`/`ICC_0x35B` the ICC's own settings (shown next to the overrides).
+- **Vehicle (bus 0):** `VCU_0x214` gear/ready/pedal, `ICC_0x531` cluster speed + unit, `BCM_0x335` lamp outputs, `EPS_0x1C2` steering angle, `BCM_0x343` doors/locks/windows, `PLGM_0x471` liftgate, `ECC_0x373` outside temp, `VCU_0x358` regen/e-pedal, `ICC_0x52A`/`ICC_0x35B` the ICC's own settings (shown next to the overrides).
 
 Not documented in the matrix, so exposed as display toggles (*Display → Geometry calibration*): the
 sign of lane heading/curvature and of object heading. Verify them on a drive with good lane
