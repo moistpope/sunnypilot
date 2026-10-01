@@ -18,10 +18,13 @@ const DASH = 3.0, GAP = 9.0;      // US lane dash pattern (10 ft / 30 ft)
 const RECENTER_S = 5;             // pan springs back to the car after this long untouched
 const CHASE_SPEED_DOLLY = 0.5;    // chase camera backs off this much farther (x its distance) at 70 mph
 const DOLLY_FULL_SPEED = 31.3;    // m/s
+const CAM_YAW_W = 2.6;            // rad/s: camera heading spring (critically damped); lags 2/W s of yaw
+const CAM_YAW_MAX = 0.6;          // rad: most the camera trails the car's heading by
 const TILE = 48;                  // m: every layer of the road surface repeats over this
 const GROUND_SIZE = 10 * TILE;    // textured plane under the car; fog hides its edge
 const REAR_AXLE_Z = EGO_LEN - 0.93;   // until the model reports its own
 const DEG = Math.PI / 180;
+const UP = new THREE.Vector3(0, 1, 0);
 
 // Tileable value-noise fBm (period = the texture), as a grey canvas texture.
 function noiseTexture(size, cells, octaves, gain, seed, anisotropy) {
@@ -338,6 +341,8 @@ export class CarScene {
     this.controls.target.copy(this.target);
     this.lastInteract = -1e9;
     this.chaseDolly = 1;   // chase distance multiplier, grows with speed
+    this.camYaw = { h: 0, v: 0, carH: 0 };   // camera heading (rad), its rate, the car's last heading
+    this.camLag = 0;       // camera heading - car heading, applied as an orbit about the car
     this.controls.addEventListener('start', () => { this.interacting = true; this.viewAnim = null; });
     this.controls.addEventListener('end', () => { this.interacting = false; this.lastInteract = performance.now(); });
 
@@ -398,10 +403,11 @@ export class CarScene {
     this.view = name;
     const to = new THREE.Spherical(v.r * (name === 'chase' ? this.chaseDolly : 1), v.phi, v.theta);
     const from = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.controls.target));
+    from.theta -= this.camLag;   // the animation works without the lag and adds the current one
     this.viewAnim = instant ? null : { from, to, t: 0, targetFrom: this.controls.target.clone(), offFrom: this.viewOffset.y, offTo: v.offY };
     if (instant) {
       this.controls.target.copy(this.target);
-      this.camera.position.copy(this.target).add(new THREE.Vector3().setFromSpherical(to));
+      this.camera.position.copy(this.target).add(new THREE.Vector3().setFromSpherical(new THREE.Spherical(to.radius, to.phi, to.theta + this.camLag)));
       this.viewOffset.y = v.offY;
       this.resize();
     }
@@ -776,6 +782,26 @@ export class CarScene {
 
   _camera(dt) {
     const now = performance.now();
+    // inertia: the camera's heading follows the car's on a critically damped spring, so in a sharp turn
+    // the car swings round in the frame first and the camera catches up as it straightens out. Applied
+    // as an orbit about the car (Spherical theta), on top of the view and any user rotation.
+    const cy = this.camYaw, h = this.pose.h;
+    if (dt > 0) {
+      const carRate = (h - cy.carH) / dt;
+      cy.carH = h;
+      cy.v += (CAM_YAW_W * CAM_YAW_W * (h - cy.h) - 2 * CAM_YAW_W * cy.v) * dt;
+      cy.h += cy.v * dt;
+      if (Math.abs(cy.h - h) > CAM_YAW_MAX) {   // trail no farther; turn with the car from there
+        cy.h = h + Math.sign(cy.h - h) * CAM_YAW_MAX;
+        cy.v = carRate;
+      }
+    }
+    const lag = cy.h - h, dLag = lag - this.camLag;
+    this.camLag = lag;
+    if (!this.viewAnim && dLag) {
+      const off = this.camera.position.clone().sub(this.controls.target).applyAxisAngle(UP, dLag);
+      this.camera.position.copy(this.controls.target).add(off);
+    }
     // the chase view backs off as speed builds, showing more road ahead; scaling the current offset
     // keeps whatever zoom the user set, and the view animation targets the scaled distance
     const speed = this.vehicle ? this.vehicle.speed : 0;
@@ -795,7 +821,7 @@ export class CarScene {
       const sph = new THREE.Spherical(
         a.from.radius + (a.to.radius - a.from.radius) * e,
         a.from.phi + (a.to.phi - a.from.phi) * e,
-        a.from.theta + ((((a.to.theta - a.from.theta) + Math.PI) % (2 * Math.PI)) - Math.PI) * e,
+        a.from.theta + ((((a.to.theta - a.from.theta) + Math.PI) % (2 * Math.PI)) - Math.PI) * e + this.camLag,
       );
       this.controls.target.lerpVectors(a.targetFrom, this.target, e);
       this.camera.position.copy(this.controls.target).add(new THREE.Vector3().setFromSpherical(sph));
@@ -826,8 +852,8 @@ export class CarScene {
     dt = Math.min(dt, 0.1);
     this.clock += dt;
     this.vehicle = vehicle;
-    this._camera(dt);
     this._ground(dt);
+    this._camera(dt);
     this.furniture.update(this.state, this.road, this.vehicle, this.settings, dt, this.clock, toScene);
     this._laneGeometry(dt);
     this._uss();

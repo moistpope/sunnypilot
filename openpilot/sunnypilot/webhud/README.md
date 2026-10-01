@@ -43,7 +43,10 @@ end, and light motes kick up off the tires, more of them the harder the car pull
 driver's torque request per axle (`VCU_0x102`, wheel torque) times motor speed (`MCU_F_0x150`,
 `MCU_R_0x151`) over the ~11.5:1 drive ratio; on other cars it's estimated from openpilot's
 acceleration. The chase camera also backs off with speed, up to 1.5x its distance at 70 mph,
-keeping any zoom you set.
+keeping any zoom you set. In every view the camera's heading follows the car's on a critically
+damped spring (`CAM_YAW_W` in `scene.js`, at most 0.6 rad behind): in a sharp low-speed turn the car
+swings round in the frame and the camera catches up as it straightens out; on the highway the lag
+is a degree or two.
 
 **Open:** `http://sunnypilot.local:8088` (or `http://<device-ip>:8088`; port 80 is also served when
 the process is allowed to bind it). Toggle: *Settings → Developer → Web HUD* (`EnableWebHud`, on by
