@@ -90,9 +90,9 @@ class DemoSource:
     objects = [] if parking else [
       (11, "ADAS_0x33B", 1, 32 + 6 * math.sin(t / 5), 0.0, 0, 1.9, 4.7, 1.6),     # lead car (ACC target)
       (12, "ADAS_0x34B", 2, 14 + 3 * math.sin(t / 4), 1.0, 0, 1.8, 4.5, 1.5),     # left lane
-      (13, "ADAS_0x32D", 3, 52.0, -1.0, 1, 2.5, 12.0, 3.6),                        # truck, right lane
-      (14, "ADAS_0x33D", 4, -30 + 1.6 * ((t % 30) * 2), 1.0, 2, 0.8, 2.1, 1.5),   # motorcycle passing on the left
-      (15, "ADAS_0x34D", 5, 75.0, 0.05, 0, 1.9, 4.8, 1.7),
+      (13, "ADAS_0x32D", 3, 46.0, -1.0, 1, 2.5, 12.0, 3.6),                        # truck, right lane
+      (14, "ADAS_0x33D", 4, -30 + 1.3 * ((t % 30) * 2), 1.0, 2, 0.8, 2.1, 1.5),   # motorcycle passing on the left
+      (15, "ADAS_0x34D", 5, 49.0, 0.05, 0, 1.9, 4.8, 1.7),                         # the list reaches ~50 m
     ]
     obj_slots = {"ADAS_0x33B": 1, "ADAS_0x34B": 2, "ADAS_0x32D": 3, "ADAS_0x33D": 4, "ADAS_0x34D": 5,
                  "ADAS_0x32F": 6, "ADAS_0x33F": 7, "ADAS_0x34F": 8}
@@ -104,8 +104,8 @@ class DemoSource:
       if lane > 0.5 and -8 < x < 2:
         bsd_left = oid
       frames.append(self._frame(msg, {
-        f"ADAS_Obj{n}_ID": oid, f"ADAS_Obj{n}_LongDist": min(abs(x), 125), f"ADAS_Obj{n}_LongDistSign": int(x < 0),
-        f"ADAS_Obj{n}_LatDist": min(abs(y), 125), f"ADAS_Obj{n}_LatDistSign": int(y > 0),
+        f"ADAS_Obj{n}_ID": oid, f"ADAS_Obj{n}_LongDist": min(abs(x), 51), f"ADAS_Obj{n}_LongDistSign": int(x < 0),
+        f"ADAS_Obj{n}_LatDist": min(abs(y), 51), f"ADAS_Obj{n}_LatDistSign": int(y > 0),
         f"ADAS_Obj{n}_Width": w, f"ADAS_Obj{n}_Length": min(length, 50), f"ADAS_Obj{n}_Height": h,
         f"ADAS_Obj{n}_Classification": cls, f"ADAS_Obj{n}_Conf": 1, f"ADAS_Obj{n}_ClassConf": 3,
         f"ADAS_VVP_ICC_Obj{n}Hdng": 0, f"ADAS_VVP_ICC_Obj{n}BrkLght": int(oid == 11 and math.sin(t / 5) < -0.7),

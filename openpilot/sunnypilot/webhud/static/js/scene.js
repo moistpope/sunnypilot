@@ -579,22 +579,37 @@ export class CarScene {
           lead: o.flags.includes('accPrimary') || o.flags.includes('leading'), threat: o.flags.some(fl => ['bsd', 'dow', 'aeb', 'raeb', 'bacm', 'elka'].includes(fl)),
           label: `${o.cls} #${o.id}` });
       }
-      // openpilot's leads, unless the ADAS already reports an object there
+      // The ADAS sometimes reports one car twice while it hands a track over to a new ID: keep one
+      // (the flagged one if either is), else the pair shows as a car with an echo right behind it.
+      // Two cars in one lane can't be closer than a car length (positions are their rear bumpers).
+      const near = (a, b, d) => Math.abs(a.x - b.x) < Math.max(4.5, a.l || 0, b.l || 0, 0.1 * d) && Math.abs(a.y - b.y) < 1.5;
+      for (let i = list.length - 1; i >= 0; i--) {
+        const j = list.findIndex((o, k) => k !== i && o.cls === list[i].cls && near(o, list[i], Math.abs(o.x)));
+        if (j >= 0 && (list[i].lead || list[i].threat) <= (list[j].lead || list[j].threat)) list.splice(i, 1);
+      }
+      // openpilot's leads (from the comma camera; the Fisker port has no radar), unless the ADAS
+      // already reports a car there; camera ranging gets looser with distance, so the gate does too
       const rs = op.radarState;
       const engaged = !!(op.selfdriveState && op.selfdriveState.enabled);
       if (rs && s.showOpLeads !== false) {
         [rs.leadOne, rs.leadTwo].forEach((ld, i) => {
           if (!ld || !ld.present) return;
-          const dup = list.some(o => Math.abs(o.x - ld.dRel) < 4 && Math.abs(o.y - ld.yRel) < 2);
+          const dup = list.some(o => Math.abs(o.x - ld.dRel) < Math.max(4, 0.15 * ld.dRel) && Math.abs(o.y - ld.yRel) < 2.2);
           if (!dup) list.push({ key: 'op' + i, x: ld.dRel, y: ld.yRel, vx: ld.vRel, h: 0, cls: 'car', w: 1.9, l: 4.6, hgt: 1.5, lead: i === 0 && engaged, threat: false, label: `lead ${ld.dRel.toFixed(0)} m` });
         });
       }
+      // known IDs first, so a handover (in _track) only ever takes a track nobody updated this time
+      list.sort((a, b) => this.objects.has(b.key) - this.objects.has(a.key));
       for (const o of list) this._track(o, now);
     }
 
     const kDisp = 1 - Math.exp(-dt / 0.06), kSlow = 1 - Math.exp(-dt / 0.4), kHead = 1 - Math.exp(-dt / 0.25);
+    // a track that stopped updating while another one sits on top of it is the same car re-IDed
+    const live = [...this.objects.values()].filter(e => now - e.lastSeen < 0.12);
+    const overlapped = (e) => live.some(o => o !== e && Math.abs(o.dx - e.dx) < Math.max(4.5, 0.1 * Math.abs(e.dx)) && Math.abs(o.dy - e.dy) < 1.5);
     for (const [key, e] of this.objects) {
-      const dead = now - e.lastSeen > 0.5;
+      const stale = now - e.lastSeen;
+      const dead = stale > 0.5 || (stale > 0.12 && overlapped(e));
       // extrapolate from the last update (not too far), then ease the drawn position onto it
       const ahead = Math.min(0.35, now - e.tmeas);
       const tx = e.x + e.vx * ahead, ty = e.y + e.vy * ahead;
@@ -642,6 +657,22 @@ export class CarScene {
     // low cars get the sedan body, everything else car-sized the SUV body
     const kindOf = (cls, hgt) => (cls === 'car' && hgt > 0.5 && hgt < 1.55 ? 'sedan' : cls);
     let e = this.objects.get(o.key);
+    if (!e) {
+      // A new ID right where a track just stopped updating is the same object handed over (the ADAS
+      // re-IDs cars, and a car moves from openpilot's lead to the ADAS list): take that track over
+      // rather than drawing a second car beside the fading old one.
+      for (const [key, old] of this.objects) {
+        if (old.lastSeen >= now || (old.cls !== o.cls && !(o.cls === 'car' && key.startsWith('op')))) continue;
+        const ahead = Math.min(0.35, now - old.tmeas);
+        const px = old.x + old.vx * ahead, py = old.y + old.vy * ahead;
+        if (Math.abs(px - o.x) < Math.max(4.5, 0.12 * Math.abs(o.x)) && Math.abs(py - o.y) < 1.6) {
+          this.objects.delete(key);
+          this.objects.set(o.key, old);
+          e = old;
+          break;
+        }
+      }
+    }
     if (!e) {
       const dim = { w: o.w || 0, l: o.l || 0, hgt: o.hgt || 0 };
       e = { alpha: 0, x: o.x, y: o.y, vx: o.vx || 0, vy: 0, th: o.h * DEG, tmeas: now, raw: null, cls: o.cls,

@@ -46,8 +46,8 @@ class TestFiskerWorld(OpenpilotTestCase):
 
   def test_objects_and_flags(self):
     self.world.update([
-      self.frame("ADAS_0x33B", {"ADAS_Obj1_ID": 42, "ADAS_Obj1_LongDist": 30.5, "ADAS_Obj1_LongDistSign": 0,
-                                "ADAS_Obj1_LatDist": 3.5, "ADAS_Obj1_LatDistSign": 1, "ADAS_Obj1_Classification": 1,
+      self.frame("ADAS_0x33B", {"ADAS_Obj1_ID": 42, "ADAS_Obj1_LongDist": 30.4, "ADAS_Obj1_LongDistSign": 0,
+                                "ADAS_Obj1_LatDist": 3.4, "ADAS_Obj1_LatDistSign": 1, "ADAS_Obj1_Classification": 1,
                                 "ADAS_Obj1_Width": 2.5, "ADAS_Obj1_Length": 10.0, "ADAS_VVP_ICC_Obj1Hdng": 357}),
       self.frame("ADAS_0x34B", {"ADAS_Obj2_ID": 7, "ADAS_Obj2_LongDist": 5, "ADAS_Obj2_LongDistSign": 1,
                                 "ADAS_Obj2_LatDist": 3, "ADAS_Obj2_LatDistSign": 0}),
@@ -60,12 +60,21 @@ class TestFiskerWorld(OpenpilotTestCase):
     objs = {o["id"]: o for o in state["objects"]}
     assert set(objs) == {42, 7}
     truck = objs[42]
-    assert truck["x"] == 30.5 and truck["y"] == 3.5 and truck["cls"] == "truck" and truck["heading"] == -3.0
+    assert truck["x"] == 30.4 and truck["y"] == 3.4 and truck["cls"] == "truck" and truck["heading"] == -3.0
     assert truck["flags"] == ["accPrimary"]
     behind = objs[7]
     assert behind["x"] == -5 and behind["y"] == -3 and "bsd" in behind["flags"]
     assert state["acc"]["engaged"] and state["acc"]["setSpeed"] == 65 and state["acc"]["timeGap"] == 3
     assert state["threats"]["right"]["bsd"] == {"v": 1, "n": "Threat_present_on_right"}
+
+  def test_object_distance_resolution(self):
+    # the object list is 0.2 m/bit (corrected in the DBC subset; the OEM matrix says 0.5)
+    msg = self.world.dbc.by_name["ADAS_0x33B"]
+    raw = bytearray(msg.encode({"ADAS_Obj1_ID": 9}))
+    raw[1], raw[2] = 202, 6          # LongDist / LatDist raw counts, as the ACC target read on the car
+    self.world.update([(msg.address, bytes(raw), self.world.native_bus[msg.address])], 3.0)
+    obj = self.world.state()["objects"][0]
+    assert obj["x"] == 40.4 and obj["y"] == -1.2
 
   def test_native_bus_preferred_and_echoes_ignored(self):
     w = self.world

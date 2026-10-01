@@ -625,8 +625,8 @@ BO_ 811 ADAS_0x32B: 8 ADAS
 
 BO_ 813 ADAS_0x32D: 8 ADAS
  SG_ ADAS_Obj3_ID : 7|8@0+ (1,0) [0|255] ""  GW
- SG_ ADAS_Obj3_LongDist : 15|8@0+ (0.5,0) [0|125] "m"  GW
- SG_ ADAS_Obj3_LatDist : 23|8@0+ (0.5,0) [0|125] "m"  GW
+ SG_ ADAS_Obj3_LongDist : 15|8@0+ (0.2,0) [0|51] "m"  GW
+ SG_ ADAS_Obj3_LatDist : 23|8@0+ (0.2,0) [0|51] "m"  GW
  SG_ ADAS_Obj3_Width : 29|6@0+ (0.1,0) [0|6.3] "m"  GW
  SG_ ADAS_Obj3_Conf : 31|1@0+ (1,0) [0|1] ""  GW
  SG_ ADAS_Obj3_Length : 39|8@0+ (0.2,0) [0|50] "m"  GW
@@ -640,8 +640,8 @@ BO_ 813 ADAS_0x32D: 8 ADAS
 
 BO_ 815 ADAS_0x32F: 8 ADAS
  SG_ ADAS_Obj6_ID : 7|8@0+ (1,0) [0|255] ""  GW
- SG_ ADAS_Obj6_LongDist : 15|8@0+ (0.5,0) [0|125] "m"  GW
- SG_ ADAS_Obj6_LatDist : 23|8@0+ (0.5,0) [0|125] "m"  GW
+ SG_ ADAS_Obj6_LongDist : 15|8@0+ (0.2,0) [0|51] "m"  GW
+ SG_ ADAS_Obj6_LatDist : 23|8@0+ (0.2,0) [0|51] "m"  GW
  SG_ ADAS_Obj6_Width : 29|6@0+ (0.1,0) [0|6.3] "m"  GW
  SG_ ADAS_Obj6_Conf : 31|1@0+ (1,0) [0|1] ""  GW
  SG_ ADAS_Obj6_Length : 39|8@0+ (0.2,0) [0|50] "m"  GW
@@ -727,8 +727,8 @@ BO_ 825 ADAS_0x339: 8 ADAS
 
 BO_ 827 ADAS_0x33B: 8 ADAS
  SG_ ADAS_Obj1_ID : 7|8@0+ (1,0) [0|255] ""  GW
- SG_ ADAS_Obj1_LongDist : 15|8@0+ (0.5,0) [0|125] "m"  GW
- SG_ ADAS_Obj1_LatDist : 23|8@0+ (0.5,0) [0|125] "m"  GW
+ SG_ ADAS_Obj1_LongDist : 15|8@0+ (0.2,0) [0|51] "m"  GW
+ SG_ ADAS_Obj1_LatDist : 23|8@0+ (0.2,0) [0|51] "m"  GW
  SG_ ADAS_Obj1_Width : 29|6@0+ (0.1,0) [0|6.3] "m"  GW
  SG_ ADAS_Obj1_Conf : 31|1@0+ (1,0) [0|1] ""  GW
  SG_ ADAS_Obj1_Length : 39|8@0+ (0.2,0) [0|50] "m"  GW
@@ -742,8 +742,8 @@ BO_ 827 ADAS_0x33B: 8 ADAS
 
 BO_ 829 ADAS_0x33D: 8 ADAS
  SG_ ADAS_Obj4_ID : 7|8@0+ (1,0) [0|255] ""  GW
- SG_ ADAS_Obj4_LongDist : 15|8@0+ (0.5,0) [0|125] "m"  GW
- SG_ ADAS_Obj4_LatDist : 23|8@0+ (0.5,0) [0|125] "m"  GW
+ SG_ ADAS_Obj4_LongDist : 15|8@0+ (0.2,0) [0|51] "m"  GW
+ SG_ ADAS_Obj4_LatDist : 23|8@0+ (0.2,0) [0|51] "m"  GW
  SG_ ADAS_Obj4_Width : 29|6@0+ (0.1,0) [0|6.3] "m"  GW
  SG_ ADAS_Obj4_Conf : 31|1@0+ (1,0) [0|1] ""  GW
  SG_ ADAS_Obj4_Length : 39|8@0+ (0.2,0) [0|50] "m"  GW
@@ -757,8 +757,8 @@ BO_ 829 ADAS_0x33D: 8 ADAS
 
 BO_ 831 ADAS_0x33F: 8 ADAS
  SG_ ADAS_Obj7_ID : 7|8@0+ (1,0) [0|255] ""  GW
- SG_ ADAS_Obj7_LongDist : 15|8@0+ (0.5,0) [0|125] "m"  GW
- SG_ ADAS_Obj7_LatDist : 23|8@0+ (0.5,0) [0|125] "m"  GW
+ SG_ ADAS_Obj7_LongDist : 15|8@0+ (0.2,0) [0|51] "m"  GW
+ SG_ ADAS_Obj7_LatDist : 23|8@0+ (0.2,0) [0|51] "m"  GW
  SG_ ADAS_Obj7_Width : 29|6@0+ (0.1,0) [0|6.3] "m"  GW
  SG_ ADAS_Obj7_Conf : 31|1@0+ (1,0) [0|1] ""  GW
  SG_ ADAS_Obj7_Length : 39|8@0+ (0.2,0) [0|50] "m"  GW
@@ -841,8 +841,8 @@ BO_ 835 BCM_0x343: 8 GW
 
 BO_ 843 ADAS_0x34B: 8 ADAS
  SG_ ADAS_Obj2_ID : 7|8@0+ (1,0) [0|255] ""  GW
- SG_ ADAS_Obj2_LongDist : 15|8@0+ (0.5,0) [0|125] "m"  GW
- SG_ ADAS_Obj2_LatDist : 23|8@0+ (0.5,0) [0|125] "m"  GW
+ SG_ ADAS_Obj2_LongDist : 15|8@0+ (0.2,0) [0|51] "m"  GW
+ SG_ ADAS_Obj2_LatDist : 23|8@0+ (0.2,0) [0|51] "m"  GW
  SG_ ADAS_Obj2_Width : 29|6@0+ (0.1,0) [0|6.3] "m"  GW
  SG_ ADAS_Obj2_Conf : 31|1@0+ (1,0) [0|1] ""  GW
  SG_ ADAS_Obj2_Length : 39|8@0+ (0.2,0) [0|50] "m"  GW
@@ -856,8 +856,8 @@ BO_ 843 ADAS_0x34B: 8 ADAS
 
 BO_ 845 ADAS_0x34D: 8 ADAS
  SG_ ADAS_Obj5_ID : 7|8@0+ (1,0) [0|255] ""  GW
- SG_ ADAS_Obj5_LongDist : 15|8@0+ (0.5,0) [0|125] "m"  GW
- SG_ ADAS_Obj5_LatDist : 23|8@0+ (0.5,0) [0|125] "m"  GW
+ SG_ ADAS_Obj5_LongDist : 15|8@0+ (0.2,0) [0|51] "m"  GW
+ SG_ ADAS_Obj5_LatDist : 23|8@0+ (0.2,0) [0|51] "m"  GW
  SG_ ADAS_Obj5_Width : 29|6@0+ (0.1,0) [0|6.3] "m"  GW
  SG_ ADAS_Obj5_Conf : 31|1@0+ (1,0) [0|1] ""  GW
  SG_ ADAS_Obj5_Length : 39|8@0+ (0.2,0) [0|50] "m"  GW
@@ -871,8 +871,8 @@ BO_ 845 ADAS_0x34D: 8 ADAS
 
 BO_ 847 ADAS_0x34F: 8 ADAS
  SG_ ADAS_Obj8_ID : 7|8@0+ (1,0) [0|255] ""  GW
- SG_ ADAS_Obj8_LongDist : 15|8@0+ (0.5,0) [0|125] "m"  GW
- SG_ ADAS_Obj8_LatDist : 23|8@0+ (0.5,0) [0|125] "m"  GW
+ SG_ ADAS_Obj8_LongDist : 15|8@0+ (0.2,0) [0|51] "m"  GW
+ SG_ ADAS_Obj8_LatDist : 23|8@0+ (0.2,0) [0|51] "m"  GW
  SG_ ADAS_Obj8_Width : 29|6@0+ (0.1,0) [0|6.3] "m"  GW
  SG_ ADAS_Obj8_Conf : 31|1@0+ (1,0) [0|1] ""  GW
  SG_ ADAS_Obj8_Length : 39|8@0+ (0.2,0) [0|50] "m"  GW
@@ -2032,8 +2032,8 @@ CM_ SG_ 811 ADAS_ObjNr "Detection target number";
 CM_ SG_ 811 ADAS_AmbLi "Ambient brightness";
 CM_ SG_ 811 ADAS_RoadIllmn "Street lamp detection";
 CM_ SG_ 813 ADAS_Obj3_ID "Object identifier. If ID is 0x0 no object is detected";
-CM_ SG_ 813 ADAS_Obj3_LongDist "Object Longitudinal distance";
-CM_ SG_ 813 ADAS_Obj3_LatDist "Object Latitudinal distance";
+CM_ SG_ 813 ADAS_Obj3_LongDist "Object Longitudinal distance (0.2 m/bit measured on the car; the matrix says 0.5)";
+CM_ SG_ 813 ADAS_Obj3_LatDist "Object Latitudinal distance (0.2 m/bit measured on the car; the matrix says 0.5)";
 CM_ SG_ 813 ADAS_Obj3_Width "Object Width";
 CM_ SG_ 813 ADAS_Obj3_Conf "Object Confidence level";
 CM_ SG_ 813 ADAS_Obj3_Length "Object length";
@@ -2045,8 +2045,8 @@ CM_ SG_ 813 ADAS_Obj3_Classification "Object Calssification";
 CM_ SG_ 813 ADAS_VVP_ICC_Obj3BrkLght "Object 3 brake light on / off";
 CM_ SG_ 813 ADAS_Obj3_ClassConf "Object Classification Confidence";
 CM_ SG_ 815 ADAS_Obj6_ID "Object identifier. If ID is 0x0 no object is detected";
-CM_ SG_ 815 ADAS_Obj6_LongDist "Object Longitudinal distance";
-CM_ SG_ 815 ADAS_Obj6_LatDist "Object Latitudinal distance";
+CM_ SG_ 815 ADAS_Obj6_LongDist "Object Longitudinal distance (0.2 m/bit measured on the car; the matrix says 0.5)";
+CM_ SG_ 815 ADAS_Obj6_LatDist "Object Latitudinal distance (0.2 m/bit measured on the car; the matrix says 0.5)";
 CM_ SG_ 815 ADAS_Obj6_Width "Object Width";
 CM_ SG_ 815 ADAS_Obj6_Conf "Object Confidence level";
 CM_ SG_ 815 ADAS_Obj6_Length "Object length";
@@ -2122,8 +2122,8 @@ CM_ SG_ 825 ADAS_LeLine1LnTyp "True left lane line 1 type (observed)";
 CM_ SG_ 825 ADAS_LeLine1CrvtRt "Rate of curvature of the left lane line 1";
 CM_ SG_ 825 ADAS_LeLine1Conf "Left lane line 1 confidence";
 CM_ SG_ 827 ADAS_Obj1_ID "Object identifier. If ID is 0x0 no object is detected";
-CM_ SG_ 827 ADAS_Obj1_LongDist "Object Longitudinal distance";
-CM_ SG_ 827 ADAS_Obj1_LatDist "Object Latitudinal distance";
+CM_ SG_ 827 ADAS_Obj1_LongDist "Object Longitudinal distance (0.2 m/bit measured on the car; the matrix says 0.5)";
+CM_ SG_ 827 ADAS_Obj1_LatDist "Object Latitudinal distance (0.2 m/bit measured on the car; the matrix says 0.5)";
 CM_ SG_ 827 ADAS_Obj1_Width "Object Width";
 CM_ SG_ 827 ADAS_Obj1_Conf "Object Confidence level";
 CM_ SG_ 827 ADAS_Obj1_Length "Object length";
@@ -2135,8 +2135,8 @@ CM_ SG_ 827 ADAS_Obj1_Classification "Object Calssification";
 CM_ SG_ 827 ADAS_VVP_ICC_Obj1BrkLght "Object 1 brake light on / off";
 CM_ SG_ 827 ADAS_Obj1_ClassConf "Object Classification Confidence";
 CM_ SG_ 829 ADAS_Obj4_ID "Object identifier. If ID is 0x0 no object is detected";
-CM_ SG_ 829 ADAS_Obj4_LongDist "Object Longitudinal distance";
-CM_ SG_ 829 ADAS_Obj4_LatDist "Object Latitudinal distance";
+CM_ SG_ 829 ADAS_Obj4_LongDist "Object Longitudinal distance (0.2 m/bit measured on the car; the matrix says 0.5)";
+CM_ SG_ 829 ADAS_Obj4_LatDist "Object Latitudinal distance (0.2 m/bit measured on the car; the matrix says 0.5)";
 CM_ SG_ 829 ADAS_Obj4_Width "Object Width";
 CM_ SG_ 829 ADAS_Obj4_Conf "Object Confidence level";
 CM_ SG_ 829 ADAS_Obj4_Length "Object length";
@@ -2148,8 +2148,8 @@ CM_ SG_ 829 ADAS_Obj4_Classification "Object Calssification";
 CM_ SG_ 829 ADAS_VVP_ICC_Obj4BrkLght "Object 4 brake light on / off";
 CM_ SG_ 829 ADAS_Obj4_ClassConf "Object Classification Confidence";
 CM_ SG_ 831 ADAS_Obj7_ID "Object identifier. If ID is 0x0 no object is detected";
-CM_ SG_ 831 ADAS_Obj7_LongDist "Object Longitudinal distance";
-CM_ SG_ 831 ADAS_Obj7_LatDist "Object Latitudinal distance";
+CM_ SG_ 831 ADAS_Obj7_LongDist "Object Longitudinal distance (0.2 m/bit measured on the car; the matrix says 0.5)";
+CM_ SG_ 831 ADAS_Obj7_LatDist "Object Latitudinal distance (0.2 m/bit measured on the car; the matrix says 0.5)";
 CM_ SG_ 831 ADAS_Obj7_Width "Object Width";
 CM_ SG_ 831 ADAS_Obj7_Conf "Object Confidence level";
 CM_ SG_ 831 ADAS_Obj7_Length "Object length";
@@ -2219,8 +2219,8 @@ CM_ SG_ 835 BCM_SteerWhlVbrnAlrmAvl "Whether steering wheel vibration alarm is a
 CM_ SG_ 835 BCM_SunroofRunngSts "Sunroof operation state";
 CM_ SG_ 835 BCM_MirrCmd "Exterior rearview mirror control";
 CM_ SG_ 843 ADAS_Obj2_ID "Object identifier. If ID is 0x0 no object is detected";
-CM_ SG_ 843 ADAS_Obj2_LongDist "Object Longitudinal distance";
-CM_ SG_ 843 ADAS_Obj2_LatDist "Object Latitudinal distance";
+CM_ SG_ 843 ADAS_Obj2_LongDist "Object Longitudinal distance (0.2 m/bit measured on the car; the matrix says 0.5)";
+CM_ SG_ 843 ADAS_Obj2_LatDist "Object Latitudinal distance (0.2 m/bit measured on the car; the matrix says 0.5)";
 CM_ SG_ 843 ADAS_Obj2_Width "Object Width";
 CM_ SG_ 843 ADAS_Obj2_Conf "Object Confidence level";
 CM_ SG_ 843 ADAS_Obj2_Length "Object length";
@@ -2232,8 +2232,8 @@ CM_ SG_ 843 ADAS_Obj2_Classification "Object Calssification";
 CM_ SG_ 843 ADAS_VVP_ICC_Obj2BrkLght "Object 2 brake light on / off";
 CM_ SG_ 843 ADAS_Obj2_ClassConf "Object Classification Confidence";
 CM_ SG_ 845 ADAS_Obj5_ID "Object identifier. If ID is 0x0 no object is detected";
-CM_ SG_ 845 ADAS_Obj5_LongDist "Object Longitudinal distance";
-CM_ SG_ 845 ADAS_Obj5_LatDist "Object Latitudinal distance";
+CM_ SG_ 845 ADAS_Obj5_LongDist "Object Longitudinal distance (0.2 m/bit measured on the car; the matrix says 0.5)";
+CM_ SG_ 845 ADAS_Obj5_LatDist "Object Latitudinal distance (0.2 m/bit measured on the car; the matrix says 0.5)";
 CM_ SG_ 845 ADAS_Obj5_Width "Object Width";
 CM_ SG_ 845 ADAS_Obj5_Conf "Object Confidence level";
 CM_ SG_ 845 ADAS_Obj5_Length "Object length";
@@ -2245,8 +2245,8 @@ CM_ SG_ 845 ADAS_Obj5_Classification "Object Calssification";
 CM_ SG_ 845 ADAS_VVP_ICC_Obj5BrkLght "Object 5 brake light on / off";
 CM_ SG_ 845 ADAS_Obj5_ClassConf "Object Classification Confidence";
 CM_ SG_ 847 ADAS_Obj8_ID "Object identifier. If ID is 0x0 no object is detected";
-CM_ SG_ 847 ADAS_Obj8_LongDist "Object Longitudinal distance";
-CM_ SG_ 847 ADAS_Obj8_LatDist "Object Latitudinal distance";
+CM_ SG_ 847 ADAS_Obj8_LongDist "Object Longitudinal distance (0.2 m/bit measured on the car; the matrix says 0.5)";
+CM_ SG_ 847 ADAS_Obj8_LatDist "Object Latitudinal distance (0.2 m/bit measured on the car; the matrix says 0.5)";
 CM_ SG_ 847 ADAS_Obj8_Width "Object Width";
 CM_ SG_ 847 ADAS_Obj8_Conf "Object Confidence level";
 CM_ SG_ 847 ADAS_Obj8_Length "Object length";

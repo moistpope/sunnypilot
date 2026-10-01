@@ -6,7 +6,8 @@ Generate the web HUD's Fisker DBC subset from the full ADASBUS matrix DBC.
 
 Keeps every ADAS-authored message (world model, HMI, warnings, parking, DMS) plus the
 gateway-mirrored vehicle/body messages the HUD shows, with their comments, cycle times and
-value tables. Add names to EXTRA_MESSAGES and re-run to expose more in the signal browser.
+value tables, and applies CORRECTIONS for signals the matrix gets wrong. Add names to
+EXTRA_MESSAGES and re-run to expose more in the signal browser.
 """
 import argparse
 import os
@@ -21,6 +22,24 @@ EXTRA_MESSAGES = {
   "BCM_0x333", "BCM_0x335", "BCM_0x343", "VCU_0x358", "ICC_0x35B", "BCM_0x364", "ECC_0x373",
   "PLGM_0x471", "FCM_0x487", "MFS_0x514", "ICC_0x52A", "ICC_0x531",
 }
+
+
+# Signals the matrix gets wrong, checked against the car: name -> (factor, offset, min, max, note).
+# The ADAS object list's distances are 0.2 m/bit, not 0.5: the ACC target read raw 202 while
+# openpilot's camera had the same car at ~42 m (0.2 -> 40.4 m, 0.5 -> 101 m), parked cars "closed in"
+# at 2-3x the car's own speed at 0.5, and raw values top out near 200 (a ~40 m list, not 100 m).
+CORRECTIONS = {
+  f"ADAS_Obj{n}_{sig}": (0.2, 0, 0, 51, "0.2 m/bit measured on the car; the matrix says 0.5")
+  for n in range(1, 9) for sig in ("LongDist", "LatDist")
+}
+
+
+def correct(line: str) -> str:
+  m = re.match(r"^( SG_ (\w+) : \S+ )\([^)]*\) \[[^]]*\]( .*)$", line)
+  if not m or m.group(2) not in CORRECTIONS:
+    return line
+  factor, offset, lo, hi, _ = CORRECTIONS[m.group(2)]
+  return f"{m.group(1)}({factor:g},{offset:g}) [{lo:g}|{hi:g}]{m.group(3)}"
 
 
 def keep_message(name: str, transmitter: str) -> bool:
@@ -53,7 +72,7 @@ def generate(src: str) -> str:
       block = [line]
       i += 1
       while i < len(lines) and lines[i].startswith(" SG_"):
-        block.append(lines[i])
+        block.append(correct(lines[i]))
         i += 1
       blocks[addr] = block
       if keep_message(m.group(2), m.group(3)):
@@ -79,7 +98,11 @@ def generate(src: str) -> str:
       out.append(" ".join(stmt.split()))
   for stmt in re.findall(r"^CM_ SG_ \d+ \w+ \".*?\";", text, re.M | re.S):
     if addr_of(stmt[4:], "SG_") in keep:
-      out.append(" ".join(stmt.split()))
+      stmt = " ".join(stmt.split())
+      name = stmt.split(" ")[3]
+      if name in CORRECTIONS:
+        stmt = stmt[:-2] + f" ({CORRECTIONS[name][4]})\";"
+      out.append(stmt)
   for stmt in re.findall(r"^BA_ \"GenMsgCycleTime\" BO_ \d+ \d+;", text, re.M):
     if addr_of(stmt.split(" ", 2)[2], "BO_") in keep:
       out.append(stmt)
