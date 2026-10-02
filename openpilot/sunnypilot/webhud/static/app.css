@@ -57,6 +57,7 @@ button, select, input { font: inherit; color: inherit; }
 .olabel .stem { position: absolute; left: 50%; width: 1px; background: var(--muted); opacity: .6; }
 .olabel.radar { border-left-color: var(--radar); } .olabel.radar b { color: var(--radar); } .olabel.radar .stem { background: var(--radar); }
 .olabel.op { border-left-color: var(--accent); } .olabel.op b { color: var(--accent); } .olabel.op .stem { background: var(--accent); }
+.olabel.world { border-left-color: var(--green); } .olabel.world b { color: var(--green); } .olabel.world .stem { background: var(--green); }
 
 .card {
   background: var(--panel);

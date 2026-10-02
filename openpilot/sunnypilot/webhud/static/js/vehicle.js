@@ -29,6 +29,9 @@ export class VehicleState {
     this.flash = { left: new Flasher(), right: new Flasher() };
     this.speed = 0;      // m/s, display (unsigned)
     this.v = 0;          // m/s, signed animation speed (negative in reverse, x replay rate, 0 when paused)
+    this.w = 0;          // rad/s, yaw rate from the gyro (+ = left), scaled like v
+    this.hasYaw = false; // whether w is measured (else the view falls back to the steering angle)
+    this.rate = 0;       // how fast data time passes per real second (replay speed, 0 paused/stale)
     this.steerDeg = 0;   // steering wheel angle, + = left
     this.gear = null;
     this.lamps = { left: false, right: false, leftActive: false, rightActive: false, brake: false, reverse: false, low: false, high: false, drl: false, position: false };
@@ -47,6 +50,12 @@ export class VehicleState {
     const live = !(replay && !replay.playing) && ageMs < STALE_MS;
     const rate = replay ? replay.speed || 1 : 1;
     this.v = live ? this.speed * (this.gear === 'reverse' ? -1 : 1) * rate : 0;
+    this.rate = live ? rate : 0;
+    // the yaw-rate gyro (carState, else the Fisker YRS on ADASBUS in deg/s); ignored at a standstill
+    // so its noise doesn't turn the world under a parked car
+    const yaw = cs && cs.yawRate != null ? cs.yawRate : fv && fv.yawRate != null ? fv.yawRate * Math.PI / 180 : null;
+    this.hasYaw = yaw != null;
+    this.w = live && yaw != null && this.speed > 0.05 ? yaw * rate : 0;
 
     const steer = cs && cs.steeringAngleDeg != null ? cs.steeringAngleDeg : fv && fv.steeringAngle;
     this.steerDeg = steer || 0;

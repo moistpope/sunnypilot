@@ -10,7 +10,7 @@ const AUTO_VIEW_HOLD_MS = 30000;   // after the user picks a view or moves the c
 const DEFAULTS = {
   theme: 'auto', units: 'auto', laneSource: 'blend', egoColor: 'model', view: 'chase',
   showPath: true, showUss: true, showOpLeads: true, autoView: true, showGround: true, showRoad: true, showSigns: true,
-  showTracks: true, showRadar: false, showObjectStats: false,
+  showTracks: true, showRadar: false, radarAllTracks: false, showObjectStats: false, objectMode: 'world',
   laneHeadingSign: 1, laneCurvatureSign: 1, objectHeadingSign: 1,
 };
 

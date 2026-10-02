@@ -27,6 +27,8 @@ const REAR_AXLE_Z = EGO_LEN - 0.93;   // until the model reports its own
 const RADAR_OPACITY = 0.5;            // radar view: see-through cars...
 const RADAR_CAR = { w: 2.0, l: 4.8, hgt: 1.6 };   // ...a touch bigger than most cars, so a matching camera car sits inside
 const RADAR_EXTRAPOLATE_S = 0.12;     // carry a radar track on its own velocity at most this far past a cycle (65 ms)
+const RADAR_MATURE_AGE = 20;          // radar view: cycles (1.3 s) before a track is shown, unless "All radar tracks"
+const WORLD_EASE_S = 0.08;            // world objects glide onto each new estimate over about this long
 const DEG = Math.PI / 180;
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -154,6 +156,22 @@ export const VIEWS = {
 };
 
 function toScene(x, y) { return [-y, -x]; }
+
+// World model objects: the model to draw and the class whose size bounds apply. The radar classifies
+// few of its tracks; an unclassified one moving like traffic is drawn as a car, a still one as a post.
+const WORLD_CLASSES = new Set(['car', 'truck', 'motorcycle', 'bicycle', 'pedestrian', 'animal', 'small', 'large']);
+function worldKind(o) {
+  const cls = WORLD_CLASSES.has(o.cls) ? o.cls : o.speed > 3 ? 'car' : 'unknown';
+  return [cls, cls === 'car' && o.h > 0.5 && o.h < 1.55 ? 'sedan' : cls];
+}
+const WORLD_DIMS = {   // w, l, h when the sources give no size
+  car: [1.9, 4.6, 1.6], sedan: [1.85, 4.7, 1.4], truck: [2.5, 8.0, 3.0], motorcycle: [0.8, 2.1, 1.5], bicycle: [0.6, 1.8, 1.6],
+  pedestrian: [0.5, 0.5, 1.75], animal: [0.5, 1.2, 0.9], small: [0.45, 0.45, 0.75], large: [2.0, 2.0, 2.0], unknown: [0.6, 0.6, 1.0],
+};
+function worldDims(o, kind) {
+  const [w, l, h] = WORLD_DIMS[kind] || WORLD_DIMS.unknown;
+  return { w: o.w > 0.2 ? o.w : w, l: o.l > 0.2 ? o.l : l, hgt: o.h > 0.2 ? o.h : h };
+}
 
 // A flat strip along a polyline, preallocated so per-frame updates don't allocate.
 class Ribbon {
@@ -325,6 +343,7 @@ export class CarScene {
 
     this.objects = new Map();   // key -> track (see _track)
     this.radarObjs = new Map();   // radar track id -> ghost (see _radar)
+    this.worldObjs = new Map();   // world-model object id -> drawn object (see _worldObjects)
     this.radarDot = new THREE.RingGeometry(0.16, 0.3, 24).rotateX(-Math.PI / 2);
     this.labels = new ObjectLabels(document.getElementById('olabels'));   // Display -> Object stats
     this.theme = THEMES.light;
@@ -390,6 +409,7 @@ export class CarScene {
     this.mats.slot.color.set(t.blue);
     for (const o of this.objects.values()) o.color = null;   // recolor on next frame
     for (const g of this.radarObjs.values()) g.color = null;
+    for (const e of this.worldObjs.values()) e.color = null;
   }
 
   // hex color, or null/'model' for the model's own paint
@@ -593,7 +613,9 @@ export class CarScene {
 
     if (fresh) {
       const list = [];
-      for (const o of (f && f.objects) || []) {
+      // the world model view (_worldObjects) draws these sources fused; here they fade out
+      const raw = s.objectMode === 'raw';
+      for (const o of (raw && f && f.objects) || []) {
         list.push({ key: 'f' + o.id, x: o.x, y: o.y, h: (o.heading || 0) * (s.objectHeadingSign || 1), cls: o.cls, w: o.w, l: o.l, hgt: o.h,
           lead: o.flags.includes('accPrimary') || o.flags.includes('leading'), threat: o.flags.some(fl => ['bsd', 'dow', 'aeb', 'raeb', 'bacm', 'elka'].includes(fl)),
           info: { src: 'adas', id: o.id, cls: o.cls, x: o.x, y: o.y, heading: o.heading == null ? null : o.heading * (s.objectHeadingSign || 1),
@@ -611,7 +633,7 @@ export class CarScene {
       // already reports a car there; camera ranging gets looser with distance, so the gate does too
       const rs = op.radarState;
       const engaged = !!(op.selfdriveState && op.selfdriveState.enabled);
-      if (rs && s.showOpLeads !== false) {
+      if (raw && rs && s.showOpLeads !== false) {
         [rs.leadOne, rs.leadTwo].forEach((ld, i) => {
           if (!ld || !ld.present) return;
           const info = { src: 'op', i, ...ld };
@@ -744,6 +766,7 @@ export class CarScene {
     if (show && this.stateSeq !== this.radarSeq) {
       this.radarSeq = this.stateSeq;
       for (const o of r.objects) {
+        if (o.age < RADAR_MATURE_AGE && this.settings.radarAllTracks !== true) continue;   // mostly flicker
         let g = this.radarObjs.get(o.id);
         if (!g) {
           g = this._radarGhost();
@@ -806,6 +829,95 @@ export class CarScene {
     return { pivot, group, dot, alpha: 0, color: this.theme.radar, raw: null, tmeas: this.clock, x: 0, y: 0, vx: 0, vy: 0, th: 0, dx: null, dy: null, dh: 0 };
   }
 
+  // World model view (Display -> Objects, world_model.py on the server): the objects fused from the
+  // radar, the ADAS camera list and openpilot's leads, each where its sources agree, weighted by how
+  // far each is trusted for what it measures. They come as of now in the car's frame and are anchored
+  // here to the ground (children of `world`), so between updates a parked car stays put on the road
+  // while the car turns, and a moving one carries on at its own speed over the ground.
+  _worldObjects(dt) {
+    const st = this.state || {};
+    const s = this.settings;
+    const show = s.objectMode !== 'raw' && Array.isArray(st.objects);
+    const now = this.clock;
+    if (show && this.stateSeq !== this.worldSeq) {
+      this.worldSeq = this.stateSeq;
+      const p = this.pose, zr = this.ego.userData.rearAxleZ ?? REAR_AXLE_Z;
+      const c = Math.cos(p.h), sn = Math.sin(p.h);
+      const op = st.op || {};
+      const engaged = !!(op.selfdriveState && op.selfdriveState.enabled);
+      for (const o of st.objects) {
+        if (s.showOpLeads === false && o.sources.length && o.sources.every(x => x.src === 'op')) continue;
+        const [cls, kind] = worldKind(o);
+        let e = this.worldObjs.get(o.id);
+        if (!e) {
+          e = { alpha: 0, wx: null, size: null };
+          this.worldObjs.set(o.id, e);
+        }
+        if (e.kind !== kind) this._worldModel(e, kind);
+        e.cls = cls;
+        e.dims = worldDims(o, kind);
+        if (!e.size) e.size = { ...e.dims };
+        // the sources report an object's near face: its center is half its footprint farther along the line of sight
+        const d = Math.hypot(o.x, o.y);
+        const rel = (o.heading || 0) * DEG - Math.atan2(o.y, o.x);
+        const half = d > 2 ? e.dims.l / 2 * Math.abs(Math.cos(rel)) + e.dims.w / 2 * Math.abs(Math.sin(rel)) : 0;
+        const cx = o.x + (d > 2 ? half * o.x / d : 0), cy = o.y + (d > 2 ? half * o.y / d : 0);
+        // car frame (x ahead of the front bumper, y left) -> ground, through the rear axle's pose
+        const xr = cx + zr;
+        e.tx = p.x + c * xr - sn * cy;
+        e.ty = p.y + sn * xr + c * cy;
+        e.vx = c * o.vx - sn * o.vy;
+        e.vy = sn * o.vx + c * o.vy;
+        e.th = p.h + (o.heading || 0) * DEG;
+        if (e.wx == null || Math.hypot(e.tx - e.wx, e.ty - e.wy) > 15) { e.wx = e.tx; e.wy = e.ty; e.h = e.th; }
+        e.lastSeen = now;
+        e.data = o;
+        const adas = o.sources.find(x => x.src === 'adas');
+        const flags = (adas && adas.flags) || [];
+        const opLead = o.sources.find(x => x.src === 'op');
+        e.lead = flags.includes('accPrimary') || flags.includes('leading') || !!(opLead && opLead.id === 0 && engaged);
+        e.threat = flags.some(fl => ['bsd', 'dow', 'aeb', 'raeb', 'bacm', 'elka'].includes(fl));
+      }
+    }
+    const t = this.theme;
+    const rate = this.vehicle ? this.vehicle.rate : 0;   // data seconds per real second (0 while paused)
+    const k = 1 - Math.exp(-dt / WORLD_EASE_S), kHead = 1 - Math.exp(-dt / 0.2), kSize = 1 - Math.exp(-dt / 0.4);
+    for (const [id, e] of this.worldObjs) {
+      const dead = !show || now - e.lastSeen > 0.3;
+      e.alpha = Math.max(0, Math.min(1, e.alpha + (dead ? -dt * 4 : dt * 5)));
+      if (e.alpha <= 0 && dead) {
+        this.world.remove(e.pivot);
+        this.worldObjs.delete(id);
+        continue;
+      }
+      e.tx += e.vx * dt * rate;
+      e.ty += e.vy * dt * rate;
+      e.wx += (e.tx - e.wx) * k;
+      e.wy += (e.ty - e.wy) * k;
+      e.h += (((e.th - e.h + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI) * kHead;
+      for (const d of ['w', 'l', 'hgt']) e.size[d] += (e.dims[d] - e.size[d]) * kSize;
+      fitScale(e.group, e.cls, e.size.w, e.size.l, e.size.hgt);
+      e.group.position.z = -e.group.userData.length * e.group.scale.z / 2;   // pivot at the center
+      e.pivot.position.set(-e.wy, 0, -e.wx);   // world-group coordinates: X = -y, Z = -x
+      e.pivot.rotation.y = e.h;
+      const color = e.threat ? t.red : e.lead ? t.lead : t.object;
+      if (e.color !== color) {
+        for (const m of e.group.userData.paint) m.color.set(color);
+        e.color = color;
+      }
+      for (const m of e.group.userData.paint) { m.opacity = e.alpha; m.transparent = e.alpha < 1; }
+    }
+  }
+
+  _worldModel(e, kind) {
+    if (e.pivot) this.world.remove(e.pivot);
+    const group = makeObject(kind, this.theme.object);
+    const pivot = new THREE.Group();
+    pivot.add(group);
+    this.world.add(pivot);
+    Object.assign(e, { pivot, group, kind, color: null });
+  }
+
   // Object stats: tag every drawn object (camera ADAS cars, openpilot leads, radar tracks) over its roof.
   // ADAS and openpilot tracks add this view's relative-velocity estimate, which the ADAS doesn't report.
   _labels() {
@@ -824,6 +936,12 @@ export class CarScene {
       const p = g.pivot.position;
       entries.push({ key: 'r' + id, pos: [p.x, RADAR_CAR.hgt + 0.25, p.z], alpha: g.alpha, data: g.info });
     }
+    const wp = this._labelPos || (this._labelPos = new THREE.Vector3());
+    for (const [id, e] of this.worldObjs) {
+      if (!e.data) continue;
+      e.pivot.getWorldPosition(wp);
+      entries.push({ key: 'w' + id, pos: [wp.x, e.group.userData.height * e.group.scale.y + 0.25, wp.z], alpha: e.alpha, data: { src: 'world', ...e.data } });
+    }
     const vs = this.vehicle;
     const egoV = vs ? vs.speed * (vs.gear === 'reverse' ? -1 : 1) : 0;
     this.labels.update(entries, this.camera, egoV, this.clock);
@@ -836,7 +954,9 @@ export class CarScene {
     const vs = this.vehicle;
     const v = vs ? vs.v : 0;
     const p = this.pose;
-    p.h += v * (vs ? vs.curvature : 0) * dt;
+    // heading from the yaw-rate gyro when there is one (it's what the radar and the world model use),
+    // else from the steering angle through the bicycle model
+    p.h += (vs && vs.hasYaw ? vs.w : v * (vs ? vs.curvature : 0)) * dt;
     p.x += v * Math.cos(p.h) * dt;
     p.y += v * Math.sin(p.h) * dt;
     // keep the numbers small; the texture repeats every TILE so whole-tile jumps are invisible
@@ -966,6 +1086,7 @@ export class CarScene {
     this._uss();
     this._objects(dt);
     this._radar(dt);
+    this._worldObjects(dt);
     this._ego(dt);
     this._tracks(dt);
     this.renderer.render(this.scene, this.camera);

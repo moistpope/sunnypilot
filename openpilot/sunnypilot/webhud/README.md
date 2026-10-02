@@ -61,6 +61,15 @@ shows up as an offset from the camera's car; like those cars, a car ahead sits w
 reported point. A chip at the top right shows the radar's track count, or *no bus 1 data* when the log (or harness)
 has no radar frames.
 
+*Objects* (*Display*): the default *World model* (`world_model.py`) fuses the radar, the ADAS camera list
+and openpilot's leads into one object set in a ground-fixed frame: each measurement is placed at the
+time it was taken (radar MeasTime from the bus's time sync; the others by typical latency) using an
+ego pose dead-reckoned from ESP wheel speed and the YRS yaw-rate gyro, and weighted by its source's
+noise model (radar: range and Doppler; camera: bearing, class, size; openpilot leads only corroborate
+on this car). The view anchors the objects to the ground, so parked cars stay put through turns; the
+scene's own ego motion now uses the gyro too. *Raw sources* draws each source as it reports. Radar
+tracks younger than 1.3 s are hidden unless *All radar tracks* is on.
+
 *Object stats* (*Display*, off by default, `static/js/labels.js`): a debug tag over every object the
 view draws, giving its source (the ADAS camera's list, an openpilot lead, the radar), track ID and
 class, position (x ahead, y left/right), speed over the ground and relative, heading and size, in m,
@@ -80,6 +89,7 @@ default).
 | `mdns.py` | Publishes `sunnypilot.local` as an alias + `_http._tcp` service through avahi's D-Bus API (jeepney); falls back to a built-in A-record responder. Doesn't change the device hostname. |
 | `fisker_world.py` | Realtime world model from ADASBUS (see below). |
 | `fisker_radar.py` | Mid-range radar tracks from its private CAN (bus 1), decoded with the reverse-engineered `fisker_ocean_mrr.dbc`. Kept apart from ADASBUS: the radar reuses its IDs. |
+| `world_model.py` | Ego odometry and the multi-source object tracker behind the *World model* view. |
 | `extract.py`, `state.py` | openpilot/sunnypilot services → compact JSON, merged with the Fisker world into one snapshot. |
 | `sources.py` | Live (cereal `can` + services) and rlog/qlog replay (zst/bz2, multi-segment, seek, speed). |
 | `demo.py` | Synthetic drive that encodes real ADASBUS frames — `server.py --demo` or *Playback → Play demo drive*. |

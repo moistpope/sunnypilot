@@ -204,6 +204,11 @@ export class Settings {
       el('p.desc', 'Blended: the Fisker ADAS lanes, refined with openpilot\'s where they agree and filled in where only openpilot sees a line. ' +
         'Or either source alone, or both drawn separately (openpilot faint).'),
       this.app.segmented([['blend', 'Blended'], ['fisker', 'Fisker ADAS'], ['model', 'openpilot'], ['both', 'Both']], s.laneSource, v => set('laneSource', v))));
+    body.append(el('div.section', el('h3', 'Objects'),
+      el('p.desc', 'World model: the radar, the ADAS camera\'s object list and openpilot\'s leads fused into one set of objects, ' +
+        'each source weighted by how far it\'s trusted for what it measures, placed on the ground as the car moves and turns. ' +
+        'Raw sources: each source drawn as it reports, for checking them against each other.'),
+      this.app.segmented([['world', 'World model'], ['raw', 'Raw sources']], s.objectMode, v => set('objectMode', v))));
     body.append(el('div.section', el('h3', 'Car color'),
       this.app.segmented([['model', 'Original'], ['#1d1f24', 'Black'], ['#e8e9eb', 'White'], ['#6e7781', 'Gray'], ['#3a5a8c', 'Blue'], ['#7d2b2b', 'Red'], ['#5f6b4e', 'Green']],
         s.egoColor, v => set('egoColor', v))));
@@ -217,6 +222,7 @@ export class Settings {
       ['showOpLeads', 'openpilot leads', 'Show radarState leads the ADAS object list doesn\'t already cover.'],
       ['showRadar', 'Radar objects', 'Every track of the mid-range radar (its private CAN, bus 1) as a see-through car, with a ring at the point it reports, ' +
         'to check the radar decoding against the camera\'s cars. Needs a harness that taps the radar bus.'],
+      ['radarAllTracks', 'All radar tracks', 'Radar objects: also show tracks younger than 1.3 s, most of which flicker in and out (the radar reports every candidate).'],
       ['showObjectStats', 'Object stats', 'Debug: tag every object with its source (ADAS camera, openpilot, radar), track ID, position (x ahead, y left/right), ' +
         'speed over the ground and relative, heading and size, in m, m/s and degrees. The ADAS reports no speeds: those are this view\'s estimate.'],
       ['autoView', 'Auto view', 'Switch to the top view while parking and back when driving.'],

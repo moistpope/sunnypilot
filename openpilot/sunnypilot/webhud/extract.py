@@ -148,7 +148,8 @@ def _lead(lead) -> dict | None:
 
 
 def radar_state(rs) -> dict:
-  return {"leadOne": _lead(_g(rs, "leadOne")), "leadTwo": _lead(_g(rs, "leadTwo"))}
+  md = _g(rs, "mdMonoTime")   # when the model output these leads came from was published
+  return {"leadOne": _lead(_g(rs, "leadOne")), "leadTwo": _lead(_g(rs, "leadTwo")), "mdMonoTime": md * 1e-9 if md else None}
 
 
 def _xy(line, max_x: float = MODEL_MAX_X) -> list[list[float]]:

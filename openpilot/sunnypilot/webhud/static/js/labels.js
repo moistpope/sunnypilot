@@ -1,6 +1,6 @@
 // Object stats (Display -> Object stats): a debug tag over every object the view draws, saying where
-// it came from (the ADAS camera's object list, openpilot's leads, the radar) and what that source
-// reports. Tags are HTML laid over the canvas, placed each frame by projecting the top of each
+// it came from (the ADAS camera's object list, openpilot's leads, the radar, or the world model that
+// fuses them) and what that source reports. Tags are HTML laid over the canvas, placed each frame by projecting the top of each
 // object; their text refreshes a few times a second so the numbers stay readable. Units: m, m/s,
 // deg; L/R = left/right of the car's center line.
 import * as THREE from '../vendor/three.module.min.js';
@@ -19,14 +19,27 @@ const ang = (d) => (d == null ? null : Math.abs(d) < 0.5 ? '0°' : `${Math.abs(d
 const size = (w, l) => (w && l ? `${w.toFixed(1)}×${l.toFixed(1)} m` : null);
 const join = (...parts) => parts.filter(Boolean).join(' · ');
 
+const SRC_ABBR = { radar: 'R', adas: 'A', op: 'O' };
 const FLAG_NAMES = { accPrimary: 'ACC target', accSecondary: 'ACC 2nd', leading: 'leading', bsd: 'BSD', dow: 'DOW', aeb: 'AEB', raeb: 'rear AEB', bacm: 'BACM', elka: 'ELKA' };
 
 // [tag, title, lines...] for one object. `d` is what the source reported plus, for tracks the view
 // filters, its estimate of relative velocity (vx/vy); egoV is the car's signed speed.
 function describe(d, egoV, far) {
   const ground = (vx, vy) => (vx == null ? null : Math.hypot(egoV + vx, vy || 0));
+  if (d.src === 'world') {
+    // which sources feed it (R radar track #id, A ADAS object #id, O openpilot lead n)
+    const srcs = d.sources.map(x => `${SRC_ABBR[x.src]}${x.src === 'op' ? x.id + 1 : '#' + x.id}`).join(' ');
+    const head = join(`#${d.id} ${d.cls}`, srcs || 'no source', d.stale > 0.3 && `coasting ${d.stale.toFixed(1)} s`);
+    if (far) return ['WORLD', join(head, `${f1(d.x)} m`)];
+    const lines = ['WORLD', head,
+      join(`x ${f1(d.x)} m`, `y ${side(d.y)}`, `hdg ${ang(d.heading)}${d.headingSrc ? ' ' + d.headingSrc : ''}`),
+      join(`v ${f1(d.speed)} m/s`, `rel ${rel(d.vx - egoV)}`, `σ ${d.std[0].toFixed(1)}/${d.std[1].toFixed(1)} m`, size(d.w, d.l))];
+    // each source's latest reading minus the fused estimate (x/y, m): how far it disagrees
+    if (d.sources.length) lines.push('Δ ' + d.sources.map(x => `${SRC_ABBR[x.src]} ${rel(x.dx)}/${rel(x.dy)}`).join(' · '));
+    return lines;
+  }
   if (d.src === 'radar') {
-    const head = join(`#${d.id} ${d.cls}`, `dyn ${d.dyn}`, `${(d.age * CYCLE_S).toFixed(1)} s`);
+    const head = join(`#${d.id} ${d.cls}`, `dyn ${d.dyn}`, `${(d.age * CYCLE_S).toFixed(1)} s`, `st ${d.state} q ${d.quality}`);
     if (far) return ['RADAR', join(head, `${f1(d.x)} m`)];
     return ['RADAR', head,
       join(`x ${f1(d.x)} m`, `y ${side(d.y)}`, d.heading != null && `hdg ${ang(d.heading)}`),
