@@ -29,6 +29,9 @@ EXTRA_MESSAGES = {
 # The ADAS object list's distances are 0.2 m/bit, not 0.5: the ACC target read raw 202 while
 # openpilot's camera had the same car at ~42 m (0.2 -> 40.4 m, 0.5 -> 101 m), parked cars "closed in"
 # at 2-3x the car's own speed at 0.5, and raw values top out near 200 (a ~40 m list, not 100 m).
+# Paired with the radar's tracks (60 cars, 2026-10-02), the range fits ~0.25 m/bit from about the rear axle and
+# the lateral reads ~1.35x wide; the world model corrects for both (world_model.MEASURED_CALIBRATION) until a
+# tape-measured check settles them here.
 CORRECTIONS = {
   f"ADAS_Obj{n}_{sig}": (0.2, 0, 0, 51, "0.2 m/bit measured on the car; the matrix says 0.5")
   for n in range(1, 9) for sig in ("LongDist", "LatDist")

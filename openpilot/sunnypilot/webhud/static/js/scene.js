@@ -6,7 +6,7 @@ import * as THREE from '../vendor/three.module.min.js';
 import { OrbitControls } from '../vendor/OrbitControls.js';
 import { makeEgo, makeObject, makeGhost, fitScale, loadEgoModel } from './models.js';
 import { applyLamps } from './lamps.js';
-import { RoadModel, linePoints } from './road.js';
+import { RoadModel, linePoints, modelXOffset } from './road.js';
 import { RoadFurniture } from './furniture.js';
 import { RoadField } from './ground.js';
 import { PowerTrails, motorLoad } from './tracks.js';
@@ -15,7 +15,6 @@ import { STEER_RATIO } from './vehicle.js';
 
 const EGO_LEN = 4.775;
 const EGO_W = 1.98;
-const MODEL_X_OFFSET = -1.6;      // comma device sits ~1.6 m behind the front bumper
 const DASH = 3.0, GAP = 9.0;      // US lane dash pattern (10 ft / 30 ft)
 const RECENTER_S = 5;             // pan springs back to the car after this long untouched
 const CHASE_SPEED_DOLLY = 0.5;    // chase camera backs off this much farther (x its distance) at 70 mph
@@ -30,11 +29,12 @@ const RADAR_CAR = { w: 2.0, l: 4.8, hgt: 1.6 };   // ...a touch bigger than most
 const RADAR_EXTRAPOLATE_S = 0.12;     // carry a radar track on its own velocity at most this far past a cycle (65 ms)
 const RADAR_MATURE_AGE = 20;          // radar view: cycles (1.3 s) before a track is shown, unless "All radar tracks"
 const WORLD_EASE_S = 0.08;            // world objects glide onto each new estimate over about this long
+const SIDE_ON_COS = 0.5;              // world objects seen over 60 deg off their length axis are placed by their side
 const CONF_HIDE = 0.35, CONF_FULL = 0.65;   // world objects fade in between these confidences (world_model.py)...
 const LOW_CONF_ALPHA = 0.2;           // ...or, with "Low-confidence objects", never fainter than this
 const DEG = Math.PI / 180;
-const EGO_ENV = { light: 1.0, dark: 0.75 };   // reflection strength on the ego car, by theme
-const PAINT_LIFT = 2.0;                       // the model's own paint is a near-black navy (~1-3%); lift it
+const EGO_ENV = { light: .75, dark: 0.55 };   // reflection strength on the ego car, by theme
+const PAINT_LIFT = 1.1;                       // the model's own paint is a near-black navy (~1-3%); lift it
 const UP = new THREE.Vector3(0, 1, 0);
 
 // headlight throw: narrow and bright at the bumper (bottom), widening and fading down the road (top)
@@ -496,13 +496,13 @@ export class CarScene {
     // 'both': openpilot's raw lane lines on top, thin
     if (s.laneSource === 'both' && op.modelV2) {
       const md = op.modelV2;
-      const probs = md.laneLineProbs || [];
+      const probs = md.laneLineProbs || [], mx = modelXOffset(st);
       (md.laneLines || []).forEach((pts, i) => {
-        if (pts.length && (probs[i] || 0) >= 0.25) pieces.model.push(densify(pts.map(([x, y]) => [x + MODEL_X_OFFSET, y]), 2));
+        if (pts.length && (probs[i] || 0) >= 0.25) pieces.model.push(densify(pts.map(([x, y]) => [x + mx, y]), 2));
       });
       (md.roadEdges || []).forEach((pts, i) => {
         const std = (md.roadEdgeStds || [])[i];
-        if (pts.length && (std == null || std < 1.0)) pieces.modelEdge.push(densify(pts.map(([x, y]) => [x + MODEL_X_OFFSET, y]), 2));
+        if (pts.length && (std == null || std < 1.0)) pieces.modelEdge.push(densify(pts.map(([x, y]) => [x + mx, y]), 2));
       });
     }
     this.ribbons.line.set(pieces.line, 0.14);
@@ -519,7 +519,7 @@ export class CarScene {
     // planned path (openpilot) as a soft band while steering is engaged
     const path = op.modelV2 && op.modelV2.path;
     if (s.showPath !== false && latActive && path && path.length > 1) {
-      this.ribbons.path.set([densify(path.map(([x, y]) => [x + MODEL_X_OFFSET, y]), 2).filter(p => p[0] > -2)], 1.9, 0.01);
+      this.ribbons.path.set([densify(path.map(([x, y]) => [x + modelXOffset(st), y]), 2).filter(p => p[0] > -2)], 1.9, 0.01);
     } else this.ribbons.path.set([], 0);
 
     // blind-spot glow beside the car
@@ -843,11 +843,21 @@ export class CarScene {
         e.cls = cls;
         e.dims = worldDims(o, kind);
         if (!e.size) e.size = { ...e.dims };
-        // the sources report an object's near face: its center is half its footprint farther along the line of sight
-        const d = Math.hypot(o.x, o.y);
-        const rel = (o.heading || 0) * DEG - Math.atan2(o.y, o.x);
-        const half = d > 2 ? e.dims.l / 2 * Math.abs(Math.cos(rel)) + e.dims.w / 2 * Math.abs(Math.sin(rel)) : 0;
-        const cx = o.x + (d > 2 ? half * o.x / d : 0), cy = o.y + (d > 2 ? half * o.y / d : 0);
+        // the sources report the face nearest us: a car's rear (its front if it's behind us), or its side once we
+        // look at it side-on, so its center is half a length (or width) on along its own axes. Not along the line
+        // of sight: that threw cars in the next lane up to ~1.4 m further out as we came up on them.
+        const d = Math.hypot(o.x, o.y), hd = (o.heading || 0) * DEG, ax = Math.cos(hd), ay = Math.sin(hd);
+        let cx = o.x, cy = o.y;
+        if (d > 2) {
+          const along = (o.x * ax + o.y * ay) / d;   // cosine between our line of sight and its length
+          if (Math.abs(along) >= SIDE_ON_COS) {
+            const k = Math.sign(along) * e.dims.l / 2;
+            cx += k * ax; cy += k * ay;
+          } else {
+            const k = Math.sign(o.y * ax - o.x * ay) * e.dims.w / 2;   // which of its sides faces us
+            cx -= k * ay; cy += k * ax;
+          }
+        }
         // car frame (x ahead of the front bumper, y left) -> ground, through the rear axle's pose
         const xr = cx + zr;
         e.tx = p.x + c * xr - sn * cy;

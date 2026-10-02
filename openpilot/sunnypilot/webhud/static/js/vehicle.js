@@ -49,7 +49,10 @@ export class VehicleState {
     const replay = state && state.mode === 'replay' ? state.replay : null;
     const live = !(replay && !replay.playing) && ageMs < STALE_MS;
     const rate = replay ? replay.speed || 1 : 1;
-    this.v = live ? this.speed * (this.gear === 'reverse' ? -1 : 1) * rate : 0;
+    // the wheel speed reads ~3% under the true speed: the world model's sensor calibration corrects it, and the
+    // view moves the road and the car by the same speed the world model's odometry uses
+    const scale = (state && state.calibration && state.calibration.speedScale) || 1;
+    this.v = live ? this.speed * scale * (this.gear === 'reverse' ? -1 : 1) * rate : 0;
     this.rate = live ? rate : 0;
     // the yaw-rate gyro (carState, else the Fisker YRS on ADASBUS in deg/s); ignored at a standstill
     // so its noise doesn't turn the world under a parked car

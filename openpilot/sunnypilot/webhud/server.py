@@ -230,6 +230,8 @@ class Engine:
       self.replay = None
       self.mode = "live"
       self.builder.reset()
+    elif kind == "calibration":
+      self.builder.set_calibration(cmd[1])
     elif self.replay is not None:
       if kind == "play":
         self.replay.playing = True
@@ -597,6 +599,20 @@ def api_upload(h: HudHandler, q) -> None:
   h._json({"ok": True, "route": route})
 
 
+def api_calibration_get(h: HudHandler, q) -> None:
+  h._json(h.server.engine.builder.model.calib.to_json())
+
+
+def api_calibration_put(h: HudHandler, q) -> None:
+  """{on: bool}: the world model's measured sensor calibration (world_model.MEASURED_CALIBRATION), or none, for
+  every viewer until the process restarts. Only the display changes, so it's allowed while driving."""
+  on = h._json_body().get("on")
+  if not isinstance(on, bool):
+    return h._error(400, "on must be true or false")
+  h.server.engine.command("calibration", on)
+  h._json({"on": on})
+
+
 def api_dbc(h: HudHandler, q) -> None:
   dbc = h.server.engine.world.dbc
   h._json({"messages": [m.to_json() for m in sorted(dbc.messages.values(), key=lambda m: m.address)]})
@@ -728,6 +744,8 @@ ROUTES = {
   ("POST", "/api/replay"): api_replay,
   ("PUT", "/api/upload"): api_upload,
   ("GET", "/api/dbc"): api_dbc,
+  ("GET", "/api/calibration"): api_calibration_get,
+  ("PUT", "/api/calibration"): api_calibration_put,
   ("GET", "/api/params"): api_params_get,
   ("PUT", "/api/params"): api_params_put,
   ("GET", "/api/overrides"): api_overrides_get,

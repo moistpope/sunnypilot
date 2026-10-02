@@ -65,6 +65,16 @@ class TestFiskerRadar(OpenpilotTestCase):
     objs = self.radar.state(1.07)["objects"]
     assert [(o["id"], o["x"]) for o in objs] == [(7, 29.5)]
 
+  def test_resent_cycle_is_handed_out_once(self):
+    # the radar now and then sends a cycle again with the same MeasTime and counter (000000b5--bfe13ac451--13);
+    # handed out twice, every track in it would be measured twice at once
+    def cycle(t, c, meas_ns, x):
+      hdr = self.dbc.messages[HEADER].encode({"MRR_NumObjects": 1, "MRR_CycleCounter": c, "MRR_MeasTime_Sec": 100, "MRR_MeasTime_NSec": meas_ns})
+      self.radar.update([(HEADER, hdr, BUS_RADAR), self.slot(0, ID=7, Age=40, DistLong=x, CycleCounter=c)], t)
+      return self.radar.take_cycles(t + 0.05)
+    cycles = cycle(1.0, 5, 0, 30.0) + cycle(1.065, 5, 0, 30.0) + cycle(1.13, 6, 65_000_000, 29.5)
+    assert [objs[0]["x"] for _, objs in cycles] == [30.0, 29.5]
+
   def test_silent_or_stale_bus(self):
     assert self.radar.state(1.0) is None
     self.radar.update([self.slot(0, ID=3, DistLong=10)], 1.0)

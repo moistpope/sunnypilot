@@ -37,7 +37,14 @@
 // as drawn now. Signs and lights are anchored to the road with it (furniture.js), so when the road
 // is corrected they move with it and stay beside or over it.
 
-const MODEL_X_OFFSET = -1.6;   // openpilot's model frame is the device, ~1.6 m behind the bumper
+const MODEL_X_OFFSET = -1.6;   // openpilot's model frame is the device, ~1.6 m behind the bumper (uncalibrated)
+
+// where openpilot's model frame (the comma camera) sits relative to the front bumper, m: the world model's sensor
+// calibration has it (world_model.py SensorCalibration.model_x_offset), else the uncalibrated guess
+export function modelXOffset(st) {
+  const c = st && st.calibration;
+  return c && c.modelXOffset != null ? c.modelXOffset : MODEL_X_OFFSET;
+}
 const LANE_W = 3.6;
 const SHOW_AFTER = 0.2, HIDE_AFTER = 1.0;     // s of valid / invalid before a measured line toggles
 const COUNT_HOLD = 25;                         // s a lane-count observation is kept
@@ -250,11 +257,11 @@ export class RoadModel {
     const out = new Map();
     const md = st && st.op && st.op.modelV2;
     if (!md || !md.laneLines) return out;
-    const ids = ['L2', 'L1', 'R1', 'R2'];
+    const ids = ['L2', 'L1', 'R1', 'R2'], mx = modelXOffset(st);
     md.laneLines.forEach((pts, i) => {
       const p = (md.laneLineProbs || [])[i] || 0;
       if (!pts || pts.length < 4 || p < minProb) return;
-      const c = fitQuadratic(pts.map(([x, y]) => [x + MODEL_X_OFFSET, y]));
+      const c = fitQuadratic(pts.map(([x, y]) => [x + mx, y]));
       if (c) out.set(ids[i], { c, conf: Math.min(1, p), color: 'white', type: 0, edge: false });
     });
     return out;
@@ -292,7 +299,7 @@ export class RoadModel {
       const e = this.edge[side];
       const pts = md && md.roadEdges && md.roadEdges[i];
       const std = md && (md.roadEdgeStds || [])[i];
-      const at = pts && pts.find(([x]) => x + MODEL_X_OFFSET >= 10);
+      const at = pts && pts.find(([x]) => x + modelXOffset(st) >= 10);
       if (at && (std == null || std < 1.1)) {
         e.y = e.y == null || this.t - e.at > 2 ? at[1] : e.y + (at[1] - e.y) * ease(dt, 1.5);
         e.at = this.t;
@@ -515,7 +522,8 @@ export class RoadModel {
     const md = st && st.op && st.op.modelV2;
     let kPath = kCar;
     if (md && md.path && md.path.length > 4) {
-      const fit = fitQuadratic(md.path.map(([x, y]) => [x + MODEL_X_OFFSET, y]));
+      const mx = modelXOffset(st);
+      const fit = fitQuadratic(md.path.map(([x, y]) => [x + mx, y]));
       if (fit) kPath = fit.k;
     }
     this.pathK += (Math.max(-0.15, Math.min(0.15, kPath)) - this.pathK) * ease(dt, 1.0);

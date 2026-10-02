@@ -63,6 +63,7 @@ class FiskerRadar:
     self._cycles: dict[int, dict] = {}   # cycle counter -> {first, last, hdr, slots}, until complete
     self._sync: tuple[float, int] | None = None
     self._offsets: list[float] = []      # recent (global time - log time) from the bus's time sync
+    self._last_meas: tuple[int, int, int] | None = None   # MeasTime (sec, ns) and counter of the last cycle handed out
 
   def update(self, frames, t: float) -> None:
     """frames: iterable of (address, data, src) as produced by can_capnp_to_list."""
@@ -93,17 +94,25 @@ class FiskerRadar:
     """Every radar cycle completed since the last call: (time it was measured, its objects)."""
     out = []
     g2m = median(self._offsets) if self._offsets else None
+    done = []
     for c in list(self._cycles):
       cyc = self._cycles[c]
       if now - cyc["last"] < CYCLE_SETTLE_S:
         continue
       del self._cycles[c]
-      if cyc["hdr"] is None or self.dbc is None:
+      if cyc["hdr"] is not None and self.dbc is not None:
+        done.append(cyc)
+    for cyc in sorted(done, key=lambda cyc: cyc["first"]):
+      hdr = self.dbc.messages[HEADER].decode(cyc["hdr"])
+      meas_raw = (int(hdr["MRR_MeasTime_Sec"]), int(hdr["MRR_MeasTime_NSec"]), int(hdr["MRR_CycleCounter"]))
+      # the radar now and then sends a cycle's header again (same MeasTime and counter, 124 of 923 cycles on
+      # 000000b5--bfe13ac451--13), sometimes with its objects too: a cycle measured once is handed out once
+      if meas_raw == self._last_meas:
         continue
+      self._last_meas = meas_raw
       t = cyc["first"] - MEAS_LATENCY_S
       if g2m is not None:
-        hdr = self.dbc.messages[HEADER].decode(cyc["hdr"])
-        meas = hdr["MRR_MeasTime_Sec"] + hdr["MRR_MeasTime_NSec"] * 1e-9 - g2m
+        meas = meas_raw[0] + meas_raw[1] * 1e-9 - g2m
         if -0.5 < cyc["first"] - meas < 1.0:
           t = meas
       objs = [self._slot_object(addr, self.dbc.messages[addr].decode(data)) for addr, data in cyc["slots"].items() if data[3] or data[4]]

@@ -14,18 +14,26 @@ more trustworthy source dominates each quantity:
          lateral error grows with range; its lateral velocity is unreliable in turns. Young tracks
          are mostly flicker (median life 0.13 s) and are left out; maturing ones count for less.
   adas   the OEM ADAS object list (FiskerWorld). Camera classification, size, heading and the widest
-         coverage; range is the camera's (it read ~1.7 m farther than the radar on the drive
-         checked), in 0.2 m steps, with no velocity.
+         coverage; range is the camera's, with no velocity. As decoded it's off in scale and origin
+         (see the calibration below).
   op     openpilot's radarState leads (vision-only on this car). Two leads; depth from the model,
          its error growing with distance; weighted by the model's lead probability. The least stable
          source here (in a parking lot it put a car 13 m ahead at 6 m), so an openpilot lead refines
          objects the others see but only stands alone when it's the only object source there is.
+         leadTwo is the model's lead 2 s from now (modelV2.leadsV3[1]), most often the same car as
+         leadOne, so it only counts when it's clearly another car.
 Each object is a constant-velocity Kalman filter over ground position and velocity. A measurement is
 placed at the time it was taken (the radar's synced MeasTime; the others by their typical latency)
 using the ego pose at that time, dead-reckoned from wheel speed and the yaw-rate gyro. Measurements
 are processed FUSION_DELAY_S behind the present so every source is in before its time is passed, and
 tracks are then predicted to the present. A stationary object therefore stays put on the ground
 through a turn and each source's lag is undone.
+
+Before fusion each source is corrected by a SensorCalibration. MEASURED_CALIBRATION (the default) holds
+what replaying routes 000000b5--bfe13ac451 and 000000b4--d0f733ebb2 against GPS, openpilot's leads and
+lane lines found; NO_CALIBRATION takes every source as it decodes, for comparison (Display -> Geometry
+calibration). Uncorrected, the ADAS list reads 0.8x the radar's range plus ~3 m (so its copy of a car
+and the radar's cross over at ~10-15 m and split apart beyond) and puts left-lane cars 1.4 m too far out.
 
 Each object also carries a confidence (0..1) that it's really there, which the view fades it by
 (the CONF_* constants below). The radar measures range, bearing and Doppler but no elevation, so it
@@ -51,15 +59,22 @@ import numpy as np
 FRONT_TO_REAR_AXLE = 3.85   # m: the Ocean is 4.775 m long with its rear axle 0.93 m from the back
 FUSION_DELAY_S = 0.2        # radar measurements arrive ~0.10-0.13 s after they're taken
 HISTORY_S = 5.0
-ADAS_LATENCY_S = 0.12       # not measured: a typical camera pipeline
+ADAS_LATENCY_S = 0.12       # uncalibrated guess: a typical camera pipeline (MEASURED_CALIBRATION has 0.23)
 OP_LATENCY_S = 0.05         # radarState.mdMonoTime is when the model ran; its frame is about this older
 RADAR_MIN_AGE = 8           # cycles (65 ms): younger radar tracks are left out entirely
 RADAR_MATURE_AGE = 20
 OP_MIN_PROB = 0.5
+LEAD_TWO_SAME_M = 6.0       # openpilot's leadTwo within this (or LEAD_TWO_SAME_FRAC of the range) ahead or behind
+LEAD_TWO_SAME_FRAC = 0.15   # leadOne and LEAD_TWO_SAME_Y beside it is the same car
+LEAD_TWO_SAME_Y = 2.0
 GATE = 16.0                 # Mahalanobis^2 (4 sigma) to associate a measurement with a track...
 GATE_M = 3.0                # ...and no farther than this plus 2.5 sigma of the measurement, whatever the covariance
-MERGE_GATE = 4.0            # two tracks this close (and within MERGE_M) are one object
+MERGE_GATE = 4.0            # two tracks this close (and within MERGE_M) are one object...
 MERGE_M = 1.5
+MERGE_V = 2.5               # ...if their speeds agree within this, or within 3 sigma of their velocity estimates
+MERGE_GATE_V = 9.0
+SAME_ID_S = 1.0             # two tracks one source fed under one id this close in time are one object split in two...
+SAME_ID_M = 5.0             # ...unless they're farther apart than this
 ACCEL_SIGMA = 3.0           # m/s^2: process noise of the constant-velocity model
 COAST_MOVING_S = 1.0        # a track is dropped this long after its last measurement...
 COAST_STATIONARY_S = 2.5    # ...longer when it stands still (e.g. parked cars the radar stops reporting in a turn)
@@ -87,11 +102,49 @@ UNSEEN_HOLD_S = 0.5         # ...for this long in all: then it stays that low, e
 UNSEEN_MIN_V = 5.0          # m/s: slower than this (parking), the model's leads are too unsteady to go by
 UNSEEN_X = (8.0, 80.0)      # m ahead: where the model reliably reports a stopped car in our lane
 CORRIDOR_HALF_W = 1.5       # m either side of our predicted path: our half width and half a meter
-MOVING_SPEED = 1.5          # m/s over ground, plus MOVING_FRAC of our speed (the Doppler scale is known
-MOVING_FRAC = 0.06          # only to ~4%, so at speed a standing object can read ~1 m/s)
+MOVING_SPEED = 1.5          # m/s over ground, plus moving_frac (SensorCalibration) of our speed: how far apart
+MOVING_FRAC = 0.06          # the Doppler and ego speed scales may be (4% uncorrected, so a standing object can read ~1 m/s)
 CONF_RISE_S = 0.5           # confidence eases toward its target over about this long, in data time...
 CONF_FALL_S = 0.25
-CONF_COAST_S = 0.3          # ...but can't rise once no source has reported the object for this long
+CONF_COAST_S = 0.3          # ...but can't rise once no source has reported the object for this long, and a moving one fades out
+
+
+# ---- sensor calibration ----------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class SensorCalibration:
+  """Corrections applied to each source before it's fused (the view's lanes and ego motion use the last two)."""
+  name: str = "none"
+  speed_scale: float = 1.0          # true speed / ESP_VehSpd (wheel speed), for the ego odometry
+  radar_doppler_scale: float = 1.0  # true / decoded radar relative velocity
+  radar_yaw: float = 0.0            # rad: the radar's output is turned this far left (CCW) into the car's frame
+  adas_x_scale: float = 1.0         # ADAS object range: x = decoded / adas_x_scale - adas_x_origin
+  adas_x_origin: float = 0.0        # m from the front bumper back to the ADAS list's origin
+  adas_y_scale: float = 1.0         # ADAS object lateral: y = decoded / adas_y_scale
+  adas_latency: float = ADAS_LATENCY_S
+  op_x_offset: float = 0.0          # m added to openpilot leads' dRel
+  model_x_offset: float = -1.6      # m: openpilot's model frame (the comma camera) relative to the front bumper
+  moving_frac: float = MOVING_FRAC
+
+  def to_json(self) -> dict:
+    return {"on": self.name != "none", "name": self.name, "speedScale": self.speed_scale, "modelXOffset": self.model_x_offset}
+
+
+NO_CALIBRATION = SensorCalibration()
+# Measured on 2026-10-02 from routes 000000b5--bfe13ac451 and 000000b4--d0f733ebb2 (12 segments with the radar):
+MEASURED_CALIBRATION = SensorCalibration(
+  name="measured",
+  speed_scale=1.031,                  # GPS / wheel speed: 1.031 on all six driving segments
+  radar_doppler_scale=0.0625 / 0.06,  # standing targets fit 0.0618-0.0631 m/s per bit against GPS speed: 1/16, not the DBC's 0.06
+  radar_yaw=math.radians(0.6),        # cars in our lane drifted right with range (-0.7 m at 70 m) against openpilot's lanes and leads
+  adas_x_scale=0.80,                  # 60 cars paired with radar tracks: decoded = 0.80 (x + 3.7), 0.3 m median residual,
+  adas_x_origin=3.7,                  # i.e. ~0.25 m/bit rather than 0.2, from about the rear axle
+  adas_y_scale=1.35,                  # left-lane cars sat 1.4 m too far out at every range against openpilot's lanes
+  adas_latency=0.23,                  # lag that best lines up its ranges with the radar's (13 cars; 0.1-0.3 s for most)
+  op_x_offset=0.2,                    # leads read 0.2 m short close up: the camera is ~1.72 m behind the radar, radard assumes 1.52
+  model_x_offset=-1.7,
+  moving_frac=0.025,                  # both scales corrected, standing targets read within ~1.3% of our speed
+)
 
 
 # ---- measurement noise (1 sigma) -------------------------------------------------------------------
@@ -294,11 +347,27 @@ class Track:
     self.P = (np.eye(4) - K @ H) @ self.P
 
 
+def _same_source_id(a: Track, b: Track) -> bool:
+  """Both fed by the same radar or ADAS track id within SAME_ID_S (openpilot's lead index isn't an identity)."""
+  for src, s in a.sources.items():
+    o = b.sources.get(src)
+    if src != "op" and o is not None and o["id"] == s["id"] and abs(o["t"] - s["t"]) < SAME_ID_S:
+      return True
+  return False
+
+
 class WorldModel:
-  def __init__(self):
+  def __init__(self, calib: SensorCalibration = MEASURED_CALIBRATION):
     self.odo = EgoOdometry()
+    self.calib = calib
     self.next_id = 1   # never reset: a viewer keyed by id mustn't mistake a new object for an old one after a seek
     self.reset()
+
+  def set_calibration(self, calib: SensorCalibration) -> None:
+    """Switch calibrations; tracks built on the other one start over (they'd jump by meters)."""
+    if calib != self.calib:
+      self.calib = calib
+      self.reset()
 
   def reset(self) -> None:
     self.odo.reset()
@@ -338,6 +407,9 @@ class WorldModel:
 
   # ---- fusion ----
   def _process(self, batch: list[Meas]) -> None:
+    # one measurement per source id: the radar sometimes re-sends a whole cycle, and a second copy of an id would
+    # find its track already taken and start a duplicate of it
+    batch = list({(m.src, m.sid): m for m in batch}.values())
     t = batch[0].t
     self.src_seen[batch[0].src] = t
     pose = self.odo.pose(t)
@@ -443,17 +515,32 @@ class WorldModel:
         if B.t != A.t:
           B.predict(A.t)
         d = A.X[:2] - B.X[:2]
-        if np.hypot(*d) > MERGE_M or np.hypot(*(A.X[2:] - B.X[2:])) > 2.5:
-          continue
-        if float(d @ np.linalg.solve(A.P[:2, :2] + B.P[:2, :2], d)) > MERGE_GATE:
-          continue
-        keep, drop = (A, B) if A.n >= B.n else (B, A)
+        same = _same_source_id(A, B)
+        if same:
+          # one object split in two (its measurement jumped out of its own track's gate): keep the copy the
+          # source fed last, which is where the object is now
+          if np.hypot(*d) > SAME_ID_M:
+            continue
+          keep, drop = (A, B) if A.last_t >= B.last_t else (B, A)
+        else:
+          if np.hypot(*d) > MERGE_M or float(d @ np.linalg.solve(A.P[:2, :2] + B.P[:2, :2], d)) > MERGE_GATE:
+            continue
+          # a new track's velocity is barely known (the radar's lateral velocity especially), so speeds
+          # only have to agree within what the two estimates allow
+          dv = A.X[2:] - B.X[2:]
+          if np.hypot(*dv) > MERGE_V and float(dv @ np.linalg.solve(A.P[2:, 2:] + B.P[2:, 2:], dv)) > MERGE_GATE_V:
+            continue
+          keep, drop = (A, B) if A.n >= B.n else (B, A)
         for src, s in drop.sources.items():
           if src not in keep.sources or s["t"] > keep.sources[src]["t"]:
             keep.sources[src] = s
             keep.last[src] = drop.last[src]
         keep.confirmed = keep.confirmed or drop.confirmed
         keep.n += drop.n
+        if drop.cls_rank < keep.cls_rank:
+          keep.cls, keep.cls_rank, keep.dims = drop.cls, drop.cls_rank, drop.dims or keep.dims
+        if drop.heading is not None and drop.heading_rank < keep.heading_rank:
+          keep.heading, keep.heading_rank = drop.heading, drop.heading_rank
         if drop.vision_t is not None and (keep.vision_t is None or drop.vision_t > keep.vision_t):
           keep.vision_t = drop.vision_t
         keep.thin = max(keep.thin, drop.thin)
@@ -490,7 +577,7 @@ class WorldModel:
     v = self.odo.speed(t)
     kappa = self.odo.w / v if v > 1.0 else 0.0
     looking = v > UNSEEN_MIN_V and t - self.model_seen < 1.0
-    moving = MOVING_SPEED + MOVING_FRAC * abs(v)
+    moving = MOVING_SPEED + self.calib.moving_frac * abs(v)
     seen = {tid: tr.vision_t is not None or "adas" in tr.last for tid, tr in self.tracks.items()}   # a camera has it
     # tracks in our path within the model's range (m ahead), and the nearest one that surely blocks the model's
     # view past it: one a camera has, or a moving one the radar has classified and tracked for a while
@@ -524,8 +611,13 @@ class WorldModel:
           target, why = target * THIN_FACTOR, "thin"
         if tr.unseen_s >= UNSEEN_HOLD_S:
           target, why = min(target, CONF_UNSEEN), "unseen"
-      if t - tr.last_t > CONF_COAST_S:   # nothing reports it any more: it can only fade
+      if t - tr.last_t > CONF_COAST_S:
+        # nothing reports it any more. A standing object stays put on the ground, so it waits out a gap (a parked
+        # car the radar loses in a turn) without rising; a moving one would carry on along a velocity that's now
+        # a guess, through whatever it's really doing, so it fades out
         target = min(target, tr.conf)
+        if not standing:
+          target, why = 0.0, "coasting"
       if settle:
         tr.conf = target
       elif dt > 0:
@@ -577,37 +669,52 @@ class WorldModel:
 
 # ---- source adapters -------------------------------------------------------------------------------
 
-def radar_measurements(t: float, objects: list[dict], v_ego: float) -> list[Meas]:
+def radar_measurements(t: float, objects: list[dict], v_ego: float, calib: SensorCalibration = NO_CALIBRATION) -> list[Meas]:
   """One radar cycle (fisker_radar objects, measured at t). Relative velocity is translational, so
-  over ground it's v_rel + ego speed along x."""
+  over ground it's v_rel + ego speed along x. v_ego is the calibrated speed the odometry runs on."""
+  c, s = math.cos(calib.radar_yaw), math.sin(calib.radar_yaw)
+  k_v = calib.radar_doppler_scale
   out = []
   for o in objects:
     if o["age"] < RADAR_MIN_AGE:
       continue
-    sx, sy, svx, svy, k = radar_noise(math.hypot(o["x"], o["y"]), o["age"], o.get("hist", 0xFF))
-    out.append(Meas("radar", o["id"], t, o["x"], o["y"], sx, sy, o["vx"] + v_ego, o["vy"], svx, svy, weight=1.0 / k,
+    x, y = c * o["x"] - s * o["y"], s * o["x"] + c * o["y"]
+    vx, vy = k_v * (c * o["vx"] - s * o["vy"]), k_v * (s * o["vx"] + c * o["vy"])
+    heading = o.get("heading")
+    sx, sy, svx, svy, k = radar_noise(math.hypot(x, y), o["age"], o.get("hist", 0xFF))
+    out.append(Meas("radar", o["id"], t, x, y, sx, sy, vx + v_ego, vy, svx, svy, weight=1.0 / k,
                     cls=None if o["cls"] in ("unclassified",) else o["cls"],
-                    dims=(o["w"], o["l"], 1.5) if o.get("w") and o.get("l") else None, heading=o.get("heading"),
+                    dims=(o["w"], o["l"], 1.5) if o.get("w") and o.get("l") else None,
+                    heading=None if heading is None else heading + math.degrees(calib.radar_yaw),
                     info={"cycles": o["age"], "state": o.get("state"), "quality": o.get("quality")}))
   return out
 
 
-def adas_measurement(t_rx: float, o: dict) -> Meas:
-  sx, sy = adas_noise(math.hypot(o["x"], o["y"]))
+def adas_measurement(t_rx: float, o: dict, calib: SensorCalibration = NO_CALIBRATION) -> Meas:
+  x, y = o["x"] / calib.adas_x_scale - calib.adas_x_origin, o["y"] / calib.adas_y_scale
+  sx, sy = adas_noise(math.hypot(x, y))
   dims = (o["w"], o["l"], o["h"]) if o.get("w") and o.get("l") else None
-  return Meas("adas", o["id"], t_rx - ADAS_LATENCY_S, o["x"], o["y"], sx, sy, cls=o.get("cls"), dims=dims,
+  return Meas("adas", o["id"], t_rx - calib.adas_latency, x, y, sx, sy, cls=o.get("cls"), dims=dims,
               heading=o.get("heading"), info={"flags": o.get("flags", []), "classConf": o.get("classConf")})
 
 
-def op_measurements(t: float, rs: dict, v_ego: float) -> list[Meas]:
+def op_measurements(t: float, rs: dict, v_ego: float, calib: SensorCalibration = NO_CALIBRATION) -> list[Meas]:
   out = []
+  one = rs.get("leadOne") or {}
   for i, key in enumerate(("leadOne", "leadTwo")):
     ld = rs.get(key)
     if not ld or not ld.get("present") or ld.get("dRel") is None:
       continue
+    # leadTwo from the camera model is its lead 2 s from now, most often the car that's leadOne now: a second
+    # object a few meters off it (route 000000b4--d0f733ebb2--5 showed one for 15 s)
+    if i == 1 and not ld.get("radar") and one.get("present") and one.get("dRel") is not None and \
+       abs(ld["dRel"] - one["dRel"]) < max(LEAD_TWO_SAME_M, LEAD_TWO_SAME_FRAC * one["dRel"]) and \
+       abs((ld.get("yRel") or 0.0) - (one.get("yRel") or 0.0)) < LEAD_TWO_SAME_Y:
+      continue
     prob = ld.get("modelProb") or 0.0
-    sx, sy, svx = op_noise(ld["dRel"], prob, bool(ld.get("radar")))
+    d_rel = ld["dRel"] + (0.0 if ld.get("radar") else calib.op_x_offset)
+    sx, sy, svx = op_noise(d_rel, prob, bool(ld.get("radar")))
     v = ld["vLead"] if ld.get("vLead") is not None else (ld["vRel"] + v_ego if ld.get("vRel") is not None else None)
-    out.append(Meas("op", i, t, ld["dRel"], ld.get("yRel") or 0.0, sx, sy, v, None, svx, 10.0, cls="car",
+    out.append(Meas("op", i, t, d_rel, ld.get("yRel") or 0.0, sx, sy, v, None, svx, 10.0, cls="car",
                     info={"modelProb": prob, "radar": bool(ld.get("radar")), "aLead": ld.get("aLead")}))
   return out

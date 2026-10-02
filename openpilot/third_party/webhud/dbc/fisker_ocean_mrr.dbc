@@ -1347,7 +1347,7 @@ CM_ SG_ 784 MRR_Obj00_Quality "13 for mature stationary tracks, 5-10 otherwise; 
 CM_ SG_ 784 MRR_Obj00_Age "Radar cycles (65 ms) since track creation; MeasHistory has (Age-3) valid bits.";
 CM_ SG_ 784 MRR_Obj00_DistLong "x, forward from the radar. Scale checked against GPS (0.0503 m/bit).";
 CM_ SG_ 784 MRR_Obj00_DistLat "y, POSITIVE = RIGHT (openpilot yRel = -DistLat). Sign from ego-odometry fits in turns; scale 0.05 matches but only to ~10%.";
-CM_ SG_ 784 MRR_Obj00_VrelLong "Relative velocity. Stationary targets read -ADAS_MRR_VehSpd exactly at 0.06 (16.7 raw per m/s); 0.0625 is the runner-up scale.";
+CM_ SG_ 784 MRR_Obj00_VrelLong "Relative velocity. Stationary targets read -ADAS_MRR_VehSpd at 0.06 (16.7 raw per m/s), but that speed is wheel speed, 3.1% under GPS: against GPS they fit 0.0618-0.0631, i.e. 0.0625 (1/16). The web HUD world model applies 0.0625/0.06 (world_model.MEASURED_CALIBRATION).";
 CM_ SG_ 784 MRR_Obj00_VrelLat "Positive = right. Translational only: stationary targets stay ~0 in turns.";
 CM_ SG_ 784 MRR_Obj00_ArelLong "Scale ~0.031 m/s2 per bit from -aEgo on stationary targets; 0.03 vs 1/32 not resolved.";
 CM_ SG_ 784 MRR_Obj00_DistLong_Std "6-bit uncertainty code (monotonic, smaller = better), scale unknown. Same for all *_Std.";

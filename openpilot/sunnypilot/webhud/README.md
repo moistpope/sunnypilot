@@ -101,7 +101,26 @@ ego pose dead-reckoned from ESP wheel speed and the YRS yaw-rate gyro, and weigh
 noise model (radar: range and Doppler; camera: bearing, class, size; openpilot leads only corroborate
 on this car). The view anchors the objects to the ground, so parked cars stay put through turns; the
 scene's own ego motion now uses the gyro too. *Raw sources* draws each source as it reports. Radar
-tracks younger than 1.3 s are hidden unless *All radar tracks* is on.
+tracks younger than 1.3 s are hidden unless *All radar tracks* is on. A world object is drawn with its
+center half a car length beyond the reported point along the car's own axis (half a width when seen
+side-on), since every source reports the face nearest us.
+
+Before fusing, each source is corrected by the *measured sensor calibration* (`MEASURED_CALIBRATION` in
+`world_model.py`, *Display → Geometry calibration*, on by default). Its values come from replaying
+`000000b5--bfe13ac451` and `000000b4--d0f733ebb2` against GPS, openpilot's leads and lane lines:
+- The ADAS object list's range is 0.8× the radar's plus ~3 m (~0.25 m/bit from about the rear axle), so
+  it's read as `x / 0.80 − 3.7`.
+- Its lateral reads 1.35× too wide.
+- Its latency is ~0.23 s.
+- The radar's Doppler is 1/16 m/s per bit (not 0.06), and its output is turned 0.6° left.
+- The wheel speed reads 3.1% under GPS, which the odometry and the view's ego motion correct.
+- openpilot's leads read 0.2 m short (the camera is ~1.72 m behind the radar).
+
+Uncorrected, a car the ADAS list and the radar both see splits in two at range and the copies cross at
+~10–15 m. The switch applies to every viewer until the HUD restarts (`PUT /api/calibration`). The radar
+sometimes sends a cycle twice, and `fisker_radar.py` hands each cycle out once. openpilot's `leadTwo`
+(its lead 2 s from now) only counts when it's clearly another car than `leadOne`. Two tracks one radar or
+ADAS id fed within a second are merged.
 
 Each world-model object has a confidence, and the view fades it in between 35% and 65% and hides it
 below that. The radar measures no elevation (nothing decoded so far gives height), so overhead
@@ -116,10 +135,12 @@ stays hidden until its radar track has lasted 1.3 s. After that it gets 85% if i
 ground and 60% (drawn a little see-through) if it stands. A standing object drops to about 33% if
 the radar has drawn it at least 4 times wider than long and 1.5 m wide, and to 15% once openpilot's
 model has missed it for 0.5 s in plain view: standing within 1.5 m of our path, 8–80 m ahead, above
-5 m/s, with no camera-seen or moving object in front of it. *Low-confidence objects* (*Display*, off
-by default) draws the hidden ones faintly, and *Object stats* gives each object's confidence and the
-reason for it (*vision*, *moving*, *standing*, *thin*, *unseen*, *young*, *unclassified*). Paused,
-each object shows its settled confidence.
+5 m/s, with no camera-seen or moving object in front of it. Once no source has reported an object for
+0.3 s it can't rise; a moving one fades out (*coasting*) rather than carry on along a velocity that's
+now a guess, while a standing one waits (a parked car the radar loses in a turn). *Low-confidence objects*
+(*Display*, off by default) draws the hidden ones faintly, and *Object stats* gives each object's
+confidence and the reason for it (*vision*, *moving*, *standing*, *thin*, *unseen*, *young*,
+*unclassified*, *coasting*). Paused, each object shows its settled confidence.
 
 *Object stats* (*Display*, off by default, `static/js/labels.js`): a debug tag over every object the
 view draws, giving its source (the ADAS camera's list, an openpilot lead, the radar), track ID and
@@ -156,7 +177,7 @@ hotspot, runs the HUD full screen and rides out dropouts.
 Bus 2 (ADAS module) unless noted; the full set is in the *Signals* tab.
 
 - **Lanes:** `0x339` LeLine1, `0x20A/0x20B` LeLine2/3, `0x20C/0x20D/0x20E` RiLine1/2/3 (offset, heading, curvature radius, type, color, confidence); `0x20F` lane width + lane types; `0x340` what the cluster draws (blue while lane centering, red/flash on departure); `0x350` adjacent lane widths/types, oncoming lanes, landmarks, crosswalk/stop line, construction; `0x210` curbs.
-- **Objects:** `0x33B 0x34B 0x32D 0x33D 0x34D 0x32F 0x33F 0x34F` ADAS_Obj1..8 (position, size, heading, class, brake light). Highlights come from `0x31C` ACC primary/secondary target, `0x353` leading vehicle, `0x315` BSD/DOW threat IDs, `0x31A` AEB/rear-AEB/BACM threat IDs, `0x31B` ELKA threat. Positions are 0.2 m/bit, not the matrix's 0.5 (checked against openpilot's leads; corrected in `tools/gen_world_dbc.py`), so the list reaches ~50 m. Cars are drawn from this list; openpilot's two leads (from the comma camera; the Fisker port has no radar) fill in only where the ADAS has no car, and a re-IDed ADAS track is merged rather than shown twice.
+- **Objects:** `0x33B 0x34B 0x32D 0x33D 0x34D 0x32F 0x33F 0x34F` ADAS_Obj1..8 (position, size, heading, class, brake light). Highlights come from `0x31C` ACC primary/secondary target, `0x353` leading vehicle, `0x315` BSD/DOW threat IDs, `0x31A` AEB/rear-AEB/BACM threat IDs, `0x31B` ELKA threat. Positions decode at 0.2 m/bit, not the matrix's 0.5 (checked against openpilot's leads; corrected in `tools/gen_world_dbc.py`), so the list reaches ~50 m. Against the radar the range fits ~0.25 m/bit from about the rear axle instead; the world model's sensor calibration corrects for that, and the raw view shows the list as decoded. Cars are drawn from this list; openpilot's two leads (from the comma camera; the Fisker port has no radar) fill in only where the ADAS has no car, and a re-IDed ADAS track is merged rather than shown twice.
 - **ACC / assist:** `0x313` ACC state, TJA autosteer, ISA/TSR/TLR state; `0x31C` set speed, time gap (+ recommendation), icon, function type; `0x314` LKA/ELKA/ESA/LCA/APA/DOW/BSD/DCAA/AHBA states; `0x31B` lane-change trajectory and hands-on request; `0x342` HOD, haptic and turn-lamp requests.
 - **Warnings:** `0x317` chimes, takeover request, cluster/mirror warnings, fault text; `0x31A` AEB warning/intervention and telltales; `0x311` degradation pop-ups.
 - **Signs & lights:** `0x311` TSR speed limit (+ unit), `0x210` sign condition, no-passing, traffic light color/shape, `0x351` traffic light distance, lead turn signal/brake, `0x334` prohibition signs, camera blockage.
@@ -172,7 +193,8 @@ Verify them on a drive with good lane confidence against the openpilot lanes (*L
 
 `GET /api/status`, `GET /api/routes`, `POST /api/replay {action: load|play|pause|toggle|seek|step|speed|live|demo, ...}`,
 `PUT /api/upload?name=<file>` (raw rlog/qlog body), `GET /api/dbc`, `GET|PUT /api/params` (personality,
-experimental mode, units), `GET|PUT|DELETE /api/overrides`. WebSocket `/ws`: server sends
+experimental mode, units), `GET|PUT|DELETE /api/overrides`, `GET|PUT /api/calibration {on}` (the world
+model's sensor calibration). WebSocket `/ws`: server sends
 `{type: hello|state|raw}`; client sends `{type: raw, addrs}`, `{type: replay, ...}`.
 
 Writes are accepted from private addresses only, never cross-origin, and CAN override changes and

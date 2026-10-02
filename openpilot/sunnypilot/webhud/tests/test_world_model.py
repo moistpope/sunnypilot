@@ -7,8 +7,9 @@ See the LICENSE.md file in the root directory for more details.
 import math
 
 from openpilot.common.test import OpenpilotTestCase
-from openpilot.sunnypilot.webhud.world_model import (CONF_STANDING, FRONT_TO_REAR_AXLE, FUSION_DELAY_S, RADAR_MIN_AGE, EgoOdometry, WorldModel,
-                                                     adas_measurement, op_measurements, radar_measurements, to_ego, to_world)
+from openpilot.sunnypilot.webhud.world_model import (CONF_STANDING, FRONT_TO_REAR_AXLE, FUSION_DELAY_S, MEASURED_CALIBRATION, NO_CALIBRATION,
+                                                     RADAR_MIN_AGE, EgoOdometry, WorldModel, adas_measurement, op_measurements, radar_measurements,
+                                                     to_ego, to_world)
 
 SHOWN, HIDDEN = 0.65, 0.35   # the view's fade (scene.js CONF_FULL / CONF_HIDE)
 
@@ -240,3 +241,79 @@ class TestConfidence(OpenpilotTestCase):
     self.model.step(1.0)
     (o,) = self.model.step(1.0)
     assert o["conf"] == 1.0
+
+
+class TestFusionFixes(OpenpilotTestCase):
+  """Ways one car used to become two (or a ghost), found replaying routes 000000b5--bfe13ac451 and 000000b4--d0f733ebb2."""
+
+  def setUp(self):
+    super().setUp()
+    self.model = WorldModel()
+
+  def cycles(self, t0, t1, measure, dt=0.065):
+    """Standing still, add measure(t) every cycle from t0 to t1; returns [(t, objects)] at each cycle."""
+    out, t = [], t0
+    while t <= t1 + 1e-9:
+      self.model.odo.update(t, 0.0, 0.0)
+      self.model.add(measure(t))
+      out.append((t, self.model.step(t)))
+      t += dt
+    return out
+
+  def test_a_cycle_measured_twice_is_one_object(self):
+    # the radar re-sends a cycle now and then, and both copies reach the model with one MeasTime: the second
+    # copy mustn't start a track of its own (which would show until merged, or coast on as a ghost)
+    first = self.model.next_id
+    snaps = self.cycles(0.0, 1.5, lambda t: radar_measurements(t, [radar_obj(5, 20.0, 0.0, cls="car", w=2.0, l=4.5)] * 2, 0.0))
+    assert self.model.next_id == first + 1 and len(snaps[-1][1]) == 1
+
+  def test_track_split_by_a_jump_is_merged_back(self):
+    # the radar's point on a car jumps 3.5 m as we come alongside (track 479 on 000000b5--bfe13ac451--12): out of
+    # its own track's gate, so it starts a new one, which is the same car
+    def see(t):
+      return radar_measurements(t, [radar_obj(479, 20.0 if t < 1.0 else 23.5, 0.0, cls="car", w=2.0, l=4.5)], 0.0)
+    snaps = self.cycles(0.0, 2.0, see)
+    (o,) = snaps[-1][1]
+    assert abs(o["x"] - 23.5) < 0.5, o["x"]
+
+  def test_lead_two_that_is_lead_one_is_dropped(self):
+    def leads(two, radar=False):
+      return op_measurements(0.0, {"leadOne": {"present": True, "dRel": 30.0, "yRel": 0.0, "vLead": 10.0, "modelProb": 0.9},
+                                   "leadTwo": {"present": True, "dRel": two, "yRel": 0.4, "vLead": 10.0, "modelProb": 0.8, "radar": radar}}, 10.0)
+    assert [m.sid for m in leads(33.0)] == [0]               # the model's lead 2 s from now: the same car (000000b4--d0f733ebb2--5)
+    assert [m.sid for m in leads(55.0)] == [0, 1]            # a car beyond it
+    assert [m.sid for m in leads(33.0, radar=True)] == [0, 1]   # another radar track, on a car with a radar in radarState
+
+  def test_lost_moving_car_fades_and_a_standing_one_waits(self):
+    def see(t):
+      if t > 1.5:
+        return []   # both stop being reported
+      return radar_measurements(t, [radar_obj(1, 20.0 + 8.0 * t, 3.5, vx=8.0, cls="car", w=2.0, l=4.5),
+                                    radar_obj(2, 30.0, -3.5, cls="car", w=2.0, l=4.5)], 0.0)
+    snaps = self.cycles(0.0, 2.6, see)
+    by_id = {o["sources"][0]["id"]: o for o in snaps[-1][1]}
+    assert 1 not in by_id or (by_id[1]["conf"] < HIDDEN and by_id[1]["confWhy"] == "coasting")   # no ghost carrying on at 8 m/s
+    assert by_id[2]["conf"] > HIDDEN                                                             # a parked car the radar lost in a turn
+
+
+class TestCalibration(OpenpilotTestCase):
+  def test_sources_corrected(self):
+    m = adas_measurement(1.0, {"id": 1, "x": 20.0, "y": 2.7, "cls": "car"}, MEASURED_CALIBRATION)
+    assert abs(m.x - (20.0 / 0.80 - 3.7)) < 1e-9 and abs(m.y - 2.0) < 1e-9 and abs(m.t - 0.77) < 1e-9
+    (r,) = radar_measurements(0.0, [radar_obj(1, 50.0, 0.0, vx=-6.0)], 0.0, MEASURED_CALIBRATION)
+    assert abs(r.y - 50.0 * math.sin(math.radians(0.6))) < 1e-6 and abs(r.vx + 6.0 * 0.0625 / 0.06) < 0.01
+    (op,) = op_measurements(0.0, {"leadOne": {"present": True, "dRel": 30.0, "yRel": 0.0, "vLead": 0.0, "modelProb": 0.9}}, 0.0, MEASURED_CALIBRATION)
+    assert abs(op.x - 30.2) < 1e-9
+    # uncalibrated, every source is taken as it decodes
+    assert adas_measurement(1.0, {"id": 1, "x": 20.0, "y": 2.7, "cls": "car"}).x == 20.0
+    assert radar_measurements(0.0, [radar_obj(1, 50.0, 0.0, vx=-6.0)], 0.0)[0].vx == -6.0
+
+  def test_switching_starts_tracks_over(self):
+    model = WorldModel()
+    assert model.calib is MEASURED_CALIBRATION and model.calib.to_json()["on"]
+    model.odo.update(0.0, 0.0, 0.0)
+    model.add([adas_measurement(0.5, {"id": 4, "x": 12.0, "y": 0.0, "cls": "car"}, model.calib)])
+    model.step(0.5)
+    assert model.step(0.5)
+    model.set_calibration(NO_CALIBRATION)
+    assert model.step(0.6) == [] and not model.calib.to_json()["on"]

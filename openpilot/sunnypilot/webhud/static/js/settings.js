@@ -276,10 +276,18 @@ export class Settings {
     ];
     body.append(el('div.section', el('div.rows', toggles.map(([k, t, d]) =>
       el('div.row', el('div.lbl', el('b', t), el('small', d)), this.app.switch(s[k] !== false, v => set(k, v)))))));
+    const calib = this.app.state && this.app.state.calibration;
     body.append(el('div.section', el('h3', 'Geometry calibration'),
       el('p.desc', 'The ADAS lane heading direction is verified on the car; lane curvature and object heading signs aren\'t documented. ' +
         'Flip these if lines bend or cars point the wrong way compared to the openpilot lanes.'),
       el('div.rows',
+        el('div.row', el('div.lbl', el('b', 'Measured sensor calibration'),
+          el('small', 'World model: correct each source by what replaying drives against GPS, openpilot\'s leads and lanes measured: ' +
+            'the ADAS camera\'s object range (0.8x the radar\'s, from about the rear axle) and lateral scale and latency, the radar\'s ' +
+            'Doppler scale and a 0.6 deg yaw, and the wheel speed (3% low). Off takes every source as it decodes, for comparison. ' +
+            'Applies to every viewer until the HUD restarts.')),
+          this.app.switch(!calib || calib.on !== false, v => api('/api/calibration', { method: 'PUT', body: { on: v } })
+            .then(() => this.app.toast(v ? 'Measured calibration on' : 'Calibration off')).catch(e => this.app.toast(e.message)))),
         el('div.row', el('div.lbl', el('b', 'Invert lane heading')), this.app.switch(s.laneHeadingSign === -1, v => set('laneHeadingSign', v ? -1 : 1))),
         el('div.row', el('div.lbl', el('b', 'Invert lane curvature')), this.app.switch(s.laneCurvatureSign === -1, v => set('laneCurvatureSign', v ? -1 : 1))),
         el('div.row', el('div.lbl', el('b', 'Invert object heading')), this.app.switch(s.objectHeadingSign === -1, v => set('objectHeadingSign', v ? -1 : 1))),
