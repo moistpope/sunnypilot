@@ -158,7 +158,8 @@ button.icon { width: 44px; min-width: 44px; padding: 0; display: inline-flex; al
 button.icon svg { width: 22px; height: 22px; }
 
 /* ---------- replay bar ---------- */
-.replaybar { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); width: min(820px, calc(100vw - 420px)); min-width: 420px; display: flex; align-items: center; gap: 8px; padding: 8px 12px; z-index: 6; }
+/* sits just left of the view bar (its width is measured into --viewbar-w) so it never covers the view buttons */
+.replaybar { position: absolute; right: calc(var(--viewbar-w, 360px) + 28px); bottom: 16px; width: min(820px, calc(100vw - var(--viewbar-w, 360px) - 60px)); display: flex; align-items: center; gap: 8px; padding: 8px 12px; z-index: 6; }
 .replaybar button { height: 40px; border: 0; border-radius: 10px; background: transparent; color: var(--text); font-weight: 600; }
 .replaybar button.small { padding: 0 8px; font-size: 13px; color: var(--muted); }
 .replaybar button.accent { background: var(--accent); color: #fff; padding: 0 14px; }
@@ -295,7 +296,7 @@ a { color: var(--accent); }
 @media (max-width: 760px) and (min-aspect-ratio: 1/1) {
   #drive { width: 250px; padding: 10px 14px; }
   .alerts { width: min(420px, 40vw); }
-  .replaybar { width: calc(100vw - 300px); min-width: 300px; }
+  .replaybar { right: 16px; bottom: 76px; width: min(560px, calc(100vw - 32px)); }   /* no room beside the view bar: above it */
 }
 @media (max-height: 520px) and (min-aspect-ratio: 1/1) {
   .speed { font-size: 58px; }

@@ -34,17 +34,32 @@ export class Settings {
     this.app.subscribeRaw([]);
   }
 
-  show(tab) {
+  // keep: re-render the open tab after a change without moving it -- the new content is built off-screen
+  // and swapped in at the same scroll position, so the page neither jumps to the top nor flashes empty
+  async show(tab, keep = false) {
+    keep = keep && tab === this.tab;
     this.tab = tab;
     $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-    this.body.innerHTML = '';
-    this.body.scrollTop = 0;
     if (tab !== 'signals') this.app.subscribeRaw([]);
     const render = {
       overrides: () => this.renderOverrides(), driving: () => this.renderDriving(), display: () => this.renderDisplay(),
       playback: () => this.renderPlayback(), signals: () => this.renderSignals(), about: () => this.renderAbout(),
     }[tab];
-    render && render();
+    const live = this.body;
+    if (!keep) {
+      live.innerHTML = '';
+      live.scrollTop = 0;
+      render && render();
+      return;
+    }
+    const scroll = live.scrollTop, offscreen = document.createElement('div');
+    this.body = offscreen;
+    const done = render && render();   // every renderer takes this.body before its first await
+    this.body = live;
+    await done;
+    if (this.tab !== tab) return;      // switched tabs meanwhile
+    live.replaceChildren(...offscreen.childNodes);
+    live.scrollTop = scroll;
   }
 
   // ---- CAN overrides --------------------------------------------------------------------------
@@ -63,6 +78,7 @@ export class Settings {
       this.edits = {};
     }
     if (this.tab !== 'overrides') return;
+    const scroll = body.scrollTop;   // edits re-render in place
     body.innerHTML = '';
     const data = this.overrides;
     if (!data.supported) {
@@ -95,6 +111,7 @@ export class Settings {
     }
     body.append(el('div.row', el('div.lbl', el('b', 'Show every signal'), el('small', 'Add overrides for signals the code leaves alone.')),
       this.app.switch(showAll, v => { this.showAllSignals = v; this.renderOverrides(false); })));
+    body.scrollTop = scroll;
   }
 
   overrideRow(table, sig, edits, editable) {
@@ -188,7 +205,7 @@ export class Settings {
     )));
   }
 
-  renderDrivingSoon() { setTimeout(() => { if (this.tab === 'driving') this.show('driving'); }, 150); }
+  renderDrivingSoon() { setTimeout(() => { if (this.tab === 'driving') this.show('driving', true); }, 150); }
 
   // ---- display (stored in this browser) ------------------------------------------------------------
 

@@ -6,7 +6,7 @@ import { Settings } from './settings.js';
 import { VehicleState } from './vehicle.js';
 
 const SETTINGS_VERSION = 2;
-const AUTO_VIEW_HOLD_MS = 30000;   // after the user picks a view or moves the camera, auto view waits this long
+const AUTO_VIEW_HOLD_MS = 10000;   // a parking maneuver starting this soon after the user picked a view keeps it
 const STALE_MS = 6000;             // the server streams at 20 Hz: this long without a message means the link is dead
 const DEFAULTS = {
   theme: 'auto', units: 'auto', laneSource: 'blend', egoColor: 'model', view: 'chase',
@@ -38,7 +38,8 @@ class App {
     this.rawAddrs = [];
     this.lastStateAt = 0;
     this.lastMsgAt = 0;
-    this.autoViewActive = false;
+    this.autoViewActive = false;   // the view is auto view's top view (returns to the setting after)
+    this.parkingStop = false;      // inside a parking stop auto view has already acted on
     this.manualViewAt = -1e9;
 
     this.scene = new CarScene($('#scene'));
@@ -52,6 +53,7 @@ class App {
     this.bindReplaybar();
     this.updateLayout();
     window.addEventListener('resize', () => this.updateLayout());
+    if (window.ResizeObserver) new ResizeObserver(() => this.updateLayout()).observe($('#viewbar'));   // web fonts, icons
     // mobile toolbars showing/hiding change the visible height without always firing window resize
     if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { this.scene.resize(); this.updateLayout(); });
     matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => this.applyTheme());
@@ -90,7 +92,7 @@ class App {
     if (key === 'egoColor') this.scene.setEgoColor(value);
     if (key === 'showRadar') this.updateRadarChip();
     this.scene.update(this.state, this.settings);
-    if (this.ui.isOpen && this.ui.tab === 'display') this.ui.show('display');
+    if (this.ui.isOpen && this.ui.tab === 'display') this.ui.show('display', true);
   }
 
   applyTheme() {
@@ -104,6 +106,7 @@ class App {
   updateLayout() {
     // landscape: center the car in the area right of the status card
     const portrait = window.innerWidth <= window.innerHeight;
+    document.documentElement.style.setProperty('--viewbar-w', `${$('#viewbar').offsetWidth}px`);
     const card = $('#drive');
     const shift = portrait ? 0 : (card.getBoundingClientRect().right + 16) / 2 / window.innerWidth;
     this.scene.setLayoutOffset(shift);
@@ -213,15 +216,17 @@ class App {
     setClass($('#replaybar'), 'hidden', !replay);
     if (replay) this.updateReplaybar(state.replay);
     this.updateRadarChip();
-    if (prevMode !== state.mode && this.ui.isOpen && this.ui.tab === 'playback') this.ui.show('playback');
+    if (prevMode !== state.mode && this.ui.isOpen && this.ui.tab === 'playback') this.ui.show('playback', true);
     this.autoView(state);
   }
 
-  // Tesla-like: switch to a top view when parking (slow, reverse or obstacles close), back afterwards.
-  // A view the user picks (or a camera they move) wins for AUTO_VIEW_HOLD_MS before auto view resumes.
+  // Tesla-like: switch to a top view when a parking maneuver starts (slow, in reverse or with obstacles
+  // close) and back once the car drives off. It acts once per stop: a view the user picks while stopped
+  // stays until the car has driven away (the parking sensors keep reporting a wall behind a parked car,
+  // so a level check would flip back to top forever), and a maneuver that starts right after they
+  // picked a view doesn't switch at all.
   autoView(state) {
-    if (this.settings.autoView === false || this.scene.interacting) return;
-    if (performance.now() - Math.max(this.manualViewAt, this.scene.lastInteract) < AUTO_VIEW_HOLD_MS) return;
+    if (this.settings.autoView === false) return;
     const op = state.op || {};
     const f = state.fisker;
     const v = op.carState ? op.carState.vEgo : (f && f.vehicle && f.vehicle.speedKph != null ? f.vehicle.speedKph / 3.6 : null);
@@ -229,13 +234,20 @@ class App {
     const uss = f && f.parking && f.parking.uss;
     const close = uss && Object.values(uss).some(arr => arr.some(z => z >= 1 && z <= 2));
     const parking = v != null && v < 2.5 && (reverse || close);
-    if (parking && !this.autoViewActive) {
-      this.autoViewActive = true;
-      this.scene.setView('top');
-      this.markView('top');
-    } else if (!parking && this.autoViewActive && (v == null || v > 4)) {
-      this.autoViewActive = false;
-      this.setView(this.settings.view);
+    if (parking && !this.parkingStop) {
+      if (this.scene.interacting) return;   // start it once the user lets go of the camera
+      this.parkingStop = true;
+      if (performance.now() - this.manualViewAt > AUTO_VIEW_HOLD_MS) {
+        this.autoViewActive = true;
+        this.scene.setView('top');
+        this.markView('top');
+      }
+    } else if (!parking && this.parkingStop && v != null && v > 4) {
+      this.parkingStop = false;
+      if (this.autoViewActive) {
+        this.autoViewActive = false;
+        this.setView(this.settings.view);
+      }
     }
   }
 
