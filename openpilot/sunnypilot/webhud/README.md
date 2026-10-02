@@ -11,8 +11,8 @@ textured ground moves under it with speed and steering (dead-reckoned about the 
 bicycle model from `steeringAngleDeg`), the wheels roll and the front pair steers, and the model's own
 lamps light up, following the BCM's lamp outputs (`BCM_0x335`, falling back to carState): DRLs,
 headlights, the lower front strips (white DRL, amber while indicating), quarter-panel and rear turn
-indicators, tail, brake, third brake light and reversing lamps (`static/js/lamps.js`), each with a soft
-glow so it reads from the chase camera. The car reflects a soft studio environment of its own
+indicators, tail, brake, third brake light and reversing lamps (`static/js/lamps.js`). The red and amber
+lamps get a soft glow so they read from the chase camera. The car reflects a soft studio environment of its own
 (`studioEnvironment` in `scene.js`), so its glossy paint, glass and chrome trim catch highlights.
 
 Lanes and objects are filtered before drawing (`static/js/road.js`, `scene.js`): lane lines are

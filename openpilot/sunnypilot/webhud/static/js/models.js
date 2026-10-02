@@ -267,7 +267,7 @@ const RIG = {
   wheelFace: 'Wheel_Face',
   tire: 'PBR_tire',
   corners: ['Front_L', 'Front_R', 'Rear_L', 'Rear_R'],
-  glow: 0.035,   // m: radius of the glow spots over lit lamps
+  glow: 0.05,   // m: radius of the glow spots over lit lamps
   // lamp -> lit color and the light materials it drives (the model's light-map.json)
   lamps: {
     drl: [LAMP.white, 'Light_DRL_L', 'Light_DRL_R', 'Light_DRL_Center'],   // the center bar includes OCEAN
