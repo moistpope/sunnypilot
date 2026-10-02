@@ -66,7 +66,7 @@ class TestServer(OpenpilotTestCase):
     # third-party assets are served from openpilot/third_party/webhud
     status, body, res = self.request("GET", "/vendor/OrbitControls.js")
     assert status == 200 and b"OrbitControls" in body and "max-age" in res.getheader("Cache-Control")
-    status, body, res = self.request("GET", "/models/fisker_ocean.glb")
+    status, body, res = self.request("GET", "/models/pulse_ocean_v0.10.glb")
     assert status == 200 and body[:4] == b"glTF" and res.getheader("Content-Type") == "model/gltf-binary"
     for path in ("/../../server.py", "/vendor/../../../sunnypilot/webhud/server.py"):
       status, body, _ = self.request("GET", path)

@@ -1,9 +1,10 @@
-// Procedural low-poly models in the soft, matte style of Tesla's visualization.
+// Procedural low-poly models in the soft, matte style of Tesla's visualization, and the detailed
+// Ocean glTF model for the ego car.
 // Model space: forward = -Z, right = +X, up = +Y, origin at the FRONT bumper on the ground,
 // matching the ADAS/openpilot convention (distances measured from the front bumper).
 import * as THREE from '../vendor/three.module.min.js';
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
-import { Lamp, LAMP, conform, centerline, splitMesh } from './lamps.js';
+import { Lamp, LAMP } from './lamps.js';
 
 const geoCache = new Map();
 function cached(key, make) {
@@ -172,7 +173,7 @@ function vehicle(spec, paint, opts = {}) {
       spin.add(wheel(spec.wheelR, tw, tireMaterial));
       steer.add(spin);
       g.add(steer);
-      wheels.push({ steer, spin, r: spec.wheelR, w: tw, front: ax === frontAxle, spokes: 6 });
+      wheels.push({ steer, spin, axis: 'x', pos: steer.position, r: spec.wheelR, w: tw, front: ax === frontAxle, spokes: 6 });
     }
   }
   const shadow = softShadow(spec.width, spec.length);
@@ -212,106 +213,73 @@ export function makeEgo(color = 0x2a2d33) {
   return g;
 }
 
-// The Fisker Ocean glTF model (third_party/webhud/models/fisker_ocean.glb, CC BY 4.0 LagzDesign). The
-// file is Y-up with the nose at +X; turn it to face -Z, scale it to the real car's length and put
-// the front bumper at z=0 on the ground, like the procedural models.
-const OCEAN_GLTF = {
-  paint: ['Material.001'],
-  head: ['Material.004'],     // full-width front light bar
-  tail: ['Material.005'],     // tail light strips, wrapping onto the rear quarters
-  chmsl: ['Material.006'],    // third brake light
-  body: ['Material.001', 'Material.002', 'Material.003', 'Material.010'],   // surfaces lamps can be laid on
-  // Lamps the model has no geometry for, laid onto the body. Left-side polylines in ego space (x < 0
-  // is the car's left; mirrored for the right), pushed along `dir` until they meet the surface.
-  // Placed from photos of the real car.
-  added: {
-    front: { pts: [[-0.55, 0.665], [-0.7, 0.665], [-0.78, 0.655], [-0.82, 0.62], [-0.845, 0.55], [-0.86, 0.48]], z: -0.4, dir: 1, width: 0.024, glow: 0.07 },   // amber, along the lower intakes
-    mirror: { pts: [[-0.95, 1.13], [-1.02, 1.135], [-1.045, 1.16], [-1.05, 1.2]], z: 1.4, dir: 1, width: 0.018, glow: 0.05 },   // amber, mirror caps
-    rear: { pts: [[-0.52, 0.564], [-0.64, 0.56], [-0.76, 0.552]], z: 5.2, dir: -1, width: 0.03, glow: 0.07 },   // lower rear: amber indicator / red tail
-    reverse: { pts: [[-0.42, 0.566], [-0.5, 0.565]], z: 5.2, dir: -1, width: 0.032, glow: 0.07 },
-  },
-  wheel: ['MA_tire_003', 'Material.007', 'Material.008', 'Material.009'],   // tire + rim parts, per wheel
-  spokes: 5,
-  // The rims are black mirror-metal, which renders flat black without an environment map. A satin
-  // finish with lighter spokes makes them visibly turn.
-  finish: {
-    'Material.007': { color: 0x2c3036, metalness: 0.3, roughness: 0.45 },   // aero disc
-    'Material.008': { color: 0xa3aab4, metalness: 0.4, roughness: 0.35 },   // the five spokes
-    'Material.009': { color: 0x454a52, metalness: 0.3, roughness: 0.5 },    // hub
-    'MA_tire_003': { color: 0x1b1c1f, metalness: 0, roughness: 0.9 },
-  },
-  // The export's KHR_materials_specular factors (0-0.09) all but switch reflections off, so the glossy
-  // paint, glass and trim render flat black. A plain dielectric is 1; matte plastic a little less.
-  specular: { 'Material.001': 1, 'Material': 1, 'Material.002': 0.8, 'Material.003': 0.5, 'Material.010': 1 },
+// ---- the Ocean glTF model ----------------------------------------------------------------------
+
+// Pulse Ocean v0.10 (third_party/webhud/models): a detailed Fisker Ocean rigged for ADAS views. It is
+// in meters, +X forward, +Y up, -Z to the car's left, and is used at that scale: it measures within
+// 2% of the real car (4.79 m long vs 4.775, 1.94 m wide without mirrors vs 1.98, 1.64 m tall vs 1.63,
+// wheelbase 2.90 m vs 2.92). Turned to face -Z with the front bumper at z=0 on the ground.
+
+// Factory paints, from the model's paint-colours.json: digital approximations of the paint chips,
+// applied to its PBR_carpaint material. The swatch is sRGB (three converts it to the linear values
+// the model lists).
+const PAINT_FINISH = {
+  'Gloss solid': { metalness: 0.05, roughness: 0.24, clearcoat: 0.5 },
+  'Gloss metallic': { metalness: 0.7, roughness: 0.24, clearcoat: 0.5 },
+  'Matte metallic': { metalness: 0.7, roughness: 0.53, clearcoat: 0 },
+  'Pearl': { metalness: 0.7, roughness: 0.24, clearcoat: 0.5 },
 };
-
-// Turn the model's light meshes into switchable lamps and lay the missing ones onto the body.
-function oceanLamps(g, meshes, L) {
-  const lens = { clear: 0x9aa0a8, red: 0x5a0d0b, darkRed: 0x3c0a08, amber: 0x2e2a26 };
-  const lamps = {
-    drl: new Lamp(LAMP.white, lens.clear), head: new Lamp(LAMP.white, lens.clear),
-    tail: new Lamp(LAMP.red, lens.red), chmsl: new Lamp(LAMP.red, lens.darkRed), reverse: new Lamp(LAMP.white, 0x5c6066),
-  };
-  for (const s of ['L', 'R']) {   // per side: names like markerL / markerR
-    lamps['marker' + s] = new Lamp(LAMP.red, lens.red);
-    lamps['front' + s] = new Lamp(LAMP.amber, lens.amber);
-    lamps['mirror' + s] = new Lamp(LAMP.amber, 0x3a3833);
-    lamps['rear' + s] = new Lamp(LAMP.amber, lens.red);
-  }
-  g.updateMatrixWorld(true);
-  const center = new THREE.Vector3(0, 0.8, L / 2);
-  const size = new THREE.Vector3();
-  const side = (list, s) => list.filter(t => Math.sign(t.c.x) === s);
-  const glowAlong = (lamp, list, order, width, step = 0.02, extend = 0.02) => {
-    const c = centerline(list, order, center, step);
-    lamp.addGlow(g, c.points, c.normals, width, extend);
-  };
-
-  // front light bar: the two short vertical bars in each housing are the headlights, the long
-  // horizontal bar is the DRL
-  for (const mesh of meshes.head) {
-    const parts = splitMesh(mesh, t => (t.box.getSize(size), size.x < 0.03 && size.y > 0.03 ? lamps.head.lens : lamps.drl.lens));
-    for (const s of [-1, 1]) {
-      glowAlong(lamps.drl, side(parts.get(lamps.drl.lens) || [], s), c => Math.abs(c.x) + c.z, 0.05, 0.03);
-      const bars = new Map();
-      for (const t of side(parts.get(lamps.head.lens) || [], s)) {
-        const k = Math.round(t.c.x / 0.04);
-        if (!bars.has(k)) bars.set(k, []);
-        bars.get(k).push(t);
-      }
-      for (const bar of bars.values()) glowAlong(lamps.head, bar, c => c.y, 0.045, 0.02, 0.025);
-    }
-  }
-  // tail strips: the part wrapped onto the rear quarter is the side marker
-  for (const mesh of meshes.tail) {
-    const marker = (t) => t.c.z < L - 0.3;
-    const parts = splitMesh(mesh, t => (marker(t) ? lamps['marker' + (t.c.x < 0 ? 'L' : 'R')].lens : lamps.tail.lens));
-    for (const s of [-1, 1]) {
-      glowAlong(lamps.tail, side(parts.get(lamps.tail.lens) || [], s), c => Math.abs(c.x), 0.055);
-      const m = lamps['marker' + (s < 0 ? 'L' : 'R')];
-      glowAlong(m, parts.get(m.lens) || [], c => -c.z, 0.055);
-    }
-  }
-  for (const mesh of meshes.chmsl) {
-    const parts = splitMesh(mesh, () => lamps.chmsl.lens);
-    glowAlong(lamps.chmsl, parts.get(lamps.chmsl.lens) || [], c => c.x, 0.05, 0.04);
-  }
-
-  // lamps the model doesn't have, laid flush on the body (raycast double-sided, then restored)
-  const sides = meshes.body.map(m => m.material.side);
-  meshes.body.forEach(m => { m.material.side = THREE.DoubleSide; });
-  for (const [name, spec] of Object.entries(OCEAN_GLTF.added)) {
-    for (const s of [-1, 1]) {
-      const lamp = lamps[name] || lamps[name + (s < 0 ? 'L' : 'R')];
-      const pts = spec.pts.map(([x, y]) => [x * -s, y, spec.z]);
-      const c = conform(meshes.body, pts, [0, 0, spec.dir]);
-      lamp.addStrip(g, c.points, c.normals, spec.width, spec.glow);
-    }
-  }
-  meshes.body.forEach((m, i) => { m.material.side = sides[i]; });
-  for (const lamp of Object.values(lamps)) lamp.set(0);
-  return lamps;
+export const OCEAN_PAINTS = [
+  ['CWH', 'Great White', '#d6ddde', 'Gloss solid'],
+  ['CWP', 'Marine Layer', '#dddfdc', 'Pearl'],
+  ['CSI', 'Silver Lining', '#acbac2', 'Gloss metallic'],
+  ['CEC', 'Sun Soaked', '#776f68', 'Gloss metallic'],
+  ['CGR', 'Horizon Gray', '#47484e', 'Gloss metallic'],
+  ['CGG', 'Sea Grass', '#353a3d', 'Gloss metallic'],
+  ['CGM', 'Stealth Green', '#3a3e42', 'Matte metallic'],
+  ['CBG', 'Mariana', '#363f49', 'Gloss metallic'],
+  ['CBM', 'Big Sur Blue', '#373e4a', 'Matte metallic'],
+  ['CBE', 'Blue Planet', '#326083', 'Gloss metallic'],
+  ['COR', 'Solar Orange', '#c55b25', 'Gloss metallic'],
+  ['CRE', 'Red Planet', '#9e1d21', 'Gloss solid'],
+  ['CBB', 'Black Pearl', '#313136', 'Gloss metallic'],
+  ['CBK', 'Night Drive', '#1f1f20', 'Gloss solid'],
+].map(([code, name, hex, finish]) => ({ code, name, hex, finish, ...PAINT_FINISH[finish] }));
+export const OCEAN_PAINT_DEFAULT = 'CSI';
+export function oceanPaint(code) {
+  return OCEAN_PAINTS.find(p => p.code === code) || OCEAN_PAINTS.find(p => p.code === OCEAN_PAINT_DEFAULT);
 }
+
+// Wheel options, from the model's wheel-options.json: a design (rim groups under every wheel's spin
+// pivot; F3 is the Ocean's aero wheel, F5 and F6 are modeled from photos) in a finish applied to the
+// Wheel_Face material. F6 only comes in alloy.
+const WHEEL_DESIGNS = { F3: { spokes: 5 }, F5: { spokes: 7 }, F6: { spokes: 10 } };
+const WHEEL_FINISH = {
+  A: { name: 'Alloy', rgb: [0.65, 0.69, 0.73], metalness: 0.9, roughness: 0.23 },     // clear-coated alloy (linear RGB)
+  B: { name: 'Black', rgb: [0.006, 0.007, 0.009], metalness: 0.2, roughness: 0.18 },  // gloss powder-coated black
+};
+export const OCEAN_WHEELS = ['F3A', 'F3B', 'F5A', 'F5B', 'F6A'].map(id => (
+  { id, design: id.slice(0, 2), finish: id[2], label: `${id.slice(0, 2)} ${WHEEL_FINISH[id[2]].name.toLowerCase()}` }));
+export const OCEAN_WHEELS_DEFAULT = 'F3A';
+
+const RIG = {
+  paint: 'PBR_carpaint',
+  wheelFace: 'Wheel_Face',
+  tire: 'PBR_tire',
+  corners: ['Front_L', 'Front_R', 'Rear_L', 'Rear_R'],
+  glow: 0.035,   // m: radius of the glow spots over lit lamps
+  // lamp -> lit color and the light materials it drives (the model's light-map.json)
+  lamps: {
+    drl: [LAMP.white, 'Light_DRL_L', 'Light_DRL_R', 'Light_DRL_Center'],   // the center bar includes OCEAN
+    head: [LAMP.white, 'Light_Headlights_L', 'Light_Headlights_R'],
+    tail: [LAMP.red, 'Light_TailBrake_L', 'Light_TailBrake_R'],
+    chmsl: [LAMP.red, 'Light_Brake_Center'],
+    reverse: [LAMP.white, 'Light_Reverse_L', 'Light_Reverse_R'],
+    lowerL: [LAMP.white, 'Light_LowerDRLIndicator_L'], lowerR: [LAMP.white, 'Light_LowerDRLIndicator_R'],   // front: DRL, amber indicator
+    sideL: [LAMP.amber, 'Light_Indicator_Side_L'], sideR: [LAMP.amber, 'Light_Indicator_Side_R'],   // behind the rear quarter windows
+    turnL: [LAMP.amber, 'Light_Indicator_Rear_L'], turnR: [LAMP.amber, 'Light_Indicator_Rear_R'],   // strips in the rear clusters
+  },
+};
 
 export function loadEgoModel(url) {
   return new Promise((resolve, reject) => {
@@ -320,71 +288,84 @@ export function loadEgoModel(url) {
       model.rotation.y = Math.PI / 2;
       model.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(model);
-      model.scale.setScalar(OCEAN.length / (box.max.z - box.min.z));
-      model.updateMatrixWorld(true);
-      box.setFromObject(model);
       model.position.set(-(box.min.x + box.max.x) / 2, -box.min.y, -box.min.z);
+      const size = box.getSize(new THREE.Vector3());
 
       const g = new THREE.Group();
       g.add(model);
       g.updateMatrixWorld(true);
-      const L = OCEAN.length, W = OCEAN.width;
-
-      // materials by role; light and body meshes for the lamps
-      const paint = new Set();
-      const meshes = { head: [], tail: [], chmsl: [], body: [] };
-      const wheelMeshes = [];
+      const mats = new Map(), meshes = new Map();   // by material name
       model.traverse((o) => {
         if (!o.isMesh) return;
-        const name = o.material.name;
-        if (OCEAN_GLTF.paint.includes(name)) paint.add(o.material);
-        for (const role of Object.keys(meshes)) if (OCEAN_GLTF[role].includes(name)) meshes[role].push(o);
-        if (OCEAN_GLTF.wheel.includes(name)) wheelMeshes.push(o);
-        const finish = OCEAN_GLTF.finish[name];
-        if (finish) { o.material.color.setHex(finish.color); o.material.metalness = finish.metalness; o.material.roughness = finish.roughness; }
-        if (name in OCEAN_GLTF.specular && o.material.specularIntensity !== undefined) o.material.specularIntensity = OCEAN_GLTF.specular[name];
+        mats.set(o.material.name, o.material);
+        meshes.set(o.material.name, [...(meshes.get(o.material.name) || []), o]);
       });
-      const lamps = oceanLamps(g, meshes, L);
-
-      // Re-hang each wheel's tire + rim meshes on steer -> spin pivots at the tire's center.
-      // attach() keeps their world transform, so nothing moves until the pivots rotate.
-      const clusters = new Map();
-      for (const m of wheelMeshes) {
-        const box = new THREE.Box3().setFromObject(m);
-        const c = box.getCenter(new THREE.Vector3());
-        const key = `${c.x < 0 ? 'l' : 'r'}${c.z < L / 2 ? 'f' : 'b'}`;
-        if (!clusters.has(key)) clusters.set(key, { meshes: [], tire: new THREE.Box3(), all: new THREE.Box3() });
-        const cl = clusters.get(key);
-        cl.meshes.push(m);
-        cl.all.union(box);
-        if (m.material.name === OCEAN_GLTF.wheel[0]) cl.tire.union(box);
+      const center = new THREE.Vector3(0, 0.8, size.z / 2);
+      const lamps = {};
+      for (const [name, [color, ...names]] of Object.entries(RIG.lamps)) {
+        const lamp = lamps[name] = new Lamp(color, names.map(n => mats.get(n)).filter(Boolean));
+        lamp.addGlow(g, names.flatMap(n => meshes.get(n) || []), center, RIG.glow);
+        lamp.set(0);
       }
+
+      // Each corner is Steer_<corner> (yaw about its Y; only the front pair turns) -> Wheel_<corner>
+      // (roll about its Z, the car's right) -> the tire, brake disc and the rim of each design
       const wheels = [];
-      for (const [key, cl] of clusters) {
-        const box = cl.tire.isEmpty() ? cl.all : cl.tire;
-        const steer = new THREE.Group();
-        steer.position.copy(box.getCenter(new THREE.Vector3()));
-        const spin = new THREE.Group();
-        steer.add(spin);
-        g.add(steer);
-        g.updateMatrixWorld(true);
-        for (const m of cl.meshes) spin.attach(m);
-        const size = box.getSize(new THREE.Vector3());
-        wheels.push({ steer, spin, r: size.y / 2, w: size.x, front: key.endsWith('f'), spokes: OCEAN_GLTF.spokes });
+      for (const c of RIG.corners) {
+        const steer = model.getObjectByName('Steer_' + c), spin = model.getObjectByName('Wheel_' + c);
+        if (!steer || !spin) continue;
+        const tire = new THREE.Box3();
+        spin.traverse((o) => { if (o.isMesh && o.material.name === RIG.tire) tire.expandByObject(o); });
+        const t = tire.getSize(new THREE.Vector3());
+        wheels.push({ steer, spin, axis: 'z', pos: tire.getCenter(new THREE.Vector3()), r: t.y / 2, w: t.x, front: c.startsWith('Front'), spokes: 5 });
       }
+      const rims = {};
+      for (const d of Object.keys(WHEEL_DESIGNS)) rims[d] = RIG.corners.map(c => model.getObjectByName(`Rim_${d}_${c}`)).filter(Boolean);
 
-      const shadow = softShadow(W, L);
-      shadow.position.z = L / 2;
+      const shadow = softShadow(OCEAN.width, size.z);
+      shadow.position.z = size.z / 2;
       g.add(shadow);
       const rear = wheels.filter(w => !w.front);
       Object.assign(g.userData, {
-        paint: [...paint], lamps, wheels, length: L, width: W, height: OCEAN.height, gltf: true,
-        rearAxleZ: rear.length ? rear.reduce((a, w) => a + w.steer.position.z, 0) / rear.length : L - OCEAN.axles[0],
-        originalPaint: [...paint].map(m => m.color.clone()),
+        paint: [mats.get(RIG.paint)].filter(Boolean), wheelFace: mats.get(RIG.wheelFace), rims, lamps, wheels,
+        length: size.z, width: OCEAN.width, height: size.y, gltf: true,
+        rearAxleZ: rear.length ? rear.reduce((a, w) => a + w.pos.z, 0) / rear.length : size.z - OCEAN.axles[0],
       });
       resolve(g);
     }, undefined, reject);
   });
+}
+
+// Paint the ego car (by OCEAN_PAINTS code); the procedural stand-in takes the same color.
+export function paintEgo(g, code) {
+  const p = oceanPaint(code);
+  for (const m of g.userData.paint) {
+    m.color.set(p.hex);
+    m.metalness = p.metalness;
+    m.roughness = p.roughness;
+    if ('clearcoat' in m) m.clearcoat = p.clearcoat;
+  }
+}
+
+// Fit one of OCEAN_WHEELS (by id): its design's rims shown, the others hidden (zero scale too, as the
+// model's integration notes ask), the faces in its finish. Cars without the options keep their wheels.
+export function fitWheels(g, id) {
+  const ud = g.userData;
+  if (!ud.rims) return;
+  const opt = OCEAN_WHEELS.find(o => o.id === id) || OCEAN_WHEELS.find(o => o.id === OCEAN_WHEELS_DEFAULT);
+  for (const [design, nodes] of Object.entries(ud.rims)) {
+    for (const n of nodes) {
+      n.visible = design === opt.design;
+      n.scale.setScalar(n.visible ? 1 : 0);
+    }
+  }
+  const f = WHEEL_FINISH[opt.finish], m = ud.wheelFace;
+  if (m) {
+    m.color.setRGB(...f.rgb);
+    m.metalness = f.metalness;
+    m.roughness = f.roughness;
+  }
+  for (const w of ud.wheels) w.spokes = WHEEL_DESIGNS[opt.design].spokes;
 }
 
 function paintMat(color) {

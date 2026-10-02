@@ -5,14 +5,15 @@ Ocean's own center screen. Shows speed, gear, MADS steering state, ACC set speed
 limit, alerts, the ADAS module's lane lines and object list in 3D, parking sensors, and lets you edit
 the CAN overrides in `opendbc/car/fisker/values.py` and replay recorded routes.
 
-The ego car mirrors the real one: a fine textured ground moves under it with speed and steering
-(dead-reckoned about the rear axle with the bicycle model from `steeringAngleDeg`), the wheels roll
-and the front pair steers, and its lamps light on the body itself, following the BCM's lamp
-outputs (`BCM_0x335`, falling back to carState): DRL bar, headlights, front/mirror/rear turn
-indicators, tail, brake, third brake light, rear-quarter markers (lit with the tail, bright when
-braking, flashing with the indicator) and reversing lamps (`static/js/lamps.js`). The car reflects a soft
-studio environment of its own (`studioEnvironment` in `scene.js`), so its glossy paint, glass and chrome
-trim catch highlights; the model's near-black original paint is lifted a little.
+The ego car mirrors the real one: a detailed, rigged Ocean model (Pulse Ocean v0.10, at its true
+size in meters) in any of the factory paints and five wheel options (Settings > Display). A fine
+textured ground moves under it with speed and steering (dead-reckoned about the rear axle with the
+bicycle model from `steeringAngleDeg`), the wheels roll and the front pair steers, and the model's own
+lamps light up, following the BCM's lamp outputs (`BCM_0x335`, falling back to carState): DRLs,
+headlights, the lower front strips (white DRL, amber while indicating), quarter-panel and rear turn
+indicators, tail, brake, third brake light and reversing lamps (`static/js/lamps.js`), each with a soft
+glow so it reads from the chase camera. The car reflects a soft studio environment of its own
+(`studioEnvironment` in `scene.js`), so its glossy paint, glass and chrome trim catch highlights.
 
 Lanes and objects are filtered before drawing (`static/js/road.js`, `scene.js`): lane lines are
 carried with the car's motion and eased toward each measurement by confidence, with hysteresis on

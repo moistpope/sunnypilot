@@ -1,10 +1,11 @@
 // Power trails: the rear tires leave a trail of fine glowing particles as they roll -- a dense, bright
 // band as wide as each tire with a glow about it, and sparser dust that spreads out behind -- colored by
 // how hard the motors are asked to work at that moment: blue at a light load through the spectrum to red
-// at full power. The harder the car pulls, the denser the trail and the more dust it throws. Laid
-// particles keep their color, so a burst of power leaves a red stretch that slides back behind the car
-// while the newest trail is already blue again. The trail grows with speed to one car length at 70 mph
-// and fades out toward its end.
+// at full power. A light load lays a sparse, faint trail of fine specks; the harder the car pulls, the
+// denser, brighter and coarser it gets and the more dust it throws, up to a solid glowing band at full
+// power. Laid particles keep their look, so a burst of power leaves a bright red stretch that slides back
+// behind the car while the newest trail is already faint and blue again. The trail grows with speed to one
+// car length at 70 mph and fades out toward its end.
 //
 // The particles live in the `world` group (world-anchored), so the trail stays on the road; their fade,
 // spread and twinkle are computed on the GPU from how far the wheel has rolled since each was laid.
@@ -13,7 +14,10 @@ import * as THREE from '../vendor/three.module.min.js';
 const EGO_LEN = 4.775;
 const FULL_SPEED = 31.3;    // m/s (70 mph): the trail is one car length from here on
 const PARTICLES = 32768;    // pool shared by both wheels (a full-power car length is ~14300 per wheel)
-const DENSITY = [1600, 3000]; // particles per meter per wheel, light load .. full power
+// light load .. full power (in between by the load):
+const DENSITY = [250, 3000];  // particles per meter per wheel
+const BRIGHT = [0.4, 1];      // opacity
+const SIZE = [0.7, 1];        // speck size
 const TIRE_W = 0.28;        // m, if the car model doesn't say
 const GLOW = 0.12;          // share of particles that are soft halo rather than specks
 const LIFT = 0.03;          // above lane lines (0.02)
@@ -198,12 +202,13 @@ export class PowerTrails {
     this.load += ((load ?? 0) - this.load) * (1 - Math.exp(-dt * 8));
     const L = this.load, dark = this.dark;
     const core = loadColor(L, this.core, dark ? 0.6 : 0.42), dust = loadColor(L, this.dust, dark ? 0.55 : 0.45);
-    const density = DENSITY[0] + (DENSITY[1] - DENSITY[0]) * L;
+    const ramp = ([lo, hi]) => lo + (hi - lo) * L;
+    const density = ramp(DENSITY), grow = ramp(SIZE);
     const coreShare = 0.62 - 0.17 * L;   // the rest is dust, more of it the harder the car pulls
-    const alpha = dark ? 1 : 0.85;
+    const alpha = ramp(BRIGHT) * (dark ? 1 : 0.85);
 
     const rearWheels = (ego.userData.wheels || []).filter(w => !w.front);
-    const rear = rearWheels.map(w => w.steer.position);
+    const rear = rearWheels.map(w => w.pos);
     const half = ((rearWheels[0] && rearWheels[0].w) || TIRE_W) / 2;
     const zr = ego.userData.rearAxleZ ?? EGO_LEN - 0.93;
     const contacts = rear.length === 2 ? rear : [{ x: -0.83, z: zr }, { x: 0.83, z: zr }];
@@ -232,13 +237,13 @@ export class PowerTrails {
           glow = 1;
         } else if (k < GLOW + coreShare) {   // the band itself, even across the tire with soft edges
           off = (Math.random() - 0.5) * 2 * half + gauss() * 0.012;
-          size = 0.006 + Math.random() * 0.008;
+          size = (0.006 + Math.random() * 0.008) * grow;
           a = 0.3 + 0.7 * Math.random() ** 2;   // mostly dim, a few bright sparks
           lat = Math.sign(off) * Math.random() * 0.012;
         } else {   // dust, thinning out away from the track and drifting further out
           const side = Math.random() < 0.5 ? -1 : 1;
           off = side * (0.8 * half + Math.min(4, -Math.log(1 - Math.random())) * (0.05 + 0.07 * L));
-          size = 0.005 + Math.random() * 0.007;
+          size = (0.005 + Math.random() * 0.007) * grow;
           a = 0.15 + 0.6 * Math.random() ** 2;
           lat = side * (0.008 + Math.random() * (0.03 + 0.05 * L));
           fwd = (Math.random() - 0.5) * 0.02;

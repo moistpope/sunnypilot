@@ -1,6 +1,7 @@
 // Settings sheet: CAN overrides (opendbc/car/fisker/values.py), driving params, display, playback,
 // a live CAN signal browser and connection info.
 import { $, $$, el, api, fmtBytes, fmtTime, prettyLabel, prettySignal, iconSvg } from './util.js';
+import { OCEAN_PAINTS, OCEAN_WHEELS, oceanPaint } from './models.js';
 
 export class Settings {
   constructor(app) {
@@ -8,6 +9,7 @@ export class Settings {
     this.sheet = $('#settings');
     this.body = $('#tab-body');
     this.tab = 'overrides';
+    this.displaySection = 'general';
     $('#btn-settings').innerHTML = iconSvg('gear');
     $('#settings-close').innerHTML = iconSvg('close');
     $('#btn-settings').addEventListener('click', () => this.open());
@@ -215,7 +217,23 @@ export class Settings {
 
   // ---- display (stored in this browser) ------------------------------------------------------------
 
+  // split into sections picked from a bar at the top, so no page is one long list
   renderDisplay() {
+    const sec = this.displaySection;
+    this.laneConfNow = null;   // only the Road section shows it
+    this.body.append(el('div.subnav', this.app.segmented([['general', 'General'], ['road', 'Road'], ['objects', 'Objects'], ['debug', 'Debug']], sec,
+      v => { this.displaySection = v; this.show('display'); })));
+    ({ general: () => this.displayGeneral(), road: () => this.displayRoad(), objects: () => this.displayObjects(), debug: () => this.displayDebug() })[sec]();
+  }
+
+  // on/off display settings: [setting, title, description]
+  toggleRows(toggles) {
+    const s = this.app.settings;
+    return el('div.section', el('div.rows', toggles.map(([k, t, d]) =>
+      el('div.row', el('div.lbl', el('b', t), el('small', d)), this.app.switch(s[k] !== false, v => this.app.setSetting(k, v))))));
+  }
+
+  displayGeneral() {
     const s = this.app.settings;
     const set = (k, v) => this.app.setSetting(k, v);
     const body = this.body;
@@ -223,6 +241,24 @@ export class Settings {
       this.app.segmented([['auto', 'Auto'], ['light', 'Day'], ['dark', 'Night']], s.theme, v => set('theme', v))));
     body.append(el('div.section', el('h3', 'Speed units'),
       this.app.segmented([['auto', 'Follow cluster'], ['mph', 'mph'], ['kmh', 'km/h']], s.units, v => set('units', v))));
+    const paint = oceanPaint(s.egoPaint);
+    body.append(el('div.section', el('h3', 'Paint', el('small', `${paint.name} · ${paint.finish.toLowerCase()}`)),
+      el('div.swatches', OCEAN_PAINTS.map(p => el('button.swatch' + (p === paint ? '.on' : ''),
+        { title: `${p.name} (${p.code}, ${p.finish.toLowerCase()})`, onclick: () => set('egoPaint', p.code) },
+        el('i', { style: { background: p.hex } }), el('span', p.name))))));
+    body.append(el('div.section', el('h3', 'Wheels'),
+      el('p.desc', 'F3 is the Ocean\'s aero wheel; F5 (seven spokes) and F6 (ten) are modeled from photos. Alloy or gloss black.'),
+      this.app.segmented(OCEAN_WHEELS.map(w => [w.id, w.label]), s.egoWheels, v => set('egoWheels', v))));
+    body.append(this.toggleRows([
+      ['showTracks', 'Power trails', 'Glowing particle trails behind the rear tires, colored by how hard the motors pull (blue light, through the spectrum to red at full power); longer the faster you go.'],
+      ['autoView', 'Auto view', 'Switch to the top view while parking and back when driving.'],
+    ]));
+  }
+
+  displayRoad() {
+    const s = this.app.settings;
+    const set = (k, v) => this.app.setSetting(k, v);
+    const body = this.body;
     body.append(el('div.section', el('h3', 'Lane lines'),
       el('p.desc', 'Blended: the Fisker ADAS lanes, refined with openpilot\'s where they agree and filled in where only openpilot sees a line. ' +
         'Or either source alone, or both drawn separately (openpilot faint).'),
@@ -247,35 +283,43 @@ export class Settings {
         'disc around the car; past it the disc grows out into the road. Lower shows lanes sooner and on worse roads, higher only on clear ones.'),
       el('div.rows', el('div.row', el('div.lbl', el('b', 'Show lanes from'), this.laneConfNow), value)), slider));
     this.showLaneConf();
+    body.append(this.toggleRows([
+      ['showRoad', 'Inferred road', 'Fill in the road and lanes the cameras don\'t report, following the last known lanes and your path.'],
+      ['showGround', 'Ground texture', 'Fine textured ground that moves under the car with its speed and steering.'],
+      ['showSigns', 'Traffic lights & signs', 'Lights, signs and stop lines the car\'s camera reports, placed where they most likely are.'],
+      ['showPath', 'Planned path', 'Blue band along openpilot\'s path while steering is engaged.'],
+    ]));
+  }
+
+  displayObjects() {
+    const s = this.app.settings;
+    const body = this.body;
     body.append(el('div.section', el('h3', 'Objects'),
       el('p.desc', 'World model: the radar, the ADAS camera\'s object list and openpilot\'s leads fused into one set of objects, ' +
         'each source weighted by how far it\'s trusted for what it measures, placed on the ground as the car moves and turns. ' +
         'Raw sources: each source drawn as it reports, for checking them against each other.'),
-      this.app.segmented([['world', 'World model'], ['raw', 'Raw sources']], s.objectMode, v => set('objectMode', v))));
-    body.append(el('div.section', el('h3', 'Car color'),
-      this.app.segmented([['model', 'Original'], ['#1d1f24', 'Black'], ['#e8e9eb', 'White'], ['#6e7781', 'Gray'], ['#3a5a8c', 'Blue'], ['#7d2b2b', 'Red'], ['#5f6b4e', 'Green']],
-        s.egoColor, v => set('egoColor', v))));
-    const toggles = [
-      ['showGround', 'Ground texture', 'Fine textured ground that moves under the car with its speed and steering.'],
-      ['showRoad', 'Inferred road', 'Fill in the road and lanes the cameras don\'t report, following the last known lanes and your path.'],
-      ['showSigns', 'Traffic lights & signs', 'Lights, signs and stop lines the car\'s camera reports, placed where they most likely are.'],
-      ['showTracks', 'Power trails', 'Glowing particle trails behind the rear tires, colored by how hard the motors pull (blue light, through the spectrum to red at full power); longer the faster you go.'],
-      ['showPath', 'Planned path', 'Blue band along openpilot\'s path while steering is engaged.'],
-      ['showUss', 'Parking sensors', 'Ultrasonic zone arcs around the car at low speed.'],
+      this.app.segmented([['world', 'World model'], ['raw', 'Raw sources']], s.objectMode, v => this.app.setSetting('objectMode', v))));
+    body.append(this.toggleRows([
       ['showOpLeads', 'openpilot leads', 'Show radarState leads the ADAS object list doesn\'t already cover.'],
       ['showLowConf', 'Low-confidence objects', 'World model: also draw, faintly, the objects it doubts, which it otherwise hides: radar-only things standing ' +
         'in your path that openpilot\'s camera model doesn\'t see (to the radar, sign gantries, traffic lights and bridges look like stopped cars), ' +
         'that the radar draws as a wide thin strip, that it hasn\'t classified (point targets need a camera detection too), ' +
         'or that it has tracked for under 1.3 s.'],
+      ['showUss', 'Parking sensors', 'Ultrasonic zone arcs around the car at low speed.'],
+    ]));
+  }
+
+  displayDebug() {
+    const s = this.app.settings;
+    const set = (k, v) => this.app.setSetting(k, v);
+    const body = this.body;
+    body.append(this.toggleRows([
       ['showRadar', 'Radar objects', 'Every track of the mid-range radar (its private CAN, bus 1) as a see-through car, with a ring at the point it reports, ' +
         'to check the radar decoding against the camera\'s cars. Needs a harness that taps the radar bus.'],
       ['radarAllTracks', 'All radar tracks', 'Radar objects: also show tracks younger than 1.3 s, most of which flicker in and out (the radar reports every candidate).'],
-      ['showObjectStats', 'Object stats', 'Debug: tag every object with its source (ADAS camera, openpilot, radar), track ID, position (x ahead, y left/right), ' +
+      ['showObjectStats', 'Object stats', 'Tag every object with its source (ADAS camera, openpilot, radar), track ID, position (x ahead, y left/right), ' +
         'speed over the ground and relative, heading and size, in m, m/s and degrees. The ADAS reports no speeds: those are this view\'s estimate.'],
-      ['autoView', 'Auto view', 'Switch to the top view while parking and back when driving.'],
-    ];
-    body.append(el('div.section', el('div.rows', toggles.map(([k, t, d]) =>
-      el('div.row', el('div.lbl', el('b', t), el('small', d)), this.app.switch(s[k] !== false, v => set(k, v)))))));
+    ]));
     const calib = this.app.state && this.app.state.calibration;
     body.append(el('div.section', el('h3', 'Geometry calibration'),
       el('p.desc', 'The ADAS lane heading direction is verified on the car; lane curvature and object heading signs aren\'t documented. ' +
@@ -441,9 +485,9 @@ export class Settings {
     )));
     body.append(el('p.desc', 'Touch: one finger rotates around the car, two fingers zoom and pan. The view recenters on the car a few seconds after you let go.'));
     body.append(el('div.section', el('h3', 'Credits'), el('p.desc',
-      el('a', { href: 'https://sketchfab.com/3d-models/fisker-ocean-low-poly-f506bfe876864c04b68bdfc59070739a', target: '_blank' }, 'Fisker Ocean (low-poly)'),
-      ' by ', el('a', { href: 'https://sketchfab.com/LagzDesign', target: '_blank' }, 'LagzDesign'), ', ',
-      el('a', { href: 'http://creativecommons.org/licenses/by/4.0/', target: '_blank' }, 'CC BY 4.0'),
-      '. 3D rendering by three.js (MIT).')));
+      'Fisker Ocean 3D model: Pulse Ocean v0.10. Paint colors are approximations of the factory paint chips (',
+      el('a', { href: 'https://www.automotivetouchup.com/touch-up-paint/fisker-automotive/2023/all-models/', target: '_blank' }, 'AutomotiveTouchup'), ', ',
+      el('a', { href: 'https://www.carwow.co.uk/fisker/ocean/colours', target: '_blank' }, 'Carwow'),
+      '). 3D rendering by three.js (MIT).')));
   }
 }

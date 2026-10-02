@@ -1,7 +1,11 @@
-# fisker_ocean.glb
+# pulse_ocean_v0.10.glb
 
-"Fisker Ocean (low-poly)" by LagzDesign (https://sketchfab.com/LagzDesign)
-https://sketchfab.com/3d-models/fisker-ocean-low-poly-f506bfe876864c04b68bdfc59070739a
+"Pulse Ocean" v0.10: a detailed Fisker Ocean model rigged for ADAS views (`Pulse-Ocean-ADAS.glb` from
+the v0.10 package), used unmodified. Meters, +X forward, +Y up, -Z to the car's left; ground at
+y = -0.684. The web HUD turns it to face its -Z and puts the front bumper at z = 0 at load time.
 
-Licensed under CC BY 4.0 (http://creativecommons.org/licenses/by/4.0/). Used unmodified; the web HUD
-scales and orients it at load time. Attribution is also shown in the HUD's Settings > About tab.
+The package's integration files are folded into `sunnypilot/webhud/static/js/models.js`:
+`paint-colours.json` (14 factory paints, digital approximations of the paint chips from
+AutomotiveTouchup and Carwow, not measured formulas), `wheel-options.json` (F3/F5/F6 designs, alloy or
+gloss black; F5 and F6 are modeled from photos) and `light-map.json` / `controls.json` (lamp materials
+and lighting rules).

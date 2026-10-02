@@ -4,7 +4,7 @@
 // Scene frame (three.js):      X right, Y up, Z backward. So X = -y, Z = -x.
 import * as THREE from '../vendor/three.module.min.js';
 import { OrbitControls } from '../vendor/OrbitControls.js';
-import { makeEgo, makeObject, makeGhost, fitScale, loadEgoModel } from './models.js';
+import { makeEgo, makeObject, makeGhost, fitScale, loadEgoModel, paintEgo, fitWheels } from './models.js';
 import { applyLamps } from './lamps.js';
 import { RoadModel, linePoints, modelXOffset } from './road.js';
 import { RoadFurniture } from './furniture.js';
@@ -34,7 +34,6 @@ const CONF_HIDE = 0.35, CONF_FULL = 0.65;   // world objects fade in between the
 const LOW_CONF_ALPHA = 0.2;           // ...or, with "Low-confidence objects", never fainter than this
 const DEG = Math.PI / 180;
 const EGO_ENV = { light: .75, dark: 0.55 };   // reflection strength on the ego car, by theme
-const PAINT_LIFT = 1.1;                       // the model's own paint is a near-black navy (~1-3%); lift it
 const UP = new THREE.Vector3(0, 1, 0);
 
 // headlight throw: narrow and bright at the bumper (bottom), widening and fading down the road (top)
@@ -281,13 +280,13 @@ export class CarScene {
     this.ego = makeEgo();
     this._lightEgo(this.ego);
     this.scene.add(this.ego);
-    this.egoColor = null;
-    loadEgoModel('/models/fisker_ocean.glb').then((g) => {
+    this.egoLook = { paint: null, wheels: null };
+    loadEgoModel('/models/pulse_ocean_v0.10.glb').then((g) => {
       this.scene.remove(this.ego);
       this.ego = g;
       this._lightEgo(g);
       this.scene.add(g);
-      this.setEgoColor(this.egoColor);
+      this.setEgoLook(this.egoLook.paint, this.egoLook.wheels);
     }).catch((e) => console.warn('Ocean model unavailable, keeping the procedural car', e));
 
     // lane & path materials (colors set by theme)
@@ -403,15 +402,11 @@ export class CarScene {
     });
   }
 
-  // hex color, or null/'model' for the model's own paint
-  setEgoColor(hex) {
-    this.egoColor = hex;
-    const ud = this.ego.userData;
-    ud.paint.forEach((m, i) => {
-      if (hex && hex !== 'model') m.color.set(hex);
-      else if (ud.originalPaint) m.color.copy(ud.originalPaint[i]).multiplyScalar(PAINT_LIFT);
-      else m.color.set(0x23262c);
-    });
+  // factory paint code and wheel option (models.js OCEAN_PAINTS / OCEAN_WHEELS)
+  setEgoLook(paint, wheels) {
+    this.egoLook = { paint, wheels };
+    paintEgo(this.ego, paint);
+    fitWheels(this.ego, wheels);
   }
 
   setLayoutOffset(xFrac) { this.viewOffset.x = xFrac; this.resize(); }
@@ -991,7 +986,7 @@ export class CarScene {
     for (const w of ud.wheels || []) {
       const cap = 0.3 * Math.PI * 2 / (w.spokes || 5);
       const turn = THREE.MathUtils.clamp(vs.v * dt / w.r, -cap, cap);
-      w.spin.rotation.x = (w.spin.rotation.x - turn) % (Math.PI * 2);
+      w.spin.rotation[w.axis] = (w.spin.rotation[w.axis] - turn) % (Math.PI * 2);   // the car's right axis
       if (w.front) w.steer.rotation.y += (steer - w.steer.rotation.y) * k;
     }
 

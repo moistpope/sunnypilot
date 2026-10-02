@@ -1,16 +1,17 @@
 // sunnypilot web HUD entry point: connects to the device, renders the car view and wires the controls.
 import { $, $$, el, api, fmtTime, iconSvg, setClass, setText, store, save } from './util.js';
 import { CarScene } from './scene.js';
+import { OCEAN_PAINT_DEFAULT, OCEAN_WHEELS_DEFAULT } from './models.js';
 import { LANE_CONF_THRESHOLD } from './road.js';
 import { Hud } from './hud.js';
 import { Settings } from './settings.js';
 import { VehicleState } from './vehicle.js';
 
-const SETTINGS_VERSION = 2;
+const SETTINGS_VERSION = 3;
 const AUTO_VIEW_HOLD_MS = 10000;   // a parking maneuver starting this soon after the user picked a view keeps it
 const STALE_MS = 6000;             // the server streams at 20 Hz: this long without a message means the link is dead
 const DEFAULTS = {
-  theme: 'auto', units: 'auto', laneSource: 'blend', egoColor: 'model', view: 'chase',
+  theme: 'auto', units: 'auto', laneSource: 'blend', egoPaint: OCEAN_PAINT_DEFAULT, egoWheels: OCEAN_WHEELS_DEFAULT, view: 'chase',
   showPath: true, showUss: true, showOpLeads: true, autoView: true, showGround: true, showRoad: true, showSigns: true,
   showTracks: true, showRadar: false, radarAllTracks: false, showLowConf: false, showObjectStats: false, objectMode: 'world',
   laneHeadingSign: 1, laneCurvatureSign: 1, objectHeadingSign: 1, laneConfThreshold: LANE_CONF_THRESHOLD,
@@ -23,6 +24,12 @@ function loadSettings() {
     // double-invert), and the 'auto' lane source became 'blend'
     if (s.laneHeadingSign === -1) s.laneHeadingSign = 1;
     if (s.laneSource === 'auto') s.laneSource = 'blend';
+  }
+  if ((s.version || 1) < 3 && 'egoColor' in s) {
+    // v3: the detailed Ocean comes in its factory paints; the nearest one to the old color choice
+    const paint = { '#1d1f24': 'CBK', '#e8e9eb': 'CWH', '#6e7781': 'CGR', '#3a5a8c': 'CBE', '#7d2b2b': 'CRE', '#5f6b4e': 'CGM' }[s.egoColor];
+    if (paint) s.egoPaint = paint;
+    delete s.egoColor;
   }
   return { ...DEFAULTS, ...s, version: SETTINGS_VERSION };
 }
@@ -48,7 +55,7 @@ class App {
     this.vehicle = new VehicleState();
     this.ui = new Settings(this);
     this.applyTheme();
-    this.scene.setEgoColor(this.settings.egoColor);
+    this.scene.setEgoLook(this.settings.egoPaint, this.settings.egoWheels);
     this.setView(this.settings.view, true);
     this.bindViewbar();
     this.bindReplaybar();
@@ -90,7 +97,7 @@ class App {
     this.settings[key] = value;
     save('settings', this.settings);
     if (key === 'theme') this.applyTheme();
-    if (key === 'egoColor') this.scene.setEgoColor(value);
+    if (key === 'egoPaint' || key === 'egoWheels') this.scene.setEgoLook(this.settings.egoPaint, this.settings.egoWheels);
     if (key === 'showRadar') this.updateRadarChip();
     this.scene.update(this.state, this.settings);
     if (this.ui.isOpen && this.ui.tab === 'display') this.ui.show('display', true);
