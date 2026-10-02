@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Light by day, dark at night (values-night). The WebView's prefers-color-scheme follows the
+         theme's isLightTheme, so the page's "auto" theme follows the car's day/night mode. -->
+    <style name="Theme.Hud" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:colorAccent">@color/accent</item>
+    </style>
+</resources>

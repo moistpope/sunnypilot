@@ -104,6 +104,7 @@ class StateBuilder:
       self._rs_fed = t_rs
       t = rs.get("mdMonoTime") or t_rs
       meas += op_measurements(t - OP_LATENCY_S, rs, odo.speed(t))
+      self.model.model_ran(t - OP_LATENCY_S)
     return meas
 
   def snapshot(self, now: float | None = None) -> dict:

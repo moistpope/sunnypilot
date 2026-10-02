@@ -7,10 +7,11 @@ import { VehicleState } from './vehicle.js';
 
 const SETTINGS_VERSION = 2;
 const AUTO_VIEW_HOLD_MS = 30000;   // after the user picks a view or moves the camera, auto view waits this long
+const STALE_MS = 6000;             // the server streams at 20 Hz: this long without a message means the link is dead
 const DEFAULTS = {
   theme: 'auto', units: 'auto', laneSource: 'blend', egoColor: 'model', view: 'chase',
   showPath: true, showUss: true, showOpLeads: true, autoView: true, showGround: true, showRoad: true, showSigns: true,
-  showTracks: true, showRadar: false, radarAllTracks: false, showObjectStats: false, objectMode: 'world',
+  showTracks: true, showRadar: false, radarAllTracks: false, showLowConf: false, showObjectStats: false, objectMode: 'world',
   laneHeadingSign: 1, laneCurvatureSign: 1, objectHeadingSign: 1,
 };
 
@@ -33,8 +34,10 @@ class App {
     this.ws = null;
     this.connected = false;
     this.retry = 0;
+    this.retryTimer = 0;
     this.rawAddrs = [];
     this.lastStateAt = 0;
+    this.lastMsgAt = 0;
     this.autoViewActive = false;
     this.manualViewAt = -1e9;
 
@@ -52,6 +55,11 @@ class App {
     // mobile toolbars showing/hiding change the visible height without always firing window resize
     if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { this.scene.resize(); this.updateLayout(); });
     matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => this.applyTheme());
+    // don't sit out the retry backoff once the network is back, the page is shown again, or the
+    // Android app (android/) has found the device again
+    window.addEventListener('online', () => this.reconnectNow());
+    window.addEventListener('webhud:reconnect', () => this.reconnectNow());
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && !this.connected) this.reconnectNow(); });
     this.connect();
     api('/api/params').then(p => { this.hud.isMetric = !!p.IsMetric; }).catch(() => {});
 
@@ -105,16 +113,22 @@ class App {
 
   // ---- connection -----------------------------------------------------------------------------------
   connect() {
+    clearTimeout(this.retryTimer);
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(`${proto}://${location.host}/ws`);
     this.ws = ws;
+    // a socket replaced by reconnectNow() may still fire events; only the current one counts
     ws.onopen = () => {
+      if (this.ws !== ws) return;
       this.connected = true;
       this.retry = 0;
+      this.lastMsgAt = performance.now();
       this.setConn('ok', 'connected');
       if (this.rawAddrs.length) this.send({ type: 'raw', addrs: this.rawAddrs });
     };
     ws.onmessage = (ev) => {
+      if (this.ws !== ws) return;
+      this.lastMsgAt = performance.now();
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
       if (msg.type === 'state') this.onState(msg.data);
@@ -122,12 +136,24 @@ class App {
       else if (msg.type === 'hello') this.hello = msg.data;
     };
     ws.onclose = () => {
+      if (this.ws !== ws) return;
       this.connected = false;
       this.setConn('bad', 'offline');
       const delay = Math.min(10000, 500 * 2 ** this.retry++);
-      setTimeout(() => this.connect(), delay);
+      this.retryTimer = setTimeout(() => this.connect(), delay);
     };
     ws.onerror = () => ws.close();
+  }
+
+  // Drop the current socket and connect again at once. A Wi-Fi drop can leave the socket half-open,
+  // and closing that one waits on a handshake that never comes, so it's abandoned instead.
+  reconnectNow() {
+    const old = this.ws;
+    this.ws = null;
+    this.connected = false;
+    this.retry = 0;
+    if (old) { try { old.close(); } catch { /* already closed */ } }
+    this.connect();
   }
 
   send(obj) {
@@ -163,6 +189,11 @@ class App {
 
   watchdog() {
     if (!this.connected) return;
+    if (performance.now() - this.lastMsgAt > STALE_MS) {
+      this.setConn('bad', 'reconnecting');
+      this.reconnectNow();
+      return;
+    }
     const age = (performance.now() - this.lastStateAt) / 1000;
     if (age > 2) this.setConn('warn', 'no data');
     else if (this.state && this.state.mode === 'live' && this.state.server && this.state.server.liveError) this.setConn('warn', 'no live data');

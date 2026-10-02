@@ -21,6 +21,9 @@ blacklist = [
   ".gitmodules",
   ".run/",
   ".idea/",
+
+  # runs on the car's head unit, not the comma
+  "openpilot/sunnypilot/webhud/android/",
 ]
 
 # gets you through the blacklist

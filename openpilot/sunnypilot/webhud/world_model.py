@@ -27,6 +27,16 @@ are processed FUSION_DELAY_S behind the present so every source is in before its
 tracks are then predicted to the present. A stationary object therefore stays put on the ground
 through a turn and each source's lag is undone.
 
+Each object also carries a confidence (0..1) that it's really there, which the view fades it by
+(the CONF_* constants below). The radar measures range, bearing and Doppler but no elevation, so it
+tracks sign gantries, traffic lights and bridges like stopped cars in our lane until it passes under
+them (track 791 on route 000000b5--bfe13ac451--12 at 45-48 s: a "car" 3.4 m wide and 0.2-1.0 m long,
+dropped at 24 m). A camera positively classifying an object settles it; without one, a radar-only
+object counts for little until its radar track has lasted 1.3 s (younger ones are mostly flicker),
+then for more when it moves (signs and poles don't), less when it stands, less again when the radar
+draws it as a wide thin strip, and least where openpilot's model would plainly see a car and doesn't:
+standing in our path, within its range, with nothing nearer to hide it.
+
 Frames: world (x, y, heading) is fixed to the ground with an arbitrary origin, reset on seek. The ego
 frame is x forward from the front bumper, y left, like every other HUD object list.
 """
@@ -56,6 +66,28 @@ CONFIRM_UPDATES = 3         # a radar-only track is shown after this many measur
 CONFIRM_SPAN_S = 0.15       # ...spanning at least this long
 HEADING_FROM_MOTION = 1.5   # m/s: faster than this, an object points where it's going
 SOURCE_GONE_S = 5.0         # a source silent this long no longer counts as available
+
+# confidence (see the module docstring); the view fades objects in between about 0.35 and 0.65
+VISION_CLASSES = frozenset(("car", "truck", "motorcycle", "bicycle", "pedestrian", "animal"))
+CONF_VISION = 1.0           # a camera positively classified it (ADAS list class, or an openpilot lead)...
+VISION_HOLD_S = 1.0         # ...this recently
+CONF_VISION_HELD = 0.9      # one did earlier, and the others still track it
+CONF_YOUNG = 0.3            # radar alone, before its track has lasted RADAR_MATURE_AGE: mostly flicker
+CONF_MOVING = 0.85          # radar alone, moving over the ground
+CONF_STANDING = 0.6         # radar alone, standing: as often a parked car as a post
+THIN_ASPECT = 4.0           # the radar has drawn it at least this many times wider than long...
+THIN_MIN_W = 1.5            # ...and at least this wide: a sign or a gantry seen edge-on
+THIN_FACTOR = 0.55
+CONF_UNSEEN = 0.15          # standing in our path where openpilot's model would see a car, and doesn't...
+UNSEEN_HOLD_S = 0.5         # ...for this long in all: then it stays that low, even once a turn takes it out of our path
+UNSEEN_MIN_V = 5.0          # m/s: slower than this (parking), the model's leads are too unsteady to go by
+UNSEEN_X = (8.0, 80.0)      # m ahead: where the model reliably reports a stopped car in our lane
+CORRIDOR_HALF_W = 1.5       # m either side of our predicted path: our half width and half a meter
+MOVING_SPEED = 1.5          # m/s over ground, plus MOVING_FRAC of our speed (the Doppler scale is known
+MOVING_FRAC = 0.06          # only to ~4%, so at speed a standing object can read ~1 m/s)
+CONF_RISE_S = 0.5           # confidence eases toward its target over about this long, in data time...
+CONF_FALL_S = 0.25
+CONF_COAST_S = 0.3          # ...but can't rise once no source has reported the object for this long
 
 
 # ---- measurement noise (1 sigma) -------------------------------------------------------------------
@@ -207,6 +239,13 @@ class Track:
     self.dims: tuple[float, float, float] | None = None
     self.heading: float | None = None     # world, rad
     self.heading_rank = 99
+    self.vision_t: float | None = None    # last time a camera positively classified it
+    self.thin = 0.0                       # widest-for-its-length the radar has drawn it (w/l)
+    self.radar_age = 0                    # oldest radar track (cycles) that has reported it
+    self.unseen_s = 0.0                   # how long openpilot's model has missed it in plain view
+    self.conf = 0.0
+    self.conf_t = t
+    self.conf_why = ""
 
   @property
   def last_t(self) -> float:
@@ -262,10 +301,15 @@ class WorldModel:
     self.pending: list[Meas] = []
     self.sticky: dict[tuple[str, int], int] = {}   # (src, source id) -> track id
     self.src_seen: dict[str, float] = {}           # src -> time of its latest measurement
+    self.model_seen = -1e9                         # time of openpilot's latest model output, leads or not
     self.last_now: float | None = None
 
   def add(self, meas: list[Meas]) -> None:
     self.pending.extend(meas)
+
+  def model_ran(self, t: float) -> None:
+    """openpilot's model looked at t. Where it reported no lead, it saw no car."""
+    self.model_seen = max(self.model_seen, t)
 
   def step(self, now: float) -> list[dict]:
     """Fuse everything measured up to FUSION_DELAY_S ago; return the objects as of `now`."""
@@ -283,6 +327,7 @@ class WorldModel:
       i = j
     self._merge()
     self._prune(cutoff)
+    self._confidence(cutoff)
     return self._output(now)
 
   # ---- fusion ----
@@ -361,6 +406,12 @@ class WorldModel:
       tr.cls = "car" if m.src == "op" else m.cls
     if m.dims and rank <= tr.cls_rank:
       tr.dims = m.dims
+    if (m.src == "adas" and m.cls in VISION_CLASSES) or (m.src == "op" and m.info.get("modelProb", 0.0) >= OP_MIN_PROB):
+      tr.vision_t = m.t
+    if m.src == "radar":
+      tr.radar_age = max(tr.radar_age, m.info["cycles"])
+      if m.dims and m.dims[0] >= THIN_MIN_W:
+        tr.thin = max(tr.thin, m.dims[0] / m.dims[1])
     if m.heading is not None and rank <= tr.heading_rank:
       hw = h + math.radians(m.heading)
       tr.heading = hw if tr.heading is None or rank < tr.heading_rank else tr.heading + 0.3 * _wrap(hw - tr.heading)
@@ -396,6 +447,12 @@ class WorldModel:
             keep.last[src] = drop.last[src]
         keep.confirmed = keep.confirmed or drop.confirmed
         keep.n += drop.n
+        if drop.vision_t is not None and (keep.vision_t is None or drop.vision_t > keep.vision_t):
+          keep.vision_t = drop.vision_t
+        keep.thin = max(keep.thin, drop.thin)
+        keep.radar_age = max(keep.radar_age, drop.radar_age)
+        keep.unseen_s = max(keep.unseen_s, drop.unseen_s)
+        keep.conf = max(keep.conf, drop.conf)
         for key, tid in self.sticky.items():
           if tid == drop.id:
             self.sticky[key] = keep.id
@@ -417,6 +474,49 @@ class WorldModel:
         del self.tracks[tid]
     live = set(self.tracks)
     self.sticky = {k: v for k, v in self.sticky.items() if v in live}
+
+  def _confidence(self, t: float) -> None:
+    """Ease each track's confidence toward what its evidence supports as of t (see CONF_*)."""
+    pose = self.odo.pose(t)
+    v = self.odo.speed(t)
+    kappa = self.odo.w / v if v > 1.0 else 0.0
+    looking = v > UNSEEN_MIN_V and t - self.model_seen < 1.0
+    moving = MOVING_SPEED + MOVING_FRAC * abs(v)
+    seen = {tid: tr.vision_t is not None or "adas" in tr.last for tid, tr in self.tracks.items()}   # a camera has it
+    # tracks in our path within the model's range (m ahead), and the nearest one a camera has or that moves:
+    # past that, the model can't see
+    ahead: dict[int, float] = {}
+    for tid, tr in self.tracks.items():
+      dt = t - tr.t
+      x, y = to_ego(pose, tr.X[0] + tr.X[2] * dt, tr.X[1] + tr.X[3] * dt)
+      xr = x + FRONT_TO_REAR_AXLE
+      if UNSEEN_X[0] < x < UNSEEN_X[1] and abs(y - kappa * xr * xr / 2) < CORRIDOR_HALF_W:
+        ahead[tid] = x
+    blocker = min((x for tid, x in ahead.items() if seen[tid] or self.tracks[tid].speed() > moving), default=math.inf)
+
+    for tid, tr in self.tracks.items():
+      dt = t - tr.conf_t
+      standing = tr.speed() <= moving
+      if dt > 0 and standing and looking and tid in ahead and ahead[tid] < blocker + 2.0 and not seen[tid] and tr.cls != "pedestrian":
+        tr.unseen_s += dt
+      if tr.vision_t is not None:
+        target, why = (CONF_VISION, "vision") if t - tr.vision_t < VISION_HOLD_S else (CONF_VISION_HELD, "vision earlier")
+      elif "adas" not in tr.last and tr.radar_age < RADAR_MATURE_AGE:
+        target, why = CONF_YOUNG, "young"
+      elif not standing:
+        target, why = CONF_MOVING, "moving"
+      else:
+        target, why = CONF_STANDING, "standing"
+        if tr.thin >= THIN_ASPECT:
+          target, why = target * THIN_FACTOR, "thin"
+        if tr.unseen_s >= UNSEEN_HOLD_S:
+          target, why = min(target, CONF_UNSEEN), "unseen"
+      if t - tr.last_t > CONF_COAST_S:   # nothing reports it any more: it can only fade
+        target = min(target, tr.conf)
+      if dt > 0:
+        tr.conf += (target - tr.conf) * (1 - math.exp(-dt / (CONF_RISE_S if target > tr.conf else CONF_FALL_S)))
+        tr.conf_t = t
+      tr.conf_why = why
 
   # ---- output ----
   def _output(self, now: float) -> list[dict]:
@@ -450,6 +550,7 @@ class WorldModel:
         "age": round(now - tr.first, 1),
         "stale": round(max(0.0, now - FUSION_DELAY_S - tr.last_t), 2),
         "stationary": speed < STATIONARY_SPEED,
+        "conf": round(tr.conf, 2), "confWhy": tr.conf_why,
         "sources": [
           {"src": src, "id": s["id"], "dx": round(s["dx"], 2), "dy": round(s["dy"], 2), "age": round(now - s["t"], 2), **s["info"]}
           for src, s in sorted(tr.sources.items(), key=lambda kv: SOURCE_RANK[kv[0]]) if now - s["t"] < COAST_STATIONARY_S + 1

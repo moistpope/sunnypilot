@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">sunnypilot HUD</string>
+    <string name="looking">Looking for sunnypilot</string>
+    <string name="connecting_to">Connecting to %1$s</string>
+    <string name="looking_hint">The comma joins the car\'s hotspot a minute or so after it starts. Web HUD must be on (Settings → Developer).</string>
+    <string name="reconnecting">Reconnecting…</string>
+    <string name="search_now">Search now</string>
+    <string name="set_address">Set address</string>
+
+    <string name="menu_connected">%1$s · %2$s</string>
+    <string name="menu_reload">Reload HUD</string>
+    <string name="menu_search">Search again</string>
+    <string name="menu_address">Device address…</string>
+    <string name="menu_close">Close</string>
+
+    <string name="address_title">Device address</string>
+    <string name="address_message">The comma\'s IP address on the hotspot, optionally with a port (default 8088). It\'s tried first; the app keeps searching too.</string>
+    <string name="address_hint">192.168.43.57 or 192.168.43.57:8088</string>
+    <string name="address_use">Use</string>
+    <string name="address_automatic">Find automatically</string>
+    <string name="address_invalid">Enter an address like 192.168.43.57 or 192.168.43.57:8088</string>
+</resources>

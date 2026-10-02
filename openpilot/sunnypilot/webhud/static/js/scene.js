@@ -29,6 +29,8 @@ const RADAR_CAR = { w: 2.0, l: 4.8, hgt: 1.6 };   // ...a touch bigger than most
 const RADAR_EXTRAPOLATE_S = 0.12;     // carry a radar track on its own velocity at most this far past a cycle (65 ms)
 const RADAR_MATURE_AGE = 20;          // radar view: cycles (1.3 s) before a track is shown, unless "All radar tracks"
 const WORLD_EASE_S = 0.08;            // world objects glide onto each new estimate over about this long
+const CONF_HIDE = 0.35, CONF_FULL = 0.65;   // world objects fade in between these confidences (world_model.py)...
+const LOW_CONF_ALPHA = 0.2;           // ...or, with "Low-confidence objects", never fainter than this
 const DEG = Math.PI / 180;
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -872,6 +874,9 @@ export class CarScene {
         if (e.wx == null || Math.hypot(e.tx - e.wx, e.ty - e.wy) > 15) { e.wx = e.tx; e.wy = e.ty; e.h = e.th; }
         e.lastSeen = now;
         e.data = o;
+        // how sure the world model is it's there: radar-only things the cameras don't confirm fade out
+        const vis = Math.min(1, Math.max(0, ((o.conf ?? 1) - CONF_HIDE) / (CONF_FULL - CONF_HIDE)));
+        e.vis = s.showLowConf === true ? Math.max(vis, LOW_CONF_ALPHA) : vis;
         const adas = o.sources.find(x => x.src === 'adas');
         const flags = (adas && adas.flags) || [];
         const opLead = o.sources.find(x => x.src === 'op');
@@ -884,12 +889,14 @@ export class CarScene {
     const k = 1 - Math.exp(-dt / WORLD_EASE_S), kHead = 1 - Math.exp(-dt / 0.2), kSize = 1 - Math.exp(-dt / 0.4);
     for (const [id, e] of this.worldObjs) {
       const dead = !show || now - e.lastSeen > 0.3;
-      e.alpha = Math.max(0, Math.min(1, e.alpha + (dead ? -dt * 4 : dt * 5)));
+      const target = dead ? 0 : e.vis;
+      e.alpha += Math.max(-dt * 4, Math.min(dt * 5, target - e.alpha));
       if (e.alpha <= 0 && dead) {
         this.world.remove(e.pivot);
         this.worldObjs.delete(id);
         continue;
       }
+      e.pivot.visible = e.alpha > 0.01;
       e.tx += e.vx * dt * rate;
       e.ty += e.vy * dt * rate;
       e.wx += (e.tx - e.wx) * k;

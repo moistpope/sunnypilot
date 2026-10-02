@@ -70,6 +70,20 @@ on this car). The view anchors the objects to the ground, so parked cars stay pu
 scene's own ego motion now uses the gyro too. *Raw sources* draws each source as it reports. Radar
 tracks younger than 1.3 s are hidden unless *All radar tracks* is on.
 
+Each world-model object has a confidence, and the view fades it in between 35% and 65% and hides it
+below that. The radar measures no elevation (nothing decoded so far gives height), so overhead traffic
+lights, sign gantries and bridges read as stopped cars in our lane until it passes under them and
+drops the track (radar track 791 on `000000b5--bfe13ac451--12` at 0:45–0:48: a traffic light the
+radar called a 3 m wide, 0.6 m long car, dropped 24 m out). A camera positively classifying an
+object (an ADAS class, or an openpilot lead) settles it at 100%. A radar-only object stays hidden
+until its radar track has lasted 1.3 s. After that it gets 85% if it moves over the ground and 60%
+(drawn a little see-through) if it stands. A standing object drops to about 33% if the radar has
+drawn it at least 4 times wider than long and 1.5 m wide, and to 15% once openpilot's model has
+missed it for 0.5 s in plain view: standing within 1.5 m of our path, 8–80 m ahead, above 5 m/s,
+with no camera-seen or moving object in front of it. *Low-confidence objects* (*Display*, off by
+default) draws the hidden ones faintly, and *Object stats* gives each object's confidence and the
+reason for it (*vision*, *moving*, *standing*, *thin*, *unseen*, *young*).
+
 *Object stats* (*Display*, off by default, `static/js/labels.js`): a debug tag over every object the
 view draws, giving its source (the ADAS camera's list, an openpilot lead, the radar), track ID and
 class, position (x ahead, y left/right), speed over the ground and relative, heading and size, in m,
@@ -79,7 +93,9 @@ so an object two sources report shows both.
 
 **Open:** `http://sunnypilot.local:8088` (or `http://<device-ip>:8088`; port 80 is also served when
 the process is allowed to bind it). Toggle: *Settings → Developer → Web HUD* (`EnableWebHud`, on by
-default).
+default). On the car's own screen, where the comma joins the head unit's hotspot and `.local` names
+don't resolve, use the Android app in [`android/`](android/README.md): it finds the comma on the
+hotspot, runs the HUD full screen and rides out dropouts.
 
 ## Pieces
 
@@ -96,6 +112,7 @@ default).
 | `dbc.py` | Small DBC reader/decoder that keeps value tables, comments and cycle times. |
 | `../selfdrive/car/can_overrides.py` | Validates/applies `FiskerCanOverrides`; card polls it at 10 Hz and updates the dicts carcontroller reads, in place. |
 | `static/` | The app (plain ES modules, no build step). three.js, the Ocean model and the DBC subset live in `openpilot/third_party/webhud/`. |
+| `android/` | Head-unit app: finds the comma on the hotspot and shows the HUD full screen through a local relay. Not shipped to the device. |
 
 ## ADASBUS signals used
 

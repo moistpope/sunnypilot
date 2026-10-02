@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- a sun rising over a road; the 108dp canvas keeps the art inside the 66dp safe zone -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#F5A623"
+        android:pathData="M54,30a16,16 0 0,1 16,16h-32a16,16 0 0,1 16,-16z" />
+    <path
+        android:strokeColor="#F5A623"
+        android:strokeLineCap="round"
+        android:strokeWidth="3"
+        android:pathData="M54,22v-4M38,29l-3,-3M70,29l3,-3M31,42h-4M77,42h4" />
+    <path
+        android:fillColor="#ECEEF1"
+        android:pathData="M48,50h12l14,34h-40z" />
+    <path
+        android:strokeColor="#101216"
+        android:strokeLineCap="round"
+        android:strokeWidth="2.5"
+        android:pathData="M54,55v5M54,66v6M54,78v4" />
+</vector>

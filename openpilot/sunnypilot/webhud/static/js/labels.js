@@ -29,7 +29,8 @@ function describe(d, egoV, far) {
   if (d.src === 'world') {
     // which sources feed it (R radar track #id, A ADAS object #id, O openpilot lead n)
     const srcs = d.sources.map(x => `${SRC_ABBR[x.src]}${x.src === 'op' ? x.id + 1 : '#' + x.id}`).join(' ');
-    const head = join(`#${d.id} ${d.cls}`, srcs || 'no source', d.stale > 0.3 && `coasting ${d.stale.toFixed(1)} s`);
+    const head = join(`#${d.id} ${d.cls}`, srcs || 'no source', d.conf != null && `${Math.round(d.conf * 100)}% ${d.confWhy}`,
+      d.stale > 0.3 && `coasting ${d.stale.toFixed(1)} s`);
     if (far) return ['WORLD', join(head, `${f1(d.x)} m`)];
     const lines = ['WORLD', head,
       join(`x ${f1(d.x)} m`, `y ${side(d.y)}`, `hdg ${ang(d.heading)}${d.headingSrc ? ' ' + d.headingSrc : ''}`),

@@ -7,13 +7,15 @@ See the LICENSE.md file in the root directory for more details.
 import math
 
 from openpilot.common.test import OpenpilotTestCase
-from openpilot.sunnypilot.webhud.world_model import (FUSION_DELAY_S, RADAR_MIN_AGE, EgoOdometry, WorldModel, adas_measurement, op_measurements,
-                                                     radar_measurements, to_ego, to_world)
+from openpilot.sunnypilot.webhud.world_model import (CONF_STANDING, FUSION_DELAY_S, RADAR_MIN_AGE, EgoOdometry, WorldModel, adas_measurement,
+                                                     op_measurements, radar_measurements, to_ego, to_world)
+
+SHOWN, HIDDEN = 0.65, 0.35   # the view's fade (scene.js CONF_FULL / CONF_HIDE)
 
 
-def radar_obj(oid, x, y, vx=0.0, vy=0.0, age=40):
+def radar_obj(oid, x, y, vx=0.0, vy=0.0, age=40, cls="unclassified", w=None, l=None):
   return {"id": oid, "x": x, "y": y, "vx": vx, "vy": vy, "age": age, "hist": 0x3FFF, "state": 3, "quality": 13,
-          "cls": "unclassified", "heading": None, "w": None, "l": None}
+          "cls": cls, "heading": None, "w": w, "l": l}
 
 
 class TestEgoOdometry(OpenpilotTestCase):
@@ -132,3 +134,78 @@ class TestWorldModel(OpenpilotTestCase):
     self.model.step(1.0)
     (after,) = self.model.step(1.0)
     assert after["id"] != before["id"]   # ids keep counting, so a viewer never mixes the two up
+
+
+class TestConfidence(OpenpilotTestCase):
+  """At 22 m/s on a straight road, with openpilot's model running; `world` maps each radar id to a
+  ground-fixed (x, y, w, l, cls), `leads` the openpilot leads to report (dRel, yRel, vLead)."""
+  V = 22.0
+
+  def setUp(self):
+    super().setUp()
+    self.model = WorldModel()
+
+  def run_for(self, t_end, world, leads=lambda t: [], moving=None, age=lambda t: 40):
+    odo, model, out = self.model.odo, self.model, []
+    next_cycle = 0.0
+    for i in range(int(t_end / 0.01) + 1):
+      t = i * 0.01
+      odo.update(t, self.V, 0.0)
+      if t >= next_cycle:
+        objs = []
+        for rid, (wx, wy, w, l, cls) in world.items():
+          wx = wx + (moving or {}).get(rid, 0.0) * t
+          x, y = to_ego(odo.pose(t), wx, wy)
+          if 0 < x < 170:
+            objs.append(radar_obj(rid, x, y, vx=(moving or {}).get(rid, 0.0) - self.V, age=age(t), cls=cls, w=w, l=l))
+        model.add(radar_measurements(t, objs, self.V))
+        rs = {k: {"present": True, "dRel": d, "yRel": y, "vLead": v, "modelProb": 0.9} for k, (d, y, v) in zip(("leadOne", "leadTwo"), leads(t), strict=False)}
+        model.add(op_measurements(t, rs, self.V))
+        model.model_ran(t)
+        next_cycle += 0.065
+      if i % 5 == 0:
+        out.append((t, model.step(t)))
+    return out
+
+  def conf(self, snaps, x_range):
+    """(conf, why) of every object reported within x_range ahead."""
+    return [(o["conf"], o["confWhy"]) for _, objs in snaps for o in objs if x_range[0] < o["x"] < x_range[1]]
+
+  def test_overhead_sign_in_our_path_stays_hidden(self):
+    # route 000000b5--bfe13ac451--12, radar track 791: a traffic light the radar calls a car, 3 m wide and 0.6 m long,
+    # standing in our lane; openpilot's model sees no lead there
+    snaps = self.run_for(3.5, {791: (110.0, 0.3, 3.0, 0.6, "car")})
+    seen = self.conf(snaps, (8.0, 90.0))
+    assert seen and max(c for c, _ in seen) < HIDDEN, max(seen)
+    assert seen[-1][1] == "unseen"
+
+  def test_a_stopped_car_the_camera_sees_shows(self):
+    snaps = self.run_for(3.5, {5: (110.0, 0.3, 2.0, 1.0, "car")}, leads=lambda t: [(106.2 - self.V * t, -0.3, 0.0)] if t > 1.0 else [])
+    assert snaps[-1][1][0]["confWhy"] == "vision" and snaps[-1][1][0]["conf"] > SHOWN
+
+  def test_a_stopped_car_behind_a_lead_isnt_doubted(self):
+    # the model can't see past the car ahead of us; the radar sees under it
+    snaps = self.run_for(3.0, {1: (20.0, 0.0, 2.0, 4.0, "car"), 2: (60.0, 0.2, 2.0, 1.0, "car")}, moving={1: self.V, 2: 0.0},
+                         leads=lambda t: [(20.0 - 3.8, 0.0, self.V)])
+    stopped = [o for o in snaps[-1][1] if o["sources"][0]["id"] == 2]
+    assert stopped and stopped[0]["confWhy"] == "standing" and stopped[0]["conf"] > HIDDEN
+
+  def test_parked_car_beside_the_road_shows_softer(self):
+    (o,) = self.run_for(3.0, {3: (60.0, 5.0, 2.0, 4.2, "car")})[-1][1]
+    assert o["confWhy"] == "standing" and abs(o["conf"] - CONF_STANDING) < 0.05
+
+  def test_wide_thin_strip_beside_the_road_is_doubted(self):
+    (o,) = self.run_for(3.0, {4: (60.0, 5.0, 3.0, 0.6, "car")})[-1][1]
+    assert o["confWhy"] == "thin" and o["conf"] < HIDDEN
+
+  def test_young_radar_tracks_wait_to_show(self):
+    # radar track 783 on the same drive: a 0.8 s "pedestrian" sprinting across our lane at 50 mph, really its bearing settling
+    snaps = self.run_for(2.0, {7: (60.0, 0.0, 2.0, 4.0, "car")}, moving={7: 15.0}, age=lambda t: 8 + int(t / 0.065))
+    young = [o for t, objs in snaps if t < 0.8 for o in objs]
+    assert young and all(o["confWhy"] == "young" and o["conf"] < HIDDEN for o in young)
+    assert snaps[-1][1][0]["confWhy"] == "moving"   # past RADAR_MATURE_AGE (1.3 s of radar track)
+
+  def test_moving_car_is_trusted_without_the_camera(self):
+    snaps = self.run_for(3.0, {6: (40.0, 0.0, 2.0, 4.0, "car")}, moving={6: 15.0})
+    (o,) = snaps[-1][1]
+    assert o["confWhy"] == "moving" and o["conf"] > SHOWN
