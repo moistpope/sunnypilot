@@ -88,7 +88,7 @@ is a degree or two.
 private CAN-FD link on panda bus 1 (`fisker_radar.py`), drawn as see-through teal cars with a ring on
 the ground at the point each track reports. It's there to check the radar decoding against the
 camera's cars before the radar feeds openpilot. The radar's messages aren't in the FM29 matrix:
-`third_party/webhud/dbc/fisker_ocean_mrr.dbc` is reverse-engineered from a drive, and its comments
+`opendbc/dbc/fisker_ocean_mrr.dbc` is reverse-engineered from a drive, and its comments
 say how each scale was checked and which are still open. Tracks are drawn close to raw (each 65 ms
 cycle's position, carried on the radar's own velocity for at most a cycle), so a scale or sign error
 shows up as an offset from the camera's car; like those cars, a car ahead sits with its rear on the

@@ -16,7 +16,7 @@ more trustworthy source dominates each quantity:
   adas   the OEM ADAS object list (FiskerWorld). Camera classification, size, heading and the widest
          coverage; range is the camera's, with no velocity. As decoded it's off in scale and origin
          (see the calibration below).
-  op     openpilot's radarState leads (vision-only on this car). Two leads; depth from the model,
+  op     openpilot's radarState leads (radar-backed when the model confirms a radar track, else vision). Two leads; depth from the model,
          its error growing with distance; weighted by the model's lead probability. The least stable
          source here (in a parking lot it put a car 13 m ahead at 6 m), so an openpilot lead refines
          objects the others see but only stands alone when it's the only object source there is.

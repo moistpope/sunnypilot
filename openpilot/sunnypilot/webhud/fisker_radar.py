@@ -6,7 +6,7 @@ See the LICENSE.md file in the root directory for more details.
 
 The Fisker Ocean's mid-range radar (MRR), read from its private CAN-FD link on panda bus 1.
 
-The radar's messages aren't in the FM29 matrix; third_party/webhud/dbc/fisker_ocean_mrr.dbc is
+The radar's messages aren't in the FM29 matrix; opendbc/dbc/fisker_ocean_mrr.dbc is
 reverse-engineered from a drive (its comments say how each scale was checked). Every 65 ms radar
 cycle brings a header (0x300) and 32 object slots (0x310..0x32F), filled from the first slot up;
 an object has a persistent track ID, position, relative velocity and acceleration, and for tracks
