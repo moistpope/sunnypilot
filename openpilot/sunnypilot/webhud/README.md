@@ -21,9 +21,36 @@ the ADAS lines and refines each with openpilot's matching line where they agree,
 openpilot sees when it's confident. Lanes neither reports are filled in as a softer, inferred road:
 lane count and width from ADAS lines/lane info and openpilot's outer lines and road edges (the road
 between the edges is split into lanes and the car put in its slot), held for a while, else the
-car's own path. The inferred road only appears once there's lane evidence and fades after ~150 m
-without any, or in Park; the ground fades out with distance from the car. Ground texture and
-inferred road can be turned off under *Display*.
+car's own path. A lane count drops only after 8 s without the lane, since the outer lines flicker.
+The cameras name lines by where they are from the car, so a lane change renames every line at once.
+That's recognized (both ego lines a lane over from where the carried lane puts them), and the carried
+road is renamed with them, so it stays put on the ground instead of sliding a lane sideways.
+
+Lanes are drawn only when the HUD is confident of them. *Lane confidence* is spatio-temporal: it's
+kept on stations fixed to the road every 5 m of distance driven, from just behind the car to 100 m
+ahead, so what was learned about a stretch of road stays with it as the car drives onto it. Each
+station eases toward how much stable lane evidence there is at its distance: the ego lane's lines
+where they're plausible (on their side of the car, a lane's width apart, along our heading),
+weighted by their confidence, by how far ahead they can be trusted, and by how stable they've been
+(a running mean of how far each new measurement lands from where the carried line predicted it), or
+else openpilot's road edges. It rises within a second or so and falls slowly: over 10 s standing
+still, faster with distance driven (2 s in Park), so a lane has to hold steady to be trusted and a
+short dropout doesn't lose it. The lanes show once the stations over the next 30 m average past the
+threshold (*Display → Lane confidence*, 50% by default, with a live readout), and hide below 80% of
+it. On the logged drive, clean highway lanes show 1–2 s after they appear and settle at 90–97%.
+
+The ground (`static/js/ground.js`) is drawn as one field with the road. With no lanes to show (at
+start, in a parking lot, at low speed without lines) it's a disc of about 10 m radius around the car
+that fades out over its outer half. Once the lanes show, the disc grows out into the road, first
+across to the outer lines plus a shoulder, then down the road as far as the lane confidence reaches
+(70–80 m on the highway), fading out at the far end. Disc and road are signed distance fields joined
+with a smooth minimum, the road's computed in its own coordinates (station along it and offset across
+it, exact for the arcs the lines are drawn as), and every part of the shape is eased on springs. So
+any change morphs: lanes found or lost, a lane added or dropped, the road bending. The edge is
+roughened with noise fixed to the ground, which ripples and flows while the shape is changing and
+holds still when it isn't. Lane lines, stop lines, crosswalks and the headlight throw are cut by the
+same field, so they grow, bend and dissolve with the road. Ground texture and inferred road can be
+turned off under *Display*.
 
 Traffic lights, signs and road markings (`static/js/furniture.js`) come from the car's ADAS camera
 only; sunnypilot adds map speed limits (`liveMapDataSP`) but no signs or lights. The camera reports
@@ -31,8 +58,12 @@ what it saw and, for lights and markings, how far ahead, never where across the 
 traffic light (color, arrow, solid/blinking, lamp count, orientation) floats over our lane at its
 distance (else the stop line's or a landmark's, else an estimate); a speed-limit sign the camera
 just read (`ADAS_TSRSts` Vision mode or a new value) or a prohibition sign (`ADAS_FobdSign`) goes up
-at the roadside a little ahead and stays put as the car passes; stop lines and crosswalks are drawn
-across the road at their distance. The camera doesn't classify stop or yield signs. The ICC also
+at the roadside a little ahead, beyond the outer lane on our side; stop lines and crosswalks are
+drawn across the road at their distance. All of them are anchored to the road, not to the ground: a
+station down the road (distance driven) and an offset across it, placed each frame on the road as
+it's drawn then (`RoadModel.place`). A sign 50 m down a road drawn curving left that turns out to
+run straight is, 10 m later, 40 m down the straight road and still beside it. The camera doesn't
+classify stop or yield signs. The ICC also
 sends an ADASIS v2 map horizon (`ICC_0x250`..`0x255`, `0x361`) with map signs and lanes per
 direction; its sign type table isn't in the matrix, so it isn't used yet.
 

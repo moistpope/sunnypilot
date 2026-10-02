@@ -1,6 +1,7 @@
 // sunnypilot web HUD entry point: connects to the device, renders the car view and wires the controls.
 import { $, $$, el, api, fmtTime, iconSvg, setClass, setText, store, save } from './util.js';
 import { CarScene } from './scene.js';
+import { LANE_CONF_THRESHOLD } from './road.js';
 import { Hud } from './hud.js';
 import { Settings } from './settings.js';
 import { VehicleState } from './vehicle.js';
@@ -12,7 +13,7 @@ const DEFAULTS = {
   theme: 'auto', units: 'auto', laneSource: 'blend', egoColor: 'model', view: 'chase',
   showPath: true, showUss: true, showOpLeads: true, autoView: true, showGround: true, showRoad: true, showSigns: true,
   showTracks: true, showRadar: false, radarAllTracks: false, showLowConf: false, showObjectStats: false, objectMode: 'world',
-  laneHeadingSign: 1, laneCurvatureSign: 1, objectHeadingSign: 1, laneConfThreshold: 0.5,
+  laneHeadingSign: 1, laneCurvatureSign: 1, objectHeadingSign: 1, laneConfThreshold: LANE_CONF_THRESHOLD,
 };
 
 function loadSettings() {

@@ -593,8 +593,8 @@ export class RoadModel {
       anchor,
       laneConf: this.laneConf,
       shown: this.lanesShown,
-      // the ground's road shape: lane region (m left of the ego-lane center: outer lines), m it reaches
-      // ahead, 0..1 grown out of the disc, and how hard it's reshaping now (0..1) and has (for the ripple)
+      // the ground's road shape: lane region (outer lines, m left of the ego-lane center), m it reaches
+      // ahead, 0..1 grown out of the disc, how hard it's reshaping (0..1) and the edge ripple's phase
       surface: { left: sf.left.x, right: sf.right.x, reach: sf.reach.x, reveal: clamp01(sf.reveal.x), energy: sf.energy, phase: sf.phase },
     };
   }
