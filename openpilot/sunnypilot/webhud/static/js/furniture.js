@@ -5,14 +5,19 @@
 //  - the ego-lane traffic light floats over our lane at the reported distance (else at the stop
 //    line's or a landmark's distance, else an estimate), dead-reckoned between updates;
 //  - a sign the camera has just read (speed limit change or re-read, prohibition sign) is put up at
-//    the roadside a little ahead, anchored to the road, so the car drives past it;
+//    the roadside a little ahead, so the car drives past it;
 //  - stop lines and crosswalks are painted across the road at their distance.
+// Each is anchored to the road, not the ground: a station down it (distance driven, road.js `odo`) and
+// an offset across it (over our lane's center, or beside its outer lane on our side), placed every
+// frame on the road as it's drawn then (road.js `place`). A sign 50 m down a road drawn curving left
+// that turns out to run straight is, 10 m on, 40 m down the straight road and still beside it.
 import * as THREE from '../vendor/three.module.min.js';
 
 const LIGHT_HEIGHT = 3.8;      // m, bottom of the signal head over the road (a bit low, so it stays in view)
 const LIGHT_SCALE = 1.6;       // drawn larger than life so it reads at 60+ m
 const SIGN_SCALE = 1.7;
-const SIGN_AHEAD = 16;         // m: where a just-read sign goes up
+const SIGN_AHEAD = 16;         // m: where a just-read sign goes up...
+const SIGN_GAP = 1.3;          // ...this far beyond the outer lane line on our side
 const LAMP = { red: 0xff3b30, amber: 0xffb020, green: 0x34d058 };
 
 function canvasTexture(w, h, draw) {
@@ -135,10 +140,10 @@ class TrafficLight {
     this.housing.opacity = this.alpha;
 
     // over our lane, facing back down the road
-    const c = road.center, d = this.d;
-    const [X, Z] = toScene(d, c.y0 + c.t * d + 0.5 * c.k * d * d);
+    const p = road.place(this.d, 0);
+    const [X, Z] = toScene(p.x, p.y);
     this.group.position.set(X, LIGHT_HEIGHT + 0.5 * LIGHT_SCALE, Z);
-    this.group.rotation.y = Math.atan(c.t + c.k * d);
+    this.group.rotation.y = p.h;
   }
 }
 
@@ -250,9 +255,8 @@ function makeSign(spec) {
 // ---- the lot ----------------------------------------------------------------------------------------
 
 export class RoadFurniture {
-  constructor(scene, world) {
+  constructor(scene) {
     this.scene = scene;
-    this.world = world;
     this.light = new TrafficLight();
     scene.add(this.light.group);
     this.signs = [];
@@ -267,28 +271,30 @@ export class RoadFurniture {
     if (this.odo - (this.lastSpawn.get(key) ?? -1e9) < 120) return;   // same sign again within 120 m
     this.lastSpawn.set(key, this.odo);
     const left = f.road && f.road.trafficSide === 'Left_Hand_Traffic';
-    // beyond the outer lane on our side, else a typical shoulder
-    const c = road.center, x = SIGN_AHEAD;
-    const lanes = road.lastLanes || { nl: 0, nr: 0 };
-    const known = road.confidence > 0.3;
-    const edge = known ? road.width * (0.5 + (left ? lanes.nl : lanes.nr)) + 1.3 : 4.6;
-    const y = c.y0 + c.t * x + 0.5 * c.k * x * x + (left ? edge : -edge);
     const sign = makeSign(spec);
-    const [X, Z] = toScene(x, y);
-    this.world.updateMatrixWorld(true);
-    sign.position.copy(this.world.worldToLocal(new THREE.Vector3(X, 0, Z)));
-    // face the car, toed in a little toward the road
-    sign.rotation.y = -this.world.rotation.y + (left ? -0.18 : 0.18);
+    // SIGN_AHEAD m down the road, beyond the outer lane on our side (a typical shoulder's width out
+    // while the lanes aren't sure enough to show)
+    sign.userData.anchor = { s: road.odo + SIGN_AHEAD, side: left ? 1 : -1, gap: road.lanesShown ? SIGN_GAP : SIGN_GAP + 1.5 };
     sign.userData.alpha = 0;
     sign.userData.age = 0;
-    this.world.add(sign);
+    this.scene.add(sign);
     this.signs.push(sign);
     if (this.signs.length > 6) this._remove(this.signs[0]);
   }
 
   _remove(sign) {
-    this.world.remove(sign);
+    this.scene.remove(sign);
     this.signs = this.signs.filter(s => s !== sign);
+  }
+
+  // place an anchored sign on the road as it is now: facing back down the road, toed in toward it
+  _place(sign, road, toScene) {
+    const a = sign.userData.anchor;
+    const p = road.place(a.s - road.odo, road.laneEdge(a.side) + a.side * a.gap);
+    const [X, Z] = toScene(p.x, p.y);
+    sign.position.set(X, 0, Z);
+    sign.rotation.y = p.h - a.side * 0.18;
+    return a.s - road.odo;
   }
 
   update(state, road, vehicle, settings, dt, clock, toScene) {
@@ -313,12 +319,10 @@ export class RoadFurniture {
       this.prev = { limit: limit ? JSON.stringify(limit) : this.prev.limit, state: tsr.state && tsr.state.n, prohibited: tsr.prohibited };
     }
     // signs fade in, ride with the road, and go once well behind (or old)
-    const p = new THREE.Vector3();
     for (const sign of [...this.signs]) {
       const u = sign.userData;
       u.age += dt;
-      sign.getWorldPosition(p);
-      const behind = p.z > 25 || u.age > 120 || !showSigns;
+      const behind = this._place(sign, road, toScene) < -25 || u.age > 120 || !showSigns;
       u.alpha = Math.max(0, Math.min(1, u.alpha + (behind ? -dt * 2 : dt * 2.5)));
       for (const m of u.mats) m.opacity = u.alpha;
       if (behind && u.alpha === 0) this._remove(sign);
@@ -343,15 +347,13 @@ export class RoadFurniture {
     const out = { stop: [], zebra: [] };
     const m = this.marking;
     if (!m || m.d < -8 || m.d > 90) return out;
-    const c = road.center, W = road.width;
-    const lanes = road.lastLanes || { nl: 0, nr: 0 };
-    const yc = (x) => c.y0 + c.t * x + 0.5 * c.k * x * x;
+    const at = (s, d) => { const p = road.place(s, d); return [p.x, p.y]; };
+    const right = road.laneEdge(-1), left = road.laneEdge(1);
     if (/Stop_Line/.test(m.type)) {
       // across the lanes going our way (the ego lane and any to the right)
-      out.stop.push([[m.d, yc(m.d) + W / 2], [m.d, yc(m.d) - W * (0.5 + lanes.nr)]]);
+      out.stop.push([at(m.d, road.width / 2), at(m.d, right)]);
     } else {
-      const left = W * (0.5 + lanes.nl), right = W * (0.5 + lanes.nr);
-      for (let y = -right + 0.4; y <= left - 0.4; y += 1.1) out.zebra.push([[m.d, yc(m.d) + y], [m.d + 3, yc(m.d + 3) + y]]);
+      for (let y = right + 0.4; y <= left - 0.4; y += 1.1) out.zebra.push([at(m.d, y), at(m.d + 3, y)]);
     }
     return out;
   }

@@ -8,6 +8,7 @@ import { makeEgo, makeObject, makeGhost, fitScale, loadEgoModel } from './models
 import { applyLamps } from './lamps.js';
 import { RoadModel, linePoints } from './road.js';
 import { RoadFurniture } from './furniture.js';
+import { RoadField } from './ground.js';
 import { PowerTrails, motorLoad } from './tracks.js';
 import { ObjectLabels } from './labels.js';
 import { STEER_RATIO } from './vehicle.js';
@@ -35,77 +36,6 @@ const DEG = Math.PI / 180;
 const EGO_ENV = { light: 1.0, dark: 0.75 };   // reflection strength on the ego car, by theme
 const PAINT_LIFT = 2.0;                       // the model's own paint is a near-black navy (~1-3%); lift it
 const UP = new THREE.Vector3(0, 1, 0);
-
-// Tileable value-noise fBm (period = the texture), as a grey canvas texture.
-function noiseTexture(size, cells, octaves, gain, seed, anisotropy) {
-  const hash = (x, y, o) => {
-    let h = (x * 374761393 + y * 668265263 + o * 2147483647 + seed * 144269) | 0;
-    h = Math.imul(h ^ (h >>> 13), 1274126177);
-    return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
-  };
-  const val = new Float32Array(size * size);
-  let amp = 1, total = 0;
-  for (let o = 0; o < octaves; o++) {
-    const n = cells << o;
-    for (let py = 0; py < size; py++) {
-      const fy = py / size * n, iy = Math.floor(fy), ty = fy - iy, sy = ty * ty * (3 - 2 * ty);
-      for (let px = 0; px < size; px++) {
-        const fx = px / size * n, ix = Math.floor(fx), tx = fx - ix, sx = tx * tx * (3 - 2 * tx);
-        const x0 = ix % n, x1 = (ix + 1) % n, y0 = iy % n, y1 = (iy + 1) % n;
-        const a = hash(x0, y0, o), b = hash(x1, y0, o), c = hash(x0, y1, o), d = hash(x1, y1, o);
-        val[py * size + px] += amp * (a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy);
-      }
-    }
-    total += amp;
-    amp *= gain;
-  }
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  const ctx = c.getContext('2d');
-  const img = ctx.createImageData(size, size);
-  let lo = Infinity, hi = -Infinity;
-  for (const v of val) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
-  for (let i = 0; i < val.length; i++) {
-    const g = Math.round(255 * (val[i] - lo) / (hi - lo || 1));
-    img.data.set([g, g, g, 255], i * 4);
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.anisotropy = anisotropy;
-  return tex;
-}
-
-// The road surface: a fine, soft "cloud" rather than slabs. Fine grain (2 m tile) over two soft
-// cloud layers (12 m and 48 m), mixed in the shader from the plane's own coordinates, so it reads as
-// a fine surface near the car and never shows a repeating pattern. Nothing in it has a direction:
-// the plane turns with the integrated heading while lane lines stay car-relative.
-function groundMaterial(anisotropy) {
-  const uniforms = {
-    tGrain: { value: noiseTexture(256, 24, 4, 0.6, 7, anisotropy) },
-    tCloud: { value: noiseTexture(256, 4, 5, 0.55, 3, anisotropy) },
-    uContrast: { value: 0.1 },
-    uBg: { value: new THREE.Color(0xffffff) },
-    uFade: { value: new THREE.Vector2(40, 160) },   // m from the car: start/end of the fade into the background
-  };
-  const m = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  m.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, uniforms);
-    sh.vertexShader = 'varying vec2 vGround;\nvarying vec2 vScene;\n' + sh.vertexShader.replace('#include <begin_vertex>',
-      '#include <begin_vertex>\nvGround = position.xz;\nvScene = (modelMatrix * vec4(transformed, 1.0)).xz;');
-    sh.fragmentShader = 'varying vec2 vGround;\nvarying vec2 vScene;\nuniform sampler2D tGrain;\nuniform sampler2D tCloud;\nuniform float uContrast;\nuniform vec3 uBg;\nuniform vec2 uFade;\n' +
-      sh.fragmentShader.replace('#include <map_fragment>', `
-        float grain = texture2D(tGrain, vGround / 2.0).r;
-        float mid = texture2D(tCloud, vGround / 12.0 + vec2(0.37, 0.61)).r;
-        float cloud = texture2D(tCloud, vGround / 48.0).r;
-        float n = (cloud - 0.5) * 0.6 + (mid - 0.5) * 0.45 + (grain - 0.5) * 0.8;
-        diffuseColor.rgb *= 1.0 + n * uContrast;
-        // fade into the background with distance from the car (sooner when there's no road to show)
-        diffuseColor.rgb = mix(diffuseColor.rgb, uBg, smoothstep(uFade.x, uFade.y, length(vScene - vec2(0.0, 2.4))));`);
-  };
-  m.userData.uniforms = uniforms;
-  return m;
-}
 
 // headlight throw: narrow and bright at the bumper (bottom), widening and fading down the road (top)
 let beamTexture = null;
@@ -329,15 +259,20 @@ export class CarScene {
 
     // World-anchored road surface. `world` carries the inverse of the car's integrated pose, so the
     // texture stays put on the "road" while the car drives over it; the plane itself is re-centered
-    // under the car in whole tiles so it never runs out.
+    // under the car in whole tiles so it never runs out. Where it shows -- a disc around the car, grown
+    // out into the road once the lanes show -- is the road field (ground.js), which also masks the lane
+    // lines, stop lines and headlight throw.
+    const aniso = this.renderer.capabilities.getMaxAnisotropy();
+    this.field = new RoadField(aniso);
     this.world = new THREE.Group();
-    this.ground = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE).rotateX(-Math.PI / 2), groundMaterial(this.renderer.capabilities.getMaxAnisotropy()));
+    this.ground = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE).rotateX(-Math.PI / 2), this.field.groundMaterial(aniso));
     this.ground.position.y = -0.01;
     this.world.add(this.ground);
     this.scene.add(this.world);
     this.pose = { x: 0, y: 0, h: 0 };   // rear axle: m, m, rad; x forward / y left at h = 0
 
     this.headBeam = lightPool(0xfff1cf, beamTex());
+    this.field.mask(this.headBeam.material, 'ground');
     this.scene.add(this.headBeam);
 
     // procedural Ocean until the detailed glTF model has loaded (or if it can't be)
@@ -362,23 +297,25 @@ export class CarScene {
       modelEdge: lineMaterial(0x6c727b, 0.5), path: lineMaterial(0x3e6ae1, 0.16), slot: lineMaterial(0x3e6ae1, 0.8),
       ussRed: lineMaterial(0xe5413a, 0.9), ussAmber: lineMaterial(0xf0a020, 0.9), ussYellow: lineMaterial(0xe8d23a, 0.85),
       ussGreen: lineMaterial(0x2fa84f, 0.6), bsd: lineMaterial(0xe5413a, 0.22),
-      // inferred (procedural) lane lines and the road surface
+      // inferred (procedural) lane lines
       lineSoft: lineMaterial(0x8e949d, 0.55), lineYellowSoft: lineMaterial(0xdcaa2e, 0.5), lineBlueSoft: lineMaterial(0x3e6ae1, 0.5),
-      road: lineMaterial(0x000000, 0.06),
       // stop lines and crosswalks
       marking: lineMaterial(0x8e949d, 0.9),
     };
+    // lane lines show with the road, stop lines wherever there's ground
+    for (const k of ['line', 'lineBlue', 'lineYellow', 'lineRed', 'edge', 'lineSoft', 'lineYellowSoft', 'lineBlueSoft']) this.field.mask(this.mats[k], 'road');
+    this.field.mask(this.mats.marking, 'ground');
     this.ribbons = {};
     for (const key of Object.keys(this.mats)) {
       this.ribbons[key] = new Ribbon(this.mats[key], key === 'path' ? 128 : 1024);
       this.scene.add(this.ribbons[key].mesh);
     }
     this.ribbons.path.mesh.renderOrder = 1;
-    this.ribbons.road.mesh.renderOrder = 0;
     this.road = new RoadModel();
+    this.roadOut = null;   // this frame's road (RoadModel.update)
     this.ribbons.zebra = new Ribbon(this.mats.marking, 256);
     this.scene.add(this.ribbons.zebra.mesh);
-    this.furniture = new RoadFurniture(this.scene, this.world);
+    this.furniture = new RoadFurniture(this.scene);
     this.tracks = new PowerTrails(this.world);
 
     this.objects = new Map();   // key -> track (see _track)
@@ -439,9 +376,9 @@ export class CarScene {
     this.mats.marking.color.set(t.line);
     this.mats.lineYellowSoft.color.set(t.yellow);
     this.mats.lineBlueSoft.color.set(t.blue);
-    this.mats.road.color.set(t.road);
-    // inferred road: full opacity, scaled by the road model's confidence each frame
-    this.softOpacity = { road: dark ? 0.35 : 0.07, lineSoft: 0.55, lineYellowSoft: 0.5, lineBlueSoft: 0.5 };
+    // the lanes are tinted this much toward the road color (ground.js)
+    this.ground.material.userData.uniforms.uRoad.value.set(t.road);
+    this.roadTint = dark ? 0.35 : 0.07;
     this.mats.lineBlue.color.set(t.blue);
     this.mats.lineYellow.color.set(t.yellow);
     this.mats.lineRed.color.set(t.red);
@@ -514,7 +451,7 @@ export class CarScene {
     this.stateSeq = (this.stateSeq || 0) + 1;
   }
 
-  _laneGeometry(dt) {
+  _laneGeometry() {
     const st = this.state || {};
     const op = st.op || {};
     const f = st.fisker;
@@ -525,20 +462,15 @@ export class CarScene {
     const latActive = !!((op.carControl && op.carControl.latActive) || (op.selfdriveStateSP && op.selfdriveStateSP.mads && op.selfdriveStateSP.mads.active));
     const hmi = f && f.lanes ? f.lanes.hmi : null;
     const pieces = { line: [], lineBlue: [], lineYellow: [], lineRed: [], lineSoft: [], lineYellowSoft: [], lineBlueSoft: [], edge: [], model: [], modelEdge: [] };
-    const xTo = 90, xFrom = -30;
+    const xTo = 130, xFrom = -30;
 
-    // smoothed + procedurally completed road (road.js)
-    const road = this.road.update(st, this.vehicle, s, dt);
+    // smoothed + procedurally completed road (road.js, updated in _road); the lines are cut to the road's
+    // shape by the road field, so they only show, and grow and fade, with it
+    const road = this.roadOut;
     const anchor = linePoints(road.anchor.c, xFrom, xTo, 2);
     const fromCenter = (d) => offsetLine(anchor, d - road.anchor.offset);
-    // the inferred road only shows as far as we believe the car is on a laned road
-    const rc = s.showRoad === false ? 0 : road.confidence;
-    for (const [k, o] of Object.entries(this.softOpacity || {})) this.mats[k].opacity = o * rc;
-    this.ribbons.road.set(rc > 0.02 ? [fromCenter(road.surface.offset)] : [], road.surface.width, 0.006);
-    const u = this.ground.material.userData.uniforms;
-    u.uFade.value.set(16 + 34 * rc, 60 + 110 * rc);
-    for (const line of road.lines) {
-      if (line.inferred && rc <= 0.02) continue;
+    for (const line of road.surface.reveal > 0.001 ? road.lines : []) {
+      if (line.inferred && s.showRoad === false) continue;
       const pts = line.inferred ? fromCenter(line.offset) : linePoints(line.c, xFrom, xTo, 2);
       if (line.edge) { pieces.edge.push(pts); continue; }
       const ego = line.id === 'L1' || line.id === 'R1';
@@ -1134,14 +1066,21 @@ export class CarScene {
     this.controls.update();
   }
 
+  // the road model, then the road field the ground and lines are drawn through (ground.js)
+  _road(dt) {
+    this.roadOut = this.road.update(this.state || {}, this.vehicle, this.settings, dt);
+    this.field.update(this.roadOut, this.ground, this.settings.showRoad === false ? 0 : this.roadTint);
+  }
+
   frame(dt, vehicle) {
     dt = Math.min(dt, 0.1);
     this.clock += dt;
     this.vehicle = vehicle;
     this._ground(dt);
     this._camera(dt);
+    this._road(dt);
     this.furniture.update(this.state, this.road, this.vehicle, this.settings, dt, this.clock, toScene);
-    this._laneGeometry(dt);
+    this._laneGeometry();
     this._uss();
     this._objects(dt);
     this._radar(dt);

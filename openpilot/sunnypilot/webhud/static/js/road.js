@@ -1,9 +1,12 @@
-// Road model for the 3D view: smoothed lane lines plus a procedurally completed road.
+// Road model for the 3D view: smoothed lane lines, a procedurally completed road, how sure we are of
+// the lanes, the shape the ground takes for them, and a road frame to anchor signs and lights to.
 //
 // Lines are kept as y(x) = y0 + t*x + k*x^2/2 in the car frame (x forward, y left, m). Every frame
 // each line is first carried along with the car's own motion (so a line the camera lost stays put
 // on the road, and smoothing doesn't lag), then eased toward the latest measurement in proportion
 // to its confidence. Validity has hysteresis, so a line that flickers valid/invalid doesn't blink.
+// The cameras name lines by where they are from the car, so a lane change renames them all at once;
+// that's spotted and the carried road renamed the same way, so it stays put on the ground.
 //
 // Sources: 'blend' (default) takes the ADAS lines and refines each with openpilot's matching line
 // where the two agree, adding openpilot-only lines it is confident about; 'fisker' and 'model' use
@@ -16,20 +19,63 @@
 // drawn relative to `anchor` (a measured ego line when there is one), and flagged so they can be
 // drawn softer.
 //
-// `confidence` (0..1) says whether the car is on a laned road at all: it rises with real lane
-// evidence and falls after ~150 m of driving without any, or in Park. Inferred lanes and the road
-// band are drawn with it, so a parked car, or one that hasn't seen a lane yet, sits on bare ground.
+// Lane confidence is spatio-temporal. It lives on stations fixed to the road every 5 m of distance
+// driven, from just behind the car to 100 m ahead, so what was learned about a stretch of road stays
+// with that stretch as the car drives onto it. Each station eases toward how much stable lane evidence
+// there is at its distance (the ego lane's lines where they're plausible, weighted by their confidence
+// and reach and by how well each new measurement agrees with where the carried line predicted it; else
+// openpilot's road edges): up within a second or so, down slowly, more slowly standing still than
+// driving, so a lane has to stay stable a while to be trusted and a brief dropout doesn't lose it. The lanes
+// show once the stations over the next 30 m average past the threshold (a Display setting), with a
+// little hysteresis, and the road reaches as far ahead as the stations stay above it.
+//
+// `surface` is the shape the ground takes (ground.js draws it): a disc around the car that grows out
+// into the road once the lanes show, then follows its lane region and reach. All of it is eased on
+// springs, so every change morphs: lanes found or lost, a lane added or dropped, the road reshaping.
+//
+// `place(s, d)` gives the point s m down the road and d m left of the ego lane's center, on the road
+// as drawn now. Signs and lights are anchored to the road with it (furniture.js), so when the road
+// is corrected they move with it and stay beside or over it.
 
 const MODEL_X_OFFSET = -1.6;   // openpilot's model frame is the device, ~1.6 m behind the bumper
 const LANE_W = 3.6;
 const SHOW_AFTER = 0.2, HIDE_AFTER = 1.0;     // s of valid / invalid before a measured line toggles
 const COUNT_HOLD = 25;                         // s a lane-count observation is kept
-const EVIDENCE_HOLD_M = 150;                   // m driven without lane evidence before the road fades
+const COUNT_DROP_S = 8;                        // s without seeing a lane before the count drops it (outer lines flicker)
 const MODEL_ONLY_PROB = 0.45;                  // openpilot line probability to add a line the ADAS lacks
 const MODEL_WEIGHT = 0.6;                      // openpilot's weight relative to the ADAS when both see a line
 const TAU = { y0: 0.3, t: 0.35, k: 0.6 };
+const K_MAX = 0.2;                             // 1/m: tightest curve drawn (5 m radius)
+const H_MAX = 2.2;                             // rad: lines stop where they'd wind past a U-turn
+
+// lane confidence
+export const LANE_CONF_THRESHOLD = 0.5;        // default for the Display setting
+const STATION = 5;                             // m of road between stations...
+const STATIONS_FROM = -10, STATIONS_TO = 100;  // ...kept from this far behind the bumper to this far ahead
+const NEAR = 30;                               // m ahead: the lane confidence is the stations' mean over this
+const CONF_RISE_S = 0.8;                       // s for a station to ease up toward better evidence
+const CONF_FALL_S = 10;                        // ...and down toward worse over this long standing still...
+const CONF_FALL_M = 180;                       // ...and over this far driven
+const CONF_FALL_PARK_S = 2;                    // ...or this long in Park
+const HIDE_RATIO = 0.8;                        // shown lanes hide below this fraction of the threshold
+const REACH_RATIO = 0.6;                       // the road reaches as far as the stations hold this fraction of it
+const JITTER_MEAN = 0.12;                      // weight of each new measurement in a line's running jitter (20 Hz)
+const UNPROVEN = { y0: 0.25, t: 0.003, k: 1e-6 };   // a new line's jitter (y0 m^2, heading^2, curvature^2): unproven
+const MIN_REACH = 30;                          // m: the road always reaches this far once it shows
+
+// lane boundaries numbered right to left: the ego lane's right line is 0, its left line 1
+const BOUNDARY = { R3: -2, R2: -1, R1: 0, L1: 1, L2: 2, L3: 3 };
+const BOUNDARY_ID = Object.fromEntries(Object.entries(BOUNDARY).map(([id, b]) => [b, id]));
 
 const ease = (dt, tau) => 1 - Math.exp(-dt / tau);
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+const ramp = (v, a, b) => clamp01((v - a) / (b - a));
+
+// critically damped spring {x, v} toward a target; settles in about 5/w s
+function spring(s, target, w, dt) {
+  s.v += (w * w * (target - s.x) - 2 * w * s.v) * dt;
+  s.x += s.v * dt;
+}
 
 class Line {
   constructor(id) {
@@ -41,6 +87,7 @@ class Line {
     this.color = 'white';
     this.type = 0;
     this.styleAt = -1e9;
+    this.jitter = { ...UNPROVEN };   // running mean squared miss of each measurement from the prediction
   }
 }
 
@@ -86,7 +133,7 @@ function fitQuadratic(pts) {
 
 // points along a line from s0 to s1 (arc length), integrating heading so tight curves stay round
 export function linePoints(c, s0, s1, step = 2) {
-  const k = Math.max(-0.2, Math.min(0.2, c.k));
+  const k = Math.max(-K_MAX, Math.min(K_MAX, c.k));
   const h0 = Math.atan(c.t);
   const pts = [];
   // walk out both ways from x = 0 so the line passes through y0 at the car
@@ -99,7 +146,7 @@ export function linePoints(c, s0, s1, step = 2) {
       x += dir * Math.cos(hm) * step;
       y += dir * Math.sin(hm) * step;
       h += dir * k * step;
-      if (Math.abs(h - h0) > 2.2) break;   // don't wind past a U-turn
+      if (Math.abs(h - h0) > H_MAX) break;   // don't wind past a U-turn
     }
     return out;
   };
@@ -107,6 +154,57 @@ export function linePoints(c, s0, s1, step = 2) {
   back.pop();
   pts.push(...back, ...walk(1, s1));
   return pts;
+}
+
+// the point s m along a line (arc length from x = 0) and d m to its left, as linePoints draws it:
+// {x, y, h} in the car frame, h the line's heading there (+ left)
+export function arcPoint(c, s, d = 0) {
+  const k = Math.max(-K_MAX, Math.min(K_MAX, c.k));
+  const h0 = Math.atan(c.t);
+  const h = h0 + Math.max(-H_MAX, Math.min(H_MAX, k * s));
+  let x, y;
+  if (Math.abs(k) < 1e-6) { x = s * Math.cos(h0); y = c.y0 + s * Math.sin(h0); }
+  else { x = (Math.sin(h) - Math.sin(h0)) / k; y = c.y0 + (Math.cos(h0) - Math.cos(h)) / k; }
+  return { x: x - Math.sin(h) * d, y: y + Math.cos(h) * d, h };
+}
+
+// Lane confidence on stations fixed to the road (see the top of the file). Station i sits at i * STATION
+// m of distance driven, so `odo` (the distance driven now) says how far ahead each one is.
+export class LaneConfidence {
+  constructor() {
+    this.cells = new Map();   // station index -> confidence 0..1
+  }
+
+  // evidence(x): stable lane evidence 0..1 for the road x m ahead; dt s of data time, ds m driven
+  update(odo, evidence, dt, ds, fallS = CONF_FALL_S) {
+    const i0 = Math.ceil((odo + STATIONS_FROM) / STATION), i1 = Math.floor((odo + STATIONS_TO) / STATION);
+    for (const i of this.cells.keys()) if (i < i0 || i > i1) this.cells.delete(i);
+    if (dt <= 0) return;
+    const rise = Math.min(1, dt / CONF_RISE_S), fall = Math.min(1, dt / fallS + Math.abs(ds) / CONF_FALL_M);
+    for (let i = i0; i <= i1; i++) {
+      const c = this.cells.get(i) ?? 0;   // road that has just come into range starts unknown
+      const e = evidence(i * STATION - odo);
+      this.cells.set(i, c + (e - c) * (e > c ? rise : fall));
+    }
+  }
+
+  at(odo, x) {
+    const u = (odo + x) / STATION, i = Math.floor(u);
+    const a = this.cells.get(i) ?? 0, b = this.cells.get(i + 1) ?? 0;
+    return a + (b - a) * (u - i);
+  }
+
+  mean(odo, x0, x1) {
+    let sum = 0, n = 0;
+    for (let x = x0; x <= x1 + 1e-6; x += STATION / 2) { sum += this.at(odo, x); n++; }
+    return n ? sum / n : 0;
+  }
+
+  // m ahead to where the stations first drop below thr
+  reach(odo, thr) {
+    for (let x = 0; x <= STATIONS_TO; x += STATION / 2) if (this.at(odo, x) < thr) return x;
+    return STATIONS_TO;
+  }
 }
 
 export class RoadModel {
@@ -118,9 +216,18 @@ export class RoadModel {
     this.oncomingLeft = { v: false, at: -1e9 };
     this.pathK = 0;
     this.t = 0;
-    this.confidence = 0;
-    this.sinceEvidence = Infinity;   // m driven since the last lane evidence
+    this.odo = 0;                    // m driven (signed): the road's own length coordinate for anchors
     this.slot = null;                // ego lane placed between openpilot's road edges
+    this.conf = new LaneConfidence();
+    this.laneConf = 0;               // the stations' mean over the next NEAR m
+    this.evidence = () => 0;         // lane evidence along the road from the latest snapshot (_laneEvidence)
+    this.lanesShown = false;
+    this.frame = { c: this.center, offset: 0 };   // what the road is drawn from (see update's `anchor`)
+    // the ground's road shape: lane region (m from the ego-lane center to its outer lines), reach ahead,
+    // how far it has grown out of the car's disc, and how hard it is reshaping (for the edge's ripple)
+    this.surf = { left: { x: LANE_W / 2, v: 0 }, right: { x: -LANE_W / 2, v: 0 }, reach: { x: MIN_REACH, v: 0 },
+      reveal: { x: 0, v: 0 }, energy: 0, phase: 0 };
+    this.shifts = 0;                 // lane changes seen (+ left), for debugging
   }
 
   line(id) {
@@ -201,14 +308,14 @@ export class RoadModel {
     const road = f && f.road;
     const md = st && st.op && st.op.modelV2;
     const probs = (md && md.laneLineProbs) || [];
-    // a higher count is taken once it has held for a second, a lower one after 3 s without the higher
+    // a higher count is taken once it has held for a second, a lower one after COUNT_DROP_S without the higher
     const see = (side, n) => {
       const c = this.count[side];
       if (n === c.n) { c.at = this.t; c.cand = null; return; }
       if (n > c.n) {
         if (!c.cand || c.cand.n !== n) c.cand = { n, since: this.t };
-        if (this.t - c.cand.since >= 1 || this.t - c.at > 3) { c.n = n; c.at = this.t; c.cand = null; }
-      } else if (this.t - c.at > 3) { c.n = n; c.at = this.t; }
+        if (this.t - c.cand.since >= 1 || this.t - c.at > COUNT_DROP_S) { c.n = n; c.at = this.t; c.cand = null; }
+      } else if (this.t - c.at > COUNT_DROP_S) { c.n = n; c.at = this.t; }
     };
     const L1 = shown.has('L1') && this.lines.get('L1'), R1 = shown.has('R1') && this.lines.get('R1');
     this.slot = null;
@@ -255,19 +362,123 @@ export class RoadModel {
     else if (this.slot && !(L1 && R1)) this.widthTarget = this.slot.w;
   }
 
+  // A lane change renames every line at once (cross the left line and it becomes the right one, the
+  // next line over becomes the left one). Spotted as both ego lines measured a lane width from where
+  // the carried ego lane puts them and right where the lane beside it would be; the carried lines,
+  // lane counts and surface are renamed the same way, so the road doesn't slide a lane sideways (nor
+  // take signs, lights and the lane confidence with it).
+  _laneShift(meas) {
+    const L1 = meas.get('L1'), R1 = meas.get('R1');
+    if (!L1 || !R1) return 0;
+    const W = this.width;
+    const err = (sh) => (Math.abs(L1.c.y0 - (this.center.y0 + (0.5 + sh) * W)) + Math.abs(R1.c.y0 - (this.center.y0 + (sh - 0.5) * W))) / 2;
+    const stay = err(0);
+    if (stay < 0.5 * W) return 0;
+    for (const sh of [1, -1]) {
+      if (err(sh) < 0.3 * W && stay - err(sh) > 0.35 * W) {
+        this._shift(sh);
+        return sh;
+      }
+    }
+    return 0;
+  }
+
+  _shift(sh) {   // +1: the car moved a lane to the left
+    const W = this.width;
+    const lines = new Map();
+    for (const [id, l] of this.lines) {
+      const to = BOUNDARY_ID[BOUNDARY[id] - sh];
+      if (to) { l.id = to; lines.set(to, l); }
+    }
+    this.lines = lines;
+    this.center.y0 += sh * W;
+    this.count.left.n = Math.max(0, this.count.left.n - sh);
+    this.count.right.n = Math.max(0, this.count.right.n + sh);
+    this.count.left.cand = this.count.right.cand = null;
+    this.surf.left.x -= sh * W;
+    this.surf.right.x -= sh * W;
+    this.shifts += sh;
+  }
+
+  // Stable lane evidence 0..1 for the road x m ahead, from a new snapshot's measurements: the ego
+  // lane's own lines where they're plausible (on their side of the car, or just across it in a lane
+  // change, roughly along our heading, a lane's width apart), each weighted by its confidence, how far
+  // ahead it can reach, and how stable it has been: how far its measurements have been landing from
+  // where the carried line predicted them, lately (a line that jumps about counts for little, and a new
+  // one has to prove itself over a second or so). Else openpilot's road edges while moving.
+  _laneEvidence(meas, moving) {
+    const ego = {};
+    for (const [id, side] of [['L1', 1], ['R1', -1]]) {
+      const m = meas.get(id);
+      if (!m) continue;
+      const l = this.line(id);
+      if (l.shown && l.c) {
+        for (const k of ['y0', 't', 'k']) l.jitter[k] += ((m.c[k] - l.c[k]) ** 2 - l.jitter[k]) * JITTER_MEAN;
+      } else l.jitter = { ...UNPROVEN };
+      const y = side * m.c.y0;
+      const plaus = ramp(y, -0.8, -0.2) * (1 - ramp(y, 4.2, 5.0)) * (1 - ramp(Math.abs(m.c.t), 0.3, 0.6)) * (m.edge ? 0.7 : 1);
+      if (plaus > 0) ego[id] = { c: m.c, j: l.jitter, w: Math.min(1, m.conf) * plaus, reach: 40 + 60 * Math.min(1, m.conf) };
+    }
+    const lines = Object.values(ego);
+    const edges = !!this.slot && moving;
+    if (!lines.length && !edges) return () => 0;
+    return (x) => {
+      if (x < -5) return 0;
+      let miss = 1;
+      for (const l of lines) {
+        const cover = 1 - ramp(x, 40, l.reach);
+        if (cover <= 0) continue;
+        // its typical miss this far out, against what's tolerable this far out
+        const miss2 = l.j.y0 + x * x * l.j.t + x * x * x * x / 4 * l.j.k, tol = 0.25 + 0.012 * Math.max(0, x);
+        miss *= 1 - l.w * cover * Math.exp(-0.5 * miss2 / (tol * tol));
+      }
+      let e = 1 - miss;
+      if (ego.L1 && ego.R1) {
+        const w = yAt(ego.L1.c, x) - yAt(ego.R1.c, x);
+        e *= ramp(w, 2.0, 2.6) * (1 - ramp(w, 5.0, 5.8));
+      }
+      if (edges) e = Math.max(e, 0.5 * (1 - ramp(x, 20, 60)));
+      return e;
+    };
+  }
+
+  // a point s m down the road (arc length from the bumper) and d m left of the ego lane's center, on
+  // the road as drawn now: {x, y, h} in the car frame
+  place(s, d) {
+    return arcPoint(this.frame.c, s, d - this.frame.offset);
+  }
+
+  // m left of the ego lane's center to the outer lane line on a side (+1 left, -1 right), as the
+  // surface is easing toward it
+  laneEdge(side) {
+    return side > 0 ? this.surf.left.x : this.surf.right.x;
+  }
+
   update(st, vehicle, settings, dt) {
     this.t += dt;
     const v = vehicle ? vehicle.v : 0;
     const ds = v * dt;
+    this.odo += ds;
     const kCar = vehicle ? vehicle.curvature : 0;
     const dth = kCar * ds;
+    const dtData = dt * (vehicle ? vehicle.rate : 0);   // 0 while a replay is paused or the data is stale
+    const parked = vehicle && vehicle.gear === 'park';
 
     // 1) carry everything along with the car
     for (const l of this.lines.values()) if (l.c) advance(l.c, ds, dth);
     advance(this.center, ds, dth);
 
-    // 2) measurements, with hysteresis and confidence-weighted easing
+    // 2) measurements: a lane change renames the carried road first; the lane confidence takes the
+    // measurements against where the carried lines predicted them; then they're eased in, with
+    // hysteresis on validity
     const meas = this._measurements(st, settings);
+    this._laneShift(meas);
+    if (st !== this.measured || parked !== this.measuredParked) {   // a new snapshot (they come at 20 Hz)
+      this.measured = st;
+      this.measuredParked = parked;
+      this.evidence = parked ? () => 0 : this._laneEvidence(meas, Math.abs(v) > 2);
+    }
+    this.conf.update(this.odo, this.evidence, dtData, ds, parked ? CONF_FALL_PARK_S : CONF_FALL_S);
     const shown = new Set();
     for (const id of new Set([...this.lines.keys(), ...meas.keys()])) {
       const l = this.line(id);
@@ -325,20 +536,33 @@ export class RoadModel {
       const turned = Math.min(1, Math.abs(this.center.t) / 0.25);
       w = 0.12 + 0.88 * turned * turned;
     }
+    const was = { ...this.center };
     blend(this.center, target, dt, w);
+    // how fast the road is being reshaped (heading and curvature corrections, not the car's own motion)
+    const bend = dt > 0 ? Math.max(0, Math.abs(this.center.t - was.t) / dt - 0.03) * 6 + Math.max(0, Math.abs(this.center.k - was.k) / dt - 0.0004) * 400 : 0;
 
-    // on a laned road at all? real evidence = an ego lane line, or openpilot's road edges while moving
-    const moving = Math.abs(v) > 2;
-    if (L1 || R1 || (this.slot && moving)) this.sinceEvidence = 0;
-    else this.sinceEvidence += Math.abs(ds);
-    const parked = vehicle && vehicle.gear === 'park';
-    const want = !parked && this.sinceEvidence < EVIDENCE_HOLD_M ? 1 : 0;
-    this.confidence += (want - this.confidence) * ease(dt, want > this.confidence ? 0.6 : 1.5);
-
-    // 4) lines to draw: measured ones that are shown, inferred ones for every other boundary
+    // 4) the lane confidence, and the ground's road shape on springs, so that every change morphs
+    const thr = settings.laneConfThreshold ?? LANE_CONF_THRESHOLD;
+    this.laneConf = this.conf.mean(this.odo, 0, NEAR);
+    if (!this.lanesShown && this.laneConf >= thr) this.lanesShown = true;
+    else if (this.lanesShown && this.laneConf < thr * HIDE_RATIO) this.lanesShown = false;
     const lanes = (side) => (this.t - this.count[side].at < COUNT_HOLD ? this.count[side].n : 0);
     const nl = lanes('left'), nr = lanes('right');
-    this.lastLanes = { nl, nr };
+    const sf = this.surf;
+    spring(sf.left, W * (0.5 + nl), 3.0, dt);
+    spring(sf.right, -W * (0.5 + nr), 3.0, dt);
+    spring(sf.reach, Math.max(MIN_REACH, this.conf.reach(this.odo, thr * REACH_RATIO)), 1.6, dt);
+    spring(sf.reveal, this.lanesShown ? 1 : 0, 2.6, dt);
+    // how hard the drawn road is reshaping (a road that isn't drawn bending with the car's path doesn't count)
+    const reshaping = (Math.max(0, (Math.abs(sf.left.v) + Math.abs(sf.right.v)) / 2 - 0.15) +
+      Math.max(0, Math.abs(sf.reach.v) - 4) / 12 + bend) * clamp01(sf.reveal.x) + Math.abs(sf.reveal.v) * 3;
+    const energy = Math.min(1, reshaping / 2);
+    sf.energy += (energy - sf.energy) * ease(dt, energy > sf.energy ? 0.08 : 0.7);
+    sf.phase += sf.energy * dt;
+
+    // 5) lines to draw: measured ones that are shown, inferred ones for every other boundary, out to
+    // whichever is wider of the lanes there are now and the surface still easing in or out of them
+    const nlDraw = Math.max(nl, Math.ceil(sf.left.x / W - 0.55)), nrDraw = Math.max(nr, Math.ceil(-sf.right.x / W - 0.55));
     const oncoming = this.oncomingLeft.v && this.t - this.oncomingLeft.at < COUNT_HOLD;
     const out = [];
     for (const id of shown) {
@@ -358,17 +582,20 @@ export class RoadModel {
       if (!recent && p === 'L' && i === 1 && oncoming) { color = 'yellow'; type = 7; }
       out.push({ id, offset: (p === 'L' ? 1 : -1) * W * (i - 0.5), color, type, edge: false, inferred: true });
     };
-    for (let i = 1; i <= nl + 1; i++) boundary('L', i);
-    for (let i = 1; i <= nr + 1; i++) boundary('R', i);
+    for (let i = 1; i <= nlDraw + 1; i++) boundary('L', i);
+    for (let i = 1; i <= nrDraw + 1; i++) boundary('R', i);
     // inferred geometry hangs off a measured ego line when there is one (so it stays exactly
     // parallel to it), else off the ego-lane center
     const anchor = L1 ? { c: L1.c, offset: W / 2 } : R1 ? { c: R1.c, offset: -W / 2 } : { c: this.center, offset: 0 };
+    this.frame = anchor;
     return {
       lines: out,
       anchor,
-      confidence: this.confidence,
-      // drivable surface across all lanes, plus a little shoulder (offset from the ego-lane center)
-      surface: { offset: (nl - nr) * W / 2, width: (nl + nr + 1) * W + 1.0 },
+      laneConf: this.laneConf,
+      shown: this.lanesShown,
+      // the ground's road shape: lane region (m left of the ego-lane center: outer lines), m it reaches
+      // ahead, 0..1 grown out of the disc, and how hard it's reshaping now (0..1) and has (for the ripple)
+      surface: { left: sf.left.x, right: sf.right.x, reach: sf.reach.x, reveal: clamp01(sf.reveal.x), energy: sf.energy, phase: sf.phase },
     };
   }
 }

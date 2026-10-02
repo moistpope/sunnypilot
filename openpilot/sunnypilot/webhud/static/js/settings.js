@@ -207,6 +207,12 @@ export class Settings {
 
   renderDrivingSoon() { setTimeout(() => { if (this.tab === 'driving') this.show('driving', true); }, 150); }
 
+  // the lane confidence right now, under the threshold slider (Display)
+  showLaneConf() {
+    const road = this.app.scene.road;
+    if (this.laneConfNow) this.laneConfNow.textContent = `Now ${Math.round(road.laneConf * 100)}%, lanes ${road.lanesShown ? 'shown' : 'hidden'}`;
+  }
+
   // ---- display (stored in this browser) ------------------------------------------------------------
 
   renderDisplay() {
@@ -221,6 +227,26 @@ export class Settings {
       el('p.desc', 'Blended: the Fisker ADAS lanes, refined with openpilot\'s where they agree and filled in where only openpilot sees a line. ' +
         'Or either source alone, or both drawn separately (openpilot faint).'),
       this.app.segmented([['blend', 'Blended'], ['fisker', 'Fisker ADAS'], ['model', 'openpilot'], ['both', 'Both']], s.laneSource, v => set('laneSource', v))));
+    // dragging moves the threshold live (the view reads the settings each frame); it's saved on release
+    const thr = s.laneConfThreshold;
+    const pct = (v) => `${Math.round(v * 100)}%`;
+    const value = el('b', pct(thr));
+    const fill = (v) => slider.style.setProperty('--p', `${(v - 0.1) / 0.8 * 100}%`);
+    const slider = el('input', { type: 'range', min: 0.1, max: 0.9, step: 0.05, value: thr,
+      oninput: (e) => {
+        s.laneConfThreshold = Number(e.target.value);
+        value.textContent = pct(s.laneConfThreshold);
+        fill(s.laneConfThreshold);
+      },
+      onchange: (e) => set('laneConfThreshold', Number(e.target.value)) });
+    fill(thr);
+    this.laneConfNow = el('small.cur', '');
+    body.append(el('div.section', el('h3', 'Lane confidence'),
+      el('p.desc', 'How sure the HUD must be of the lanes before it draws them. Confidence builds while the ego lane\'s lines are seen ' +
+        'and stay where they were predicted, and stays with each stretch of road as you drive onto it. Under the threshold the ground is a ' +
+        'disc around the car; past it the disc grows out into the road. Lower shows lanes sooner and on worse roads, higher only on clear ones.'),
+      el('div.rows', el('div.row', el('div.lbl', el('b', 'Show lanes from'), this.laneConfNow), value)), slider));
+    this.showLaneConf();
     body.append(el('div.section', el('h3', 'Objects'),
       el('p.desc', 'World model: the radar, the ADAS camera\'s object list and openpilot\'s leads fused into one set of objects, ' +
         'each source weighted by how far it\'s trusted for what it measures, placed on the ground as the car moves and turns. ' +

@@ -12,7 +12,7 @@ const DEFAULTS = {
   theme: 'auto', units: 'auto', laneSource: 'blend', egoColor: 'model', view: 'chase',
   showPath: true, showUss: true, showOpLeads: true, autoView: true, showGround: true, showRoad: true, showSigns: true,
   showTracks: true, showRadar: false, radarAllTracks: false, showLowConf: false, showObjectStats: false, objectMode: 'world',
-  laneHeadingSign: 1, laneCurvatureSign: 1, objectHeadingSign: 1,
+  laneHeadingSign: 1, laneCurvatureSign: 1, objectHeadingSign: 1, laneConfThreshold: 0.5,
 };
 
 function loadSettings() {
@@ -216,6 +216,7 @@ class App {
     setClass($('#replaybar'), 'hidden', !replay);
     if (replay) this.updateReplaybar(state.replay);
     this.updateRadarChip();
+    if (this.ui.isOpen && this.ui.tab === 'display') this.ui.showLaneConf();
     if (prevMode !== state.mode && this.ui.isOpen && this.ui.tab === 'playback') this.ui.show('playback', true);
     this.autoView(state);
   }
