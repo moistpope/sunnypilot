@@ -113,7 +113,9 @@ class FiskerWorld:
     counts = self.counts
     for addr, data, src in frames:
       nb = native.get(addr)
-      if nb is None or src >= 128:  # unknown message, or a TX echo / blocked frame
+      # unknown message, or another bus: bus 1 is the radar's private CAN (fisker_radar.py), whose IDs
+      # overlap ADASBUS ones; 128+ are TX echoes / blocked frames
+      if nb is None or src not in (BUS_PT, BUS_CAM):
         continue
       if src != nb:
         prev = store.get(addr)

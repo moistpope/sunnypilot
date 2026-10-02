@@ -1,5 +1,5 @@
 // Power trails: the rear tires leave a trail of fine glowing particles as they roll -- a dense, bright
-// line along each tire track with a glow about it, and sparser dust that spreads out behind -- colored by
+// band as wide as each tire with a glow about it, and sparser dust that spreads out behind -- colored by
 // how hard the motors are asked to work at that moment: blue at a light load through the spectrum to red
 // at full power. The harder the car pulls, the denser the trail and the more dust it throws. Laid
 // particles keep their color, so a burst of power leaves a red stretch that slides back behind the car
@@ -12,8 +12,9 @@ import * as THREE from '../vendor/three.module.min.js';
 
 const EGO_LEN = 4.775;
 const FULL_SPEED = 31.3;    // m/s (70 mph): the trail is one car length from here on
-const PARTICLES = 24576;    // pool shared by both wheels (a full-power car length is ~10000 per wheel)
-const DENSITY = [1000, 2100]; // particles per meter per wheel, light load .. full power
+const PARTICLES = 32768;    // pool shared by both wheels (a full-power car length is ~14300 per wheel)
+const DENSITY = [1600, 3000]; // particles per meter per wheel, light load .. full power
+const TIRE_W = 0.28;        // m, if the car model doesn't say
 const GLOW = 0.12;          // share of particles that are soft halo rather than specks
 const LIFT = 0.03;          // above lane lines (0.02)
 const KW_FULL = 150;        // demanded power for full red...
@@ -201,7 +202,9 @@ export class PowerTrails {
     const coreShare = 0.62 - 0.17 * L;   // the rest is dust, more of it the harder the car pulls
     const alpha = dark ? 1 : 0.85;
 
-    const rear = (ego.userData.wheels || []).filter(w => !w.front).map(w => w.steer.position);
+    const rearWheels = (ego.userData.wheels || []).filter(w => !w.front);
+    const rear = rearWheels.map(w => w.steer.position);
+    const half = ((rearWheels[0] && rearWheels[0].w) || TIRE_W) / 2;
     const zr = ego.userData.rearAxleZ ?? EGO_LEN - 0.93;
     const contacts = rear.length === 2 ? rear : [{ x: -0.83, z: zr }, { x: 0.83, z: zr }];
     this.world.updateMatrixWorld();
@@ -223,18 +226,18 @@ export class PowerTrails {
         // off: across the track; lat/fwd/rise: drift per meter rolled since (it spreads as it trails)
         let off, lat = 0, fwd = 0, rise = 0, size, a, col = core, glow = 0;
         if (k < GLOW) {   // halo
-          off = gauss() * 0.025;
-          size = 0.13 + Math.random() * 0.07;
-          a = 0.045 + Math.random() * 0.03;
+          off = (Math.random() - 0.5) * 1.4 * half;
+          size = 1.4 * half + Math.random() * 0.08;
+          a = 0.04 + Math.random() * 0.03;
           glow = 1;
-        } else if (k < GLOW + coreShare) {   // the line itself, tight across the tire
-          off = Math.max(-0.1, Math.min(0.1, gauss() * 0.03));
+        } else if (k < GLOW + coreShare) {   // the band itself, even across the tire with soft edges
+          off = (Math.random() - 0.5) * 2 * half + gauss() * 0.012;
           size = 0.006 + Math.random() * 0.008;
           a = 0.3 + 0.7 * Math.random() ** 2;   // mostly dim, a few bright sparks
           lat = Math.sign(off) * Math.random() * 0.012;
         } else {   // dust, thinning out away from the track and drifting further out
           const side = Math.random() < 0.5 ? -1 : 1;
-          off = side * (0.04 + Math.min(4, -Math.log(1 - Math.random())) * (0.05 + 0.07 * L));
+          off = side * (0.8 * half + Math.min(4, -Math.log(1 - Math.random())) * (0.05 + 0.07 * L));
           size = 0.005 + Math.random() * 0.007;
           a = 0.15 + 0.6 * Math.random() ** 2;
           lat = side * (0.008 + Math.random() * (0.03 + 0.05 * L));

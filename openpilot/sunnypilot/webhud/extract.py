@@ -141,6 +141,7 @@ def _lead(lead) -> dict | None:
     "yRel": _f(_g(lead, "yRel")),
     "vRel": _f(_g(lead, "vRel")),
     "vLead": _f(_g(lead, "vLead")),
+    "aLead": _f(_g(lead, "aLeadK")),
     "modelProb": _f(_g(lead, "modelProb")),
     "radar": bool(_g(lead, "radar", False)),
   }

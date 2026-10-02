@@ -122,6 +122,9 @@ class TestFiskerWorld(OpenpilotTestCase):
     # once the native bus goes quiet the other bus fills in
     w.update([self.frame("ADAS_0x31C", {"ADAS_AccTrgSpdDisp": 61}, src=BUS_PT)], 2.0)
     assert w.state()["acc"]["setSpeed"] == 61
+    # ...but never the radar's private bus (1), whose 48-byte frames reuse ADASBUS IDs
+    w.update([(0x31C, bytes(range(48)), 1)], 3.0)
+    assert w.state()["acc"]["setSpeed"] == 61 and w.frames[0x31C][2] == BUS_PT
 
   def test_stale_messages_drop_out(self):
     w = self.world

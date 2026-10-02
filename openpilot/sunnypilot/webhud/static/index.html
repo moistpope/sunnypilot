@@ -12,6 +12,7 @@
 <body>
 <div id="app">
   <canvas id="scene"></canvas>
+  <div id="olabels" aria-hidden="true"></div>
 
   <!-- driving status: top-left card in landscape, full-width header in portrait -->
   <section id="drive" class="card">
@@ -40,6 +41,7 @@
   <div id="chips" class="chips">
     <span id="chip-mode" class="chip">LIVE</span>
     <span id="chip-conn" class="chip warn">connecting…</span>
+    <span id="chip-radar" class="chip hidden"></span>
   </div>
 
   <!-- traffic light / sign (top right) -->

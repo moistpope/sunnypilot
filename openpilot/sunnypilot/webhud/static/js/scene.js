@@ -4,11 +4,12 @@
 // Scene frame (three.js):      X right, Y up, Z backward. So X = -y, Z = -x.
 import * as THREE from '../vendor/three.module.min.js';
 import { OrbitControls } from '../vendor/OrbitControls.js';
-import { makeEgo, makeObject, fitScale, loadEgoModel } from './models.js';
+import { makeEgo, makeObject, makeGhost, fitScale, loadEgoModel } from './models.js';
 import { applyLamps } from './lamps.js';
 import { RoadModel, linePoints } from './road.js';
 import { RoadFurniture } from './furniture.js';
 import { PowerTrails, motorLoad } from './tracks.js';
+import { ObjectLabels } from './labels.js';
 import { STEER_RATIO } from './vehicle.js';
 
 const EGO_LEN = 4.775;
@@ -23,6 +24,9 @@ const CAM_YAW_MAX = 0.6;          // rad: most the camera trails the car's headi
 const TILE = 48;                  // m: every layer of the road surface repeats over this
 const GROUND_SIZE = 10 * TILE;    // textured plane under the car; fog hides its edge
 const REAR_AXLE_Z = EGO_LEN - 0.93;   // until the model reports its own
+const RADAR_OPACITY = 0.5;            // radar view: see-through cars...
+const RADAR_CAR = { w: 2.0, l: 4.8, hgt: 1.6 };   // ...a touch bigger than most cars, so a matching camera car sits inside
+const RADAR_EXTRAPOLATE_S = 0.12;     // carry a radar track on its own velocity at most this far past a cycle (65 ms)
 const DEG = Math.PI / 180;
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -137,9 +141,9 @@ function lightPool(color, map) {
 
 const THEMES = {
   light: { bg: 0xeceef1, ground: 0xe2e5e9, road: 0x1a1d22, object: 0xc6cad1, lead: 0x4f5562, line: 0x8e949d, edge: 0x6c727b, yellow: 0xdcaa2e,
-    blue: 0x3e6ae1, red: 0xe5413a, path: 0x3e6ae1, model: 0xa7adb5, hemiSky: 0xffffff, hemiGround: 0xb8bcc4 },
+    blue: 0x3e6ae1, red: 0xe5413a, path: 0x3e6ae1, model: 0xa7adb5, radar: 0x0a9fb2, hemiSky: 0xffffff, hemiGround: 0xb8bcc4 },
   dark: { bg: 0x101216, ground: 0x181b20, road: 0x2c3038, object: 0x50565f, lead: 0xd5dae2, line: 0x6b717a, edge: 0x8a9099, yellow: 0xc9982a,
-    blue: 0x5b86ff, red: 0xff5a4f, path: 0x5b86ff, model: 0x4d535c, hemiSky: 0x8a93a6, hemiGround: 0x1a1d22 },
+    blue: 0x5b86ff, red: 0xff5a4f, path: 0x5b86ff, model: 0x4d535c, radar: 0x2fd6e8, hemiSky: 0x8a93a6, hemiGround: 0x1a1d22 },
 };
 
 export const VIEWS = {
@@ -320,7 +324,9 @@ export class CarScene {
     this.tracks = new PowerTrails(this.world);
 
     this.objects = new Map();   // key -> track (see _track)
-    this.labels = new Map();
+    this.radarObjs = new Map();   // radar track id -> ghost (see _radar)
+    this.radarDot = new THREE.RingGeometry(0.16, 0.3, 24).rotateX(-Math.PI / 2);
+    this.labels = new ObjectLabels(document.getElementById('olabels'));   // Display -> Object stats
     this.theme = THEMES.light;
     this.odometer = 0;
     this.clock = 0;
@@ -383,6 +389,7 @@ export class CarScene {
     this.mats.path.color.set(t.path);
     this.mats.slot.color.set(t.blue);
     for (const o of this.objects.values()) o.color = null;   // recolor on next frame
+    for (const g of this.radarObjs.values()) g.color = null;
   }
 
   // hex color, or null/'model' for the model's own paint
@@ -589,7 +596,8 @@ export class CarScene {
       for (const o of (f && f.objects) || []) {
         list.push({ key: 'f' + o.id, x: o.x, y: o.y, h: (o.heading || 0) * (s.objectHeadingSign || 1), cls: o.cls, w: o.w, l: o.l, hgt: o.h,
           lead: o.flags.includes('accPrimary') || o.flags.includes('leading'), threat: o.flags.some(fl => ['bsd', 'dow', 'aeb', 'raeb', 'bacm', 'elka'].includes(fl)),
-          label: `${o.cls} #${o.id}` });
+          info: { src: 'adas', id: o.id, cls: o.cls, x: o.x, y: o.y, heading: o.heading == null ? null : o.heading * (s.objectHeadingSign || 1),
+            w: o.w, l: o.l, classConf: o.classConf, flags: o.flags, leads: [] } });
       }
       // The ADAS sometimes reports one car twice while it hands a track over to a new ID: keep one
       // (the flagged one if either is), else the pair shows as a car with an echo right behind it.
@@ -606,8 +614,10 @@ export class CarScene {
       if (rs && s.showOpLeads !== false) {
         [rs.leadOne, rs.leadTwo].forEach((ld, i) => {
           if (!ld || !ld.present) return;
-          const dup = list.some(o => Math.abs(o.x - ld.dRel) < Math.max(4, 0.15 * ld.dRel) && Math.abs(o.y - ld.yRel) < 2.2);
-          if (!dup) list.push({ key: 'op' + i, x: ld.dRel, y: ld.yRel, vx: ld.vRel, h: 0, cls: 'car', w: 1.9, l: 4.6, hgt: 1.5, lead: i === 0 && engaged, threat: false, label: `lead ${ld.dRel.toFixed(0)} m` });
+          const info = { src: 'op', i, ...ld };
+          const dup = list.find(o => Math.abs(o.x - ld.dRel) < Math.max(4, 0.15 * ld.dRel) && Math.abs(o.y - ld.yRel) < 2.2);
+          if (dup) { if (dup.info.leads) dup.info.leads.push(info); return; }   // shown on that car's stats
+          list.push({ key: 'op' + i, x: ld.dRel, y: ld.yRel, vx: ld.vRel, h: 0, cls: 'car', w: 1.9, l: 4.6, hgt: 1.5, lead: i === 0 && engaged, threat: false, info });
         });
       }
       // known IDs first, so a handover (in _track) only ever takes a track nobody updated this time
@@ -693,7 +703,7 @@ export class CarScene {
       this.objects.set(o.key, e);
     }
     e.lastSeen = now;
-    e.lead = o.lead; e.threat = o.threat; e.label = o.label;
+    e.lead = o.lead; e.threat = o.threat; e.info = o.info;
     e.mdim = { w: o.w || 0, l: o.l || 0, hgt: o.hgt || 0 };
     e.th = o.h * DEG;
     // a class change has to persist before the model is swapped
@@ -720,6 +730,103 @@ export class CarScene {
       e.vy = Math.max(-12, Math.min(12, e.vy + B * ry / dtm));
     }
     e.tmeas = now;
+  }
+
+  // Radar view (Display -> Radar objects): every track of the mid-range radar (bus 1, fisker_radar.py)
+  // as a see-through car, to check the radar decoding against the camera's cars. Drawn close to raw:
+  // each cycle's position, carried on the radar's own relative velocity for at most a cycle, so a
+  // calibration error shows as an offset rather than being filtered away. Like the camera's cars, a
+  // car ahead is placed with its rear at the reported point; the ring on the ground marks the point.
+  _radar(dt) {
+    const r = this.state && this.state.radar;
+    const show = this.settings.showRadar === true && r;
+    const now = this.clock;
+    if (show && this.stateSeq !== this.radarSeq) {
+      this.radarSeq = this.stateSeq;
+      for (const o of r.objects) {
+        let g = this.radarObjs.get(o.id);
+        if (!g) {
+          g = this._radarGhost();
+          this.radarObjs.set(o.id, g);
+        }
+        const raw = `${o.x},${o.y}`;
+        if (raw !== g.raw) { g.raw = raw; g.tmeas = now; }   // a new radar cycle (65 ms; snapshots come every 50)
+        g.x = o.x; g.y = o.y; g.vx = o.vx || 0; g.vy = o.vy || 0; g.lastSeen = now;
+        g.info = { src: 'radar', ...o };
+        // the radar gives no heading for some moving tracks: point those along their path over the ground
+        const gx = g.vx + (r.egoSpeed || 0);
+        g.th = o.heading != null ? o.heading * DEG : Math.hypot(gx, g.vy) > 1.5 ? Math.atan2(g.vy, gx) : 0;
+      }
+    }
+    const t = this.theme;
+    const k = 1 - Math.exp(-dt / 0.04), kHead = 1 - Math.exp(-dt / 0.15);
+    for (const [id, g] of this.radarObjs) {
+      const dead = !show || now - g.lastSeen > 0.25;
+      g.alpha = Math.max(0, Math.min(1, g.alpha + (dead ? -dt * 6 : dt * 8)));
+      if (g.alpha <= 0 && dead) {
+        this.scene.remove(g.pivot, g.dot);
+        for (const m of [...g.group.userData.paint, g.dot.material]) m.dispose();
+        this.radarObjs.delete(id);
+        continue;
+      }
+      const ahead = Math.min(RADAR_EXTRAPOLATE_S, now - g.tmeas);
+      const tx = g.x + g.vx * ahead, ty = g.y + g.vy * ahead;
+      if (g.dx == null) { g.dx = tx; g.dy = ty; g.dh = g.th; }
+      g.dx += (tx - g.dx) * k;
+      g.dy += (ty - g.dy) * k;
+      g.dh += (((g.th - g.dh + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI) * kHead;
+      const L = RADAR_CAR.l;
+      const cx = g.dx > 2 ? g.dx + L / 2 : g.dx < -2 ? g.dx - L / 2 : g.dx;
+      const [X, Z] = toScene(cx, g.dy);
+      g.pivot.position.set(X, 0, Z);
+      g.pivot.rotation.y = g.dh;
+      const [DX, DZ] = toScene(g.dx, g.dy);
+      g.dot.position.set(DX, 0.03, DZ);
+      if (g.color !== t.radar) {
+        const [shell, dark] = g.group.userData.paint;
+        shell.color.set(t.radar);
+        dark.color.set(t.radar).multiplyScalar(0.35);
+        g.dot.material.color.set(t.radar);
+        g.color = t.radar;
+      }
+      for (const m of g.group.userData.paint) m.opacity = RADAR_OPACITY * g.alpha;
+      g.dot.material.opacity = 0.9 * g.alpha;
+    }
+  }
+
+  _radarGhost() {
+    const group = makeGhost(this.theme.radar, 0);
+    fitScale(group, 'car', RADAR_CAR.w, RADAR_CAR.l, RADAR_CAR.hgt);
+    group.position.z = -group.userData.length * group.scale.z / 2;   // pivot at the car's center
+    const pivot = new THREE.Group();
+    pivot.add(group);
+    const dot = new THREE.Mesh(this.radarDot, new THREE.MeshBasicMaterial({ color: this.theme.radar, transparent: true, opacity: 0, depthWrite: false }));
+    dot.renderOrder = 4;
+    this.scene.add(pivot, dot);
+    return { pivot, group, dot, alpha: 0, color: this.theme.radar, raw: null, tmeas: this.clock, x: 0, y: 0, vx: 0, vy: 0, th: 0, dx: null, dy: null, dh: 0 };
+  }
+
+  // Object stats: tag every drawn object (camera ADAS cars, openpilot leads, radar tracks) over its roof.
+  // ADAS and openpilot tracks add this view's relative-velocity estimate, which the ADAS doesn't report.
+  _labels() {
+    if (this.settings.showObjectStats !== true) {
+      if (this.labels.items.size) this.labels.clear();
+      return;
+    }
+    const entries = [];
+    for (const [key, e] of this.objects) {
+      if (!e.info) continue;
+      const p = e.pivot.position, top = e.group.userData.height * e.group.scale.y * e.pivot.scale.y;
+      entries.push({ key, pos: [p.x, top + 0.25, p.z], alpha: e.alpha, data: e.info.src === 'adas' ? { ...e.info, vx: e.vx, vy: e.vy } : e.info });
+    }
+    for (const [id, g] of this.radarObjs) {
+      if (!g.info) continue;
+      const p = g.pivot.position;
+      entries.push({ key: 'r' + id, pos: [p.x, RADAR_CAR.hgt + 0.25, p.z], alpha: g.alpha, data: g.info });
+    }
+    const vs = this.vehicle;
+    const egoV = vs ? vs.speed * (vs.gear === 'reverse' ? -1 : 1) : 0;
+    this.labels.update(entries, this.camera, egoV, this.clock);
   }
 
   // Integrate the car's motion and move the road surface (and lane dashes) under it. The pose is
@@ -858,8 +965,10 @@ export class CarScene {
     this._laneGeometry(dt);
     this._uss();
     this._objects(dt);
+    this._radar(dt);
     this._ego(dt);
     this._tracks(dt);
     this.renderer.render(this.scene, this.camera);
+    this._labels();   // after render: the camera's matrices are this frame's
   }
 }

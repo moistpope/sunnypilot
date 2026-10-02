@@ -10,7 +10,7 @@ const AUTO_VIEW_HOLD_MS = 30000;   // after the user picks a view or moves the c
 const DEFAULTS = {
   theme: 'auto', units: 'auto', laneSource: 'blend', egoColor: 'model', view: 'chase',
   showPath: true, showUss: true, showOpLeads: true, autoView: true, showGround: true, showRoad: true, showSigns: true,
-  showTracks: true,
+  showTracks: true, showRadar: false, showObjectStats: false,
   laneHeadingSign: 1, laneCurvatureSign: 1, objectHeadingSign: 1,
 };
 
@@ -80,6 +80,7 @@ class App {
     save('settings', this.settings);
     if (key === 'theme') this.applyTheme();
     if (key === 'egoColor') this.scene.setEgoColor(value);
+    if (key === 'showRadar') this.updateRadarChip();
     this.scene.update(this.state, this.settings);
     if (this.ui.isOpen && this.ui.tab === 'display') this.ui.show('display');
   }
@@ -148,6 +149,18 @@ class App {
     setText(chip, text);
   }
 
+  // radar view: how many tracks the radar reports this cycle, or that its bus is silent
+  updateRadarChip() {
+    const chip = $('#chip-radar');
+    const on = this.settings.showRadar === true;
+    setClass(chip, 'hidden', !on);
+    if (!on) return;
+    const r = this.state && this.state.radar;
+    chip.className = 'chip ' + (r ? 'radar' : 'warn');
+    setText(chip, r ? `radar ${r.count}` : 'no bus 1 data');
+    chip.title = r ? 'Tracks the mid-range radar reports this cycle' : 'No radar frames on CAN bus 1: this log has none, or the harness doesn\'t tap the radar bus';
+  }
+
   watchdog() {
     if (!this.connected) return;
     const age = (performance.now() - this.lastStateAt) / 1000;
@@ -168,6 +181,7 @@ class App {
     setText(chip, replay ? 'REPLAY' : 'LIVE');
     setClass($('#replaybar'), 'hidden', !replay);
     if (replay) this.updateReplaybar(state.replay);
+    this.updateRadarChip();
     if (prevMode !== state.mode && this.ui.isOpen && this.ui.tab === 'playback') this.ui.show('playback');
     this.autoView(state);
   }

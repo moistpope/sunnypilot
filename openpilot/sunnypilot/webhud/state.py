@@ -8,14 +8,16 @@ StateBuilder folds raw CAN and openpilot service messages into the single snapsh
 renders. Live and replay sources feed it identically; only the clock differs.
 """
 from openpilot.sunnypilot.webhud.extract import EXTRACTORS
+from openpilot.sunnypilot.webhud.fisker_radar import FiskerRadar
 from openpilot.sunnypilot.webhud.fisker_world import FiskerWorld
 
 SERVICE_STALE_S = 2.0
 
 
 class StateBuilder:
-  def __init__(self, world: FiskerWorld | None = None):
+  def __init__(self, world: FiskerWorld | None = None, radar: FiskerRadar | None = None):
     self.world = world or FiskerWorld()
+    self.radar = radar or FiskerRadar()
     self.services: dict[str, dict] = {}
     self.service_t: dict[str, float] = {}
     self.brand: str | None = None
@@ -23,6 +25,7 @@ class StateBuilder:
 
   def reset(self) -> None:
     self.world.reset()
+    self.radar.reset()
     self.services.clear()
     self.service_t.clear()
     self.t = 0.0
@@ -36,6 +39,7 @@ class StateBuilder:
     self.t = max(self.t, t)
     if self.fisker:
       self.world.update(frames, t)
+      self.radar.update(frames, t)
 
   def feed_service(self, which: str, msg, t: float) -> None:
     extractor = EXTRACTORS.get(which)
@@ -61,4 +65,5 @@ class StateBuilder:
       "brand": self.brand,
       "op": op,
       "fisker": self.world.state(now) if self.fisker else None,
+      "radar": self.radar.state(now) if self.fisker else None,
     }

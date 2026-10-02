@@ -215,6 +215,10 @@ export class Settings {
       ['showPath', 'Planned path', 'Blue band along openpilot\'s path while steering is engaged.'],
       ['showUss', 'Parking sensors', 'Ultrasonic zone arcs around the car at low speed.'],
       ['showOpLeads', 'openpilot leads', 'Show radarState leads the ADAS object list doesn\'t already cover.'],
+      ['showRadar', 'Radar objects', 'Every track of the mid-range radar (its private CAN, bus 1) as a see-through car, with a ring at the point it reports, ' +
+        'to check the radar decoding against the camera\'s cars. Needs a harness that taps the radar bus.'],
+      ['showObjectStats', 'Object stats', 'Debug: tag every object with its source (ADAS camera, openpilot, radar), track ID, position (x ahead, y left/right), ' +
+        'speed over the ground and relative, heading and size, in m, m/s and degrees. The ADAS reports no speeds: those are this view\'s estimate.'],
       ['autoView', 'Auto view', 'Switch to the top view while parking and back when driving.'],
     ];
     body.append(el('div.section', el('div.rows', toggles.map(([k, t, d]) =>

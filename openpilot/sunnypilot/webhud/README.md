@@ -35,7 +35,7 @@ sends an ADASIS v2 map horizon (`ICC_0x250`..`0x255`, `0x361`) with map signs an
 direction; its sign type table isn't in the matrix, so it isn't used yet.
 
 *Power trails* (`static/js/tracks.js`, *Display*): the rear tires leave trails of fine glowing
-particles on the road, a dense bright line along each tire track with a soft glow about it and
+particles on the road, a dense bright band as wide as each tire with a soft glow about it and
 sparser dust that spreads out behind, colored by how hard the motors are asked to pull when each is
 laid: blue at a light load through the spectrum to red at full power (150 kW demanded, or 6000 Nm of
 wheel torque for a hard launch; regen counts as light), and denser with more dust the harder the car
@@ -50,6 +50,24 @@ damped spring (`CAM_YAW_W` in `scene.js`, at most 0.6 rad behind): in a sharp lo
 swings round in the frame and the camera catches up as it straightens out; on the highway the lag
 is a degree or two.
 
+*Radar objects* (*Display*, off by default): the tracks of the car's mid-range radar, read from its
+private CAN-FD link on panda bus 1 (`fisker_radar.py`), drawn as see-through teal cars with a ring on
+the ground at the point each track reports. It's there to check the radar decoding against the
+camera's cars before the radar feeds openpilot. The radar's messages aren't in the FM29 matrix:
+`third_party/webhud/dbc/fisker_ocean_mrr.dbc` is reverse-engineered from a drive, and its comments
+say how each scale was checked and which are still open. Tracks are drawn close to raw (each 65 ms
+cycle's position, carried on the radar's own velocity for at most a cycle), so a scale or sign error
+shows up as an offset from the camera's car; like those cars, a car ahead sits with its rear on the
+reported point. A chip at the top right shows the radar's track count, or *no bus 1 data* when the log (or harness)
+has no radar frames.
+
+*Object stats* (*Display*, off by default, `static/js/labels.js`): a debug tag over every object the
+view draws, giving its source (the ADAS camera's list, an openpilot lead, the radar), track ID and
+class, position (x ahead, y left/right), speed over the ground and relative, heading and size, in m,
+m/s and degrees. The ADAS list has no speeds; its tags show this view's tracking estimate (*est*). An
+openpilot lead merged into an ADAS car is listed on that car's tag. Tags stack instead of overlapping,
+so an object two sources report shows both.
+
 **Open:** `http://sunnypilot.local:8088` (or `http://<device-ip>:8088`; port 80 is also served when
 the process is allowed to bind it). Toggle: *Settings → Developer → Web HUD* (`EnableWebHud`, on by
 default).
@@ -61,6 +79,7 @@ default).
 | `server.py` | Process entry point (`webhud` in process_config). stdlib `http.server` + WebSocket, 20 Hz state stream, REST API, static files. Niced; reads nothing while no browser is connected. |
 | `mdns.py` | Publishes `sunnypilot.local` as an alias + `_http._tcp` service through avahi's D-Bus API (jeepney); falls back to a built-in A-record responder. Doesn't change the device hostname. |
 | `fisker_world.py` | Realtime world model from ADASBUS (see below). |
+| `fisker_radar.py` | Mid-range radar tracks from its private CAN (bus 1), decoded with the reverse-engineered `fisker_ocean_mrr.dbc`. Kept apart from ADASBUS: the radar reuses its IDs. |
 | `extract.py`, `state.py` | openpilot/sunnypilot services → compact JSON, merged with the Fisker world into one snapshot. |
 | `sources.py` | Live (cereal `can` + services) and rlog/qlog replay (zst/bz2, multi-segment, seek, speed). |
 | `demo.py` | Synthetic drive that encodes real ADASBUS frames — `server.py --demo` or *Playback → Play demo drive*. |

@@ -13,6 +13,7 @@ WEBHUD_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(WEBHUD_DIR, "static")
 THIRD_PARTY_DIR = os.path.join(os.path.dirname(os.path.dirname(WEBHUD_DIR)), "third_party", "webhud")
 DBC_PATH = os.path.join(THIRD_PARTY_DIR, "dbc", "fisker_ocean_adas_world.dbc")
+RADAR_DBC_PATH = os.path.join(THIRD_PARTY_DIR, "dbc", "fisker_ocean_mrr.dbc")   # reverse-engineered, see its comments
 
 # URL prefix -> directory served under it ("" = the app itself)
 STATIC_ROOTS = {

@@ -12,6 +12,7 @@
   --green: #2fa84f;
   --amber: #f0a020;
   --red: #e5413a;
+  --radar: #0a9fb2;
   --shadow: 0 6px 24px rgba(20, 24, 31, 0.10), 0 1px 3px rgba(20, 24, 31, 0.08);
   --radius: 18px;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -29,6 +30,7 @@
   --faint: #4a4f57;
   --accent: #5b86ff;
   --accent-soft: rgba(91, 134, 255, 0.18);
+  --radar: #2fd6e8;
   --shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
   color-scheme: dark;
 }
@@ -46,6 +48,15 @@ button, select, input { font: inherit; color: inherit; }
 .hidden { display: none !important; }
 
 #scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+/* object stats (labels.js): debug tags over the 3D objects, never in the way of touches */
+#olabels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 1; }
+.olabel { position: absolute; left: 0; top: 0; padding: 3px 7px 3px 6px; border-radius: 7px; border-left: 3px solid var(--muted);
+  background: var(--panel); box-shadow: var(--shadow); color: var(--text); font: 500 10.5px/1.3 var(--font); font-variant-numeric: tabular-nums;
+  white-space: nowrap; will-change: transform; }
+.olabel b { font-weight: 800; letter-spacing: .5px; color: var(--muted); }
+.olabel .stem { position: absolute; left: 50%; width: 1px; background: var(--muted); opacity: .6; }
+.olabel.radar { border-left-color: var(--radar); } .olabel.radar b { color: var(--radar); } .olabel.radar .stem { background: var(--radar); }
+.olabel.op { border-left-color: var(--accent); } .olabel.op b { color: var(--accent); } .olabel.op .stem { background: var(--accent); }
 
 .card {
   background: var(--panel);
@@ -130,6 +141,7 @@ button, select, input { font: inherit; color: inherit; }
 .chips { position: absolute; top: 16px; right: 16px; display: flex; gap: 6px; z-index: 5; }
 .chip { font-size: 11px; font-weight: 700; letter-spacing: .8px; padding: 5px 9px; border-radius: 99px; background: var(--panel); color: var(--muted); box-shadow: var(--shadow); text-transform: uppercase; }
 .chip.ok { color: var(--green); } .chip.warn { color: var(--amber); } .chip.bad { color: var(--red); } .chip.replay { background: var(--accent); color: #fff; }
+.chip.radar { color: var(--radar); }
 
 .roadinfo { position: absolute; top: 52px; right: 16px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; z-index: 5; }
 .ri { padding: 8px 10px; border-radius: 12px; background: var(--panel); box-shadow: var(--shadow); font-size: 13px; display: flex; align-items: center; gap: 8px; }

@@ -172,7 +172,7 @@ function vehicle(spec, paint, opts = {}) {
       spin.add(wheel(spec.wheelR, tw, tireMaterial));
       steer.add(spin);
       g.add(steer);
-      wheels.push({ steer, spin, r: spec.wheelR, front: ax === frontAxle, spokes: 6 });
+      wheels.push({ steer, spin, r: spec.wheelR, w: tw, front: ax === frontAxle, spokes: 6 });
     }
   }
   const shadow = softShadow(spec.width, spec.length);
@@ -365,7 +365,8 @@ export function loadEgoModel(url) {
         g.add(steer);
         g.updateMatrixWorld(true);
         for (const m of cl.meshes) spin.attach(m);
-        wheels.push({ steer, spin, r: box.getSize(new THREE.Vector3()).y / 2, front: key.endsWith('f'), spokes: OCEAN_GLTF.spokes });
+        const size = box.getSize(new THREE.Vector3());
+        wheels.push({ steer, spin, r: size.y / 2, w: size.x, front: key.endsWith('f'), spokes: OCEAN_GLTF.spokes });
       }
 
       const shadow = softShadow(W, L);
@@ -459,6 +460,26 @@ export function makeObject(cls, color) {
     case 'sedan': return vehicle(SEDAN, paintMat(color));
     default: return vehicle(OCEAN, paintMat(color));
   }
+}
+
+// See-through car for the radar view: body, glass and wheels in one translucent tint (darker for the
+// glass and wheels), no ground shadow, and no depth writes so a camera car it overlaps still shows
+// through. userData.paint = [shell, dark] for recoloring and fading.
+export function makeGhost(color, opacity) {
+  const shell = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.1, transparent: true, opacity, depthWrite: false });
+  const dark = shell.clone();
+  dark.color.multiplyScalar(0.35);
+  const g = vehicle(OCEAN, shell);
+  const shadows = [];
+  g.traverse((o) => {
+    if (!o.isMesh) return;
+    if (o.material.map) shadows.push(o);
+    else if (o.material !== shell) o.material = dark;
+    o.renderOrder = 4;   // after the camera's cars, which it is drawn around
+  });
+  for (const s of shadows) { s.parent.remove(s); s.material.dispose(); }
+  g.userData.paint = [shell, dark];
+  return g;
 }
 
 // Fit a prototype to the object's measured size, within sane bounds per class.
