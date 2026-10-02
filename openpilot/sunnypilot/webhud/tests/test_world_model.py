@@ -7,8 +7,8 @@ See the LICENSE.md file in the root directory for more details.
 import math
 
 from openpilot.common.test import OpenpilotTestCase
-from openpilot.sunnypilot.webhud.world_model import (CONF_STANDING, FUSION_DELAY_S, RADAR_MIN_AGE, EgoOdometry, WorldModel, adas_measurement,
-                                                     op_measurements, radar_measurements, to_ego, to_world)
+from openpilot.sunnypilot.webhud.world_model import (CONF_STANDING, FRONT_TO_REAR_AXLE, FUSION_DELAY_S, RADAR_MIN_AGE, EgoOdometry, WorldModel,
+                                                     adas_measurement, op_measurements, radar_measurements, to_ego, to_world)
 
 SHOWN, HIDDEN = 0.65, 0.35   # the view's fade (scene.js CONF_FULL / CONF_HIDE)
 
@@ -138,14 +138,14 @@ class TestWorldModel(OpenpilotTestCase):
 
 class TestConfidence(OpenpilotTestCase):
   """At 22 m/s on a straight road, with openpilot's model running; `world` maps each radar id to a
-  ground-fixed (x, y, w, l, cls), `leads` the openpilot leads to report (dRel, yRel, vLead)."""
+  ground-fixed (x, y, w, l, cls) (cls may be a function of time), `leads` the openpilot leads to report (dRel, yRel, vLead)."""
   V = 22.0
 
   def setUp(self):
     super().setUp()
     self.model = WorldModel()
 
-  def run_for(self, t_end, world, leads=lambda t: [], moving=None, age=lambda t: 40):
+  def run_for(self, t_end, world, leads=lambda t: [], moving=None, age=lambda t: 40, adas=lambda t: []):
     odo, model, out = self.model.odo, self.model, []
     next_cycle = 0.0
     for i in range(int(t_end / 0.01) + 1):
@@ -157,10 +157,11 @@ class TestConfidence(OpenpilotTestCase):
           wx = wx + (moving or {}).get(rid, 0.0) * t
           x, y = to_ego(odo.pose(t), wx, wy)
           if 0 < x < 170:
-            objs.append(radar_obj(rid, x, y, vx=(moving or {}).get(rid, 0.0) - self.V, age=age(t), cls=cls, w=w, l=l))
+            objs.append(radar_obj(rid, x, y, vx=(moving or {}).get(rid, 0.0) - self.V, age=age(t), cls=cls(t) if callable(cls) else cls, w=w, l=l))
         model.add(radar_measurements(t, objs, self.V))
         rs = {k: {"present": True, "dRel": d, "yRel": y, "vLead": v, "modelProb": 0.9} for k, (d, y, v) in zip(("leadOne", "leadTwo"), leads(t), strict=False)}
         model.add(op_measurements(t, rs, self.V))
+        model.add([adas_measurement(t + 0.12, o) for o in adas(t)])
         model.model_ran(t)
         next_cycle += 0.065
       if i % 5 == 0:
@@ -198,14 +199,44 @@ class TestConfidence(OpenpilotTestCase):
     (o,) = self.run_for(3.0, {4: (60.0, 5.0, 3.0, 0.6, "car")})[-1][1]
     assert o["confWhy"] == "thin" and o["conf"] < HIDDEN
 
+  def test_unclassified_radar_needs_a_second_factor(self):
+    # a point target the radar never classified, moving with traffic ahead of us
+    world, moving = {8: (40.0, 0.0, None, None, "unclassified")}, {8: 15.0}
+
+    def ahead(t):   # m ahead of our bumper
+      return 40.0 - FRONT_TO_REAR_AXLE + (15.0 - self.V) * t
+
+    alone = [o for _, objs in self.run_for(3.0, world, moving=moving) for o in objs]
+    assert alone and all(o["confWhy"] == "unclassified" and o["conf"] < HIDDEN for o in alone)
+
+    self.model = WorldModel()   # radar classes flicker: one cycle of "small" (radar track 468) doesn't make it classified
+    flicker = {8: (40.0, 0.0, None, None, lambda t: "small" if 1.0 <= t < 1.065 else "unclassified")}
+    assert self.run_for(3.0, flicker, moving=moving)[-1][1][0]["confWhy"] == "unclassified"
+
+    self.model = WorldModel()   # the same, and openpilot's model sees a car there
+    (o,) = self.run_for(3.0, world, moving=moving, leads=lambda t: [(ahead(t) - 1.0, 0.0, 15.0)])[-1][1]
+    assert o["confWhy"] == "vision" and o["conf"] > SHOWN
+
+    self.model = WorldModel()   # or the ADAS camera lists something there it can't classify
+    (o,) = self.run_for(3.0, world, moving=moving, adas=lambda t: [{"id": 3, "x": ahead(t) + 1.7, "y": 0.0, "cls": "unknown"}])[-1][1]
+    assert o["confWhy"] == "moving" and o["conf"] > SHOWN
+
   def test_young_radar_tracks_wait_to_show(self):
     # radar track 783 on the same drive: a 0.8 s "pedestrian" sprinting across our lane at 50 mph, really its bearing settling
     snaps = self.run_for(2.0, {7: (60.0, 0.0, 2.0, 4.0, "car")}, moving={7: 15.0}, age=lambda t: 8 + int(t / 0.065))
     young = [o for t, objs in snaps if t < 0.8 for o in objs]
-    assert young and all(o["confWhy"] == "young" and o["conf"] < HIDDEN for o in young)
+    assert young and all(o["conf"] < HIDDEN for o in young) and young[-1]["confWhy"] == "young"   # classified by then
     assert snaps[-1][1][0]["confWhy"] == "moving"   # past RADAR_MATURE_AGE (1.3 s of radar track)
 
   def test_moving_car_is_trusted_without_the_camera(self):
     snaps = self.run_for(3.0, {6: (40.0, 0.0, 2.0, 4.0, "car")}, moving={6: 15.0})
     (o,) = snaps[-1][1]
     assert o["confWhy"] == "moving" and o["conf"] > SHOWN
+
+  def test_paused_replay_settles(self):
+    # scrubbed to a moment and paused: an object that came in just before it shows at once, not half faded in
+    self.model.odo.update(0.0, 0.0, 0.0)
+    self.model.add([adas_measurement(1.0, {"id": 4, "x": 12.0, "y": 0.0, "cls": "car"})])
+    self.model.step(1.0)
+    (o,) = self.model.step(1.0)
+    assert o["conf"] == 1.0

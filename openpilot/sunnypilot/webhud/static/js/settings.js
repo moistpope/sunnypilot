@@ -239,7 +239,8 @@ export class Settings {
       ['showOpLeads', 'openpilot leads', 'Show radarState leads the ADAS object list doesn\'t already cover.'],
       ['showLowConf', 'Low-confidence objects', 'World model: also draw, faintly, the objects it doubts, which it otherwise hides: radar-only things standing ' +
         'in your path that openpilot\'s camera model doesn\'t see (to the radar, sign gantries, traffic lights and bridges look like stopped cars), ' +
-        'that the radar draws as a wide thin strip, or that it has tracked for under 1.3 s.'],
+        'that the radar draws as a wide thin strip, that it hasn\'t classified (point targets need a camera detection too), ' +
+        'or that it has tracked for under 1.3 s.'],
       ['showRadar', 'Radar objects', 'Every track of the mid-range radar (its private CAN, bus 1) as a see-through car, with a ring at the point it reports, ' +
         'to check the radar decoding against the camera\'s cars. Needs a harness that taps the radar bus.'],
       ['radarAllTracks', 'All radar tracks', 'Radar objects: also show tracks younger than 1.3 s, most of which flicker in and out (the radar reports every candidate).'],

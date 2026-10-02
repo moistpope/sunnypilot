@@ -71,18 +71,22 @@ scene's own ego motion now uses the gyro too. *Raw sources* draws each source as
 tracks younger than 1.3 s are hidden unless *All radar tracks* is on.
 
 Each world-model object has a confidence, and the view fades it in between 35% and 65% and hides it
-below that. The radar measures no elevation (nothing decoded so far gives height), so overhead traffic
-lights, sign gantries and bridges read as stopped cars in our lane until it passes under them and
-drops the track (radar track 791 on `000000b5--bfe13ac451--12` at 0:45–0:48: a traffic light the
-radar called a 3 m wide, 0.6 m long car, dropped 24 m out). A camera positively classifying an
-object (an ADAS class, or an openpilot lead) settles it at 100%. A radar-only object stays hidden
-until its radar track has lasted 1.3 s. After that it gets 85% if it moves over the ground and 60%
-(drawn a little see-through) if it stands. A standing object drops to about 33% if the radar has
-drawn it at least 4 times wider than long and 1.5 m wide, and to 15% once openpilot's model has
-missed it for 0.5 s in plain view: standing within 1.5 m of our path, 8–80 m ahead, above 5 m/s,
-with no camera-seen or moving object in front of it. *Low-confidence objects* (*Display*, off by
-default) draws the hidden ones faintly, and *Object stats* gives each object's confidence and the
-reason for it (*vision*, *moving*, *standing*, *thin*, *unseen*, *young*).
+below that. The radar measures no elevation (nothing decoded so far gives height), so overhead
+traffic lights, sign gantries and bridges read as stopped cars in our lane until it passes under
+them and drops the track (radar track 791 on `000000b5--bfe13ac451--12` at 0:45–0:48: a traffic
+light the radar called a 3 m wide, 0.6 m long car, dropped 24 m out). A camera positively
+classifying an object (an ADAS class, or an openpilot lead) settles it at 100%. The radar alone
+never shows a point target it hasn't classified: that takes a second, camera detection (anything in
+the ADAS list, or an openpilot lead). A class counts once the radar has given it for 5 cycles, since
+a class can flicker on for a single cycle (radar track 468). A radar-only object it has classified
+stays hidden until its radar track has lasted 1.3 s. After that it gets 85% if it moves over the
+ground and 60% (drawn a little see-through) if it stands. A standing object drops to about 33% if
+the radar has drawn it at least 4 times wider than long and 1.5 m wide, and to 15% once openpilot's
+model has missed it for 0.5 s in plain view: standing within 1.5 m of our path, 8–80 m ahead, above
+5 m/s, with no camera-seen or moving object in front of it. *Low-confidence objects* (*Display*, off
+by default) draws the hidden ones faintly, and *Object stats* gives each object's confidence and the
+reason for it (*vision*, *moving*, *standing*, *thin*, *unseen*, *young*, *unclassified*). Paused,
+each object shows its settled confidence.
 
 *Object stats* (*Display*, off by default, `static/js/labels.js`): a debug tag over every object the
 view draws, giving its source (the ADAS camera's list, an openpilot lead, the radar), track ID and
