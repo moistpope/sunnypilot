@@ -32,6 +32,8 @@ const WORLD_EASE_S = 0.08;            // world objects glide onto each new estim
 const CONF_HIDE = 0.35, CONF_FULL = 0.65;   // world objects fade in between these confidences (world_model.py)...
 const LOW_CONF_ALPHA = 0.2;           // ...or, with "Low-confidence objects", never fainter than this
 const DEG = Math.PI / 180;
+const EGO_ENV = { light: 1.0, dark: 0.75 };   // reflection strength on the ego car, by theme
+const PAINT_LIFT = 2.0;                       // the model's own paint is a near-black navy (~1-3%); lift it
 const UP = new THREE.Vector3(0, 1, 0);
 
 // Tileable value-noise fBm (period = the texture), as a grey canvas texture.
@@ -149,6 +151,38 @@ const THEMES = {
   dark: { bg: 0x101216, ground: 0x181b20, road: 0x2c3038, object: 0x50565f, lead: 0xd5dae2, line: 0x6b717a, edge: 0x8a9099, yellow: 0xc9982a,
     blue: 0x5b86ff, red: 0xff5a4f, path: 0x5b86ff, model: 0x4d535c, radar: 0x2fd6e8, hemiSky: 0x8a93a6, hemiGround: 0x1a1d22 },
 };
+
+// A soft studio for the ego car to reflect, prefiltered for PBR (PMREM): bright overhead, a grey
+// horizon, a darker ground, and softboxes overhead, along both sides and behind, so the glossy paint,
+// chrome trim and glass catch highlights instead of rendering near-black with no environment.
+function studioEnvironment(renderer) {
+  const scene = new THREE.Scene();
+  scene.add(new THREE.Mesh(new THREE.SphereGeometry(20, 32, 16), new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false,
+    vertexShader: 'varying vec3 vDir; void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `varying vec3 vDir;
+      void main() {
+        float y = vDir.y;
+        vec3 c = y > 0.0 ? mix(vec3(0.5), vec3(0.95), smoothstep(0.0, 0.7, y)) : mix(vec3(0.16), vec3(0.3), smoothstep(-0.5, 0.0, y));
+        gl_FragColor = vec4(c, 1.0);
+      }`,
+  })));
+  const box = (w, h, x, y, z, level) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(level, level, level), side: THREE.DoubleSide }));
+    m.position.set(x, y, z);
+    m.lookAt(0, 0.6, 2.4);
+    scene.add(m);
+  };
+  box(2.2, 9, 0, 8, 2.4, 3.0);        // long strip overhead
+  box(9, 2.2, -8, 2.6, 2.4, 1.6);     // sides
+  box(9, 2.2, 8, 2.6, 2.4, 1.6);
+  box(5, 2.5, 0, 3.2, 11, 1.8);       // behind, where the chase camera looks from
+  box(5, 2.5, 0, 3.2, -7, 1.2);       // ahead
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const tex = pmrem.fromScene(scene, 0.035).texture;
+  pmrem.dispose();
+  return tex;
+}
 
 export const VIEWS = {
   chase: { r: 17, phi: 1.02, theta: 0, offY: 0.2 },
@@ -307,12 +341,16 @@ export class CarScene {
     this.scene.add(this.headBeam);
 
     // procedural Ocean until the detailed glTF model has loaded (or if it can't be)
+    this.egoEnv = studioEnvironment(this.renderer);
+    this.egoEnvLevel = EGO_ENV.light;
     this.ego = makeEgo();
+    this._lightEgo(this.ego);
     this.scene.add(this.ego);
     this.egoColor = null;
     loadEgoModel('/models/fisker_ocean.glb').then((g) => {
       this.scene.remove(this.ego);
       this.ego = g;
+      this._lightEgo(g);
       this.scene.add(g);
       this.setEgoColor(this.egoColor);
     }).catch((e) => console.warn('Ocean model unavailable, keeping the procedural car', e));
@@ -392,6 +430,8 @@ export class CarScene {
     this.headBeam.material.opacity = dark ? 0.45 : 0.2;
     this.headBeam.material.needsUpdate = true;
     this.tracks.setTheme(dark);
+    this.egoEnvLevel = dark ? EGO_ENV.dark : EGO_ENV.light;
+    this._lightEgo(this.ego);
     this.hemi.color.set(t.hemiSky);
     this.hemi.groundColor.set(t.hemiGround);
     this.mats.line.color.set(t.line);
@@ -414,13 +454,25 @@ export class CarScene {
     for (const e of this.worldObjs.values()) e.color = null;
   }
 
+  // the ego car reflects the studio environment (its own materials only; the rest of the scene is unlit by it)
+  _lightEgo(g) {
+    g.traverse((o) => {
+      if (!o.isMesh) return;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        if (!m.isMeshStandardMaterial) continue;
+        if (m.envMap !== this.egoEnv) { m.envMap = this.egoEnv; m.needsUpdate = true; }
+        m.envMapIntensity = this.egoEnvLevel;
+      }
+    });
+  }
+
   // hex color, or null/'model' for the model's own paint
   setEgoColor(hex) {
     this.egoColor = hex;
     const ud = this.ego.userData;
     ud.paint.forEach((m, i) => {
       if (hex && hex !== 'model') m.color.set(hex);
-      else if (ud.originalPaint) m.color.copy(ud.originalPaint[i]);
+      else if (ud.originalPaint) m.color.copy(ud.originalPaint[i]).multiplyScalar(PAINT_LIFT);
       else m.color.set(0x23262c);
     });
   }

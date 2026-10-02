@@ -4,6 +4,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 
 export const LAMP = { white: 0xf2f6ff, amber: 0xffa01e, red: 0xff2414 };
+const GLOW_SCALE = 1.6;   // glow strips this much wider than modeled, so lit lamps read from the chase camera
 
 // across-strip falloff for the glow: bright in the middle, gone at both edges
 let stripTexture = null;
@@ -14,9 +15,9 @@ function stripTex() {
   const ctx = c.getContext('2d');
   const g = ctx.createLinearGradient(0, 0, 64, 0);
   g.addColorStop(0, 'rgba(255,255,255,0)');
-  g.addColorStop(0.3, 'rgba(255,255,255,0.35)');
+  g.addColorStop(0.3, 'rgba(255,255,255,0.5)');
   g.addColorStop(0.5, 'rgba(255,255,255,1)');
-  g.addColorStop(0.7, 'rgba(255,255,255,0.35)');
+  g.addColorStop(0.7, 'rgba(255,255,255,0.5)');
   g.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 64, 2);
@@ -50,16 +51,17 @@ export class Lamp {
     }
     if (level === this.level) return;
     this.level = level;
-    // colored lamps saturate (amber turns yellow) when pushed past full emissive
-    this.lens.emissiveIntensity = level * (this.shown === LAMP.white ? 1.8 : 1.05);
-    this.glow.opacity = level * 0.75;
+    // colored lamps saturate (amber turns yellow) when pushed far past full emissive; the glow carries
+    // the rest of their brightness
+    this.lens.emissiveIntensity = level * (this.shown === LAMP.white ? 2.6 : 1.3);
+    this.glow.opacity = Math.min(1, level * 1.05);
     for (const m of this.glowMeshes) m.visible = level > 0.02;
   }
 
   // add a glow strip along points/normals (ego space)
   addGlow(parent, points, normals, width, extend = 0) {
     if (points.length < 2) return;
-    const m = new THREE.Mesh(surfaceStrip(points, normals, width, 0.006, extend), this.glow);
+    const m = new THREE.Mesh(surfaceStrip(points, normals, width * GLOW_SCALE, 0.006, extend), this.glow);
     m.renderOrder = 3;
     m.visible = false;
     parent.add(m);
@@ -212,8 +214,8 @@ export function applyLamps(lamps, L) {
   const pos = L.position || L.low || L.high;
   const set = (name, level, color) => { if (lamps[name]) lamps[name].set(level, color); };
   set('drl', L.drl || pos ? 1 : 0);
-  set('head', L.high ? 1 : L.low ? 0.8 : 0);
-  set('tail', L.brake ? 1 : pos ? 0.35 : 0);
+  set('head', L.high ? 1 : L.low ? 0.9 : 0);
+  set('tail', L.brake ? 1 : pos ? 0.5 : 0);
   set('chmsl', L.brake ? 1 : 0);
   set('reverse', L.reverse ? 1 : 0);
   for (const [s, on, active] of [['L', L.left, L.leftActive], ['R', L.right, L.rightActive]]) {
@@ -221,9 +223,9 @@ export function applyLamps(lamps, L) {
     set('mirror' + s, on ? 1 : 0);
     // the rear-quarter marker is part of the tail lamp: lit with it, bright for braking, and it
     // flashes with the indicator on its side
-    set('marker' + s, L.brake ? 1 : active ? (on ? 1 : 0) : pos ? 0.35 : 0);
+    set('marker' + s, L.brake ? 1 : active ? (on ? 1 : 0) : pos ? 0.5 : 0);
     // lower rear lamp: amber indicator, red tail otherwise
     if (active) set('rear' + s, on ? 1 : 0, LAMP.amber);
-    else set('rear' + s, pos ? 0.3 : 0, LAMP.red);
+    else set('rear' + s, pos ? 0.45 : 0, LAMP.red);
   }
 }

@@ -240,6 +240,9 @@ const OCEAN_GLTF = {
     'Material.009': { color: 0x454a52, metalness: 0.3, roughness: 0.5 },    // hub
     'MA_tire_003': { color: 0x1b1c1f, metalness: 0, roughness: 0.9 },
   },
+  // The export's KHR_materials_specular factors (0-0.09) all but switch reflections off, so the glossy
+  // paint, glass and trim render flat black. A plain dielectric is 1; matte plastic a little less.
+  specular: { 'Material.001': 1, 'Material': 1, 'Material.002': 0.8, 'Material.003': 0.5, 'Material.010': 1 },
 };
 
 // Turn the model's light meshes into switchable lamps and lay the missing ones onto the body.
@@ -339,6 +342,7 @@ export function loadEgoModel(url) {
         if (OCEAN_GLTF.wheel.includes(name)) wheelMeshes.push(o);
         const finish = OCEAN_GLTF.finish[name];
         if (finish) { o.material.color.setHex(finish.color); o.material.metalness = finish.metalness; o.material.roughness = finish.roughness; }
+        if (name in OCEAN_GLTF.specular && o.material.specularIntensity !== undefined) o.material.specularIntensity = OCEAN_GLTF.specular[name];
       });
       const lamps = oceanLamps(g, meshes, L);
 

@@ -10,7 +10,9 @@ The ego car mirrors the real one: a fine textured ground moves under it with spe
 and the front pair steers, and its lamps light on the body itself, following the BCM's lamp
 outputs (`BCM_0x335`, falling back to carState): DRL bar, headlights, front/mirror/rear turn
 indicators, tail, brake, third brake light, rear-quarter markers (lit with the tail, bright when
-braking, flashing with the indicator) and reversing lamps (`static/js/lamps.js`).
+braking, flashing with the indicator) and reversing lamps (`static/js/lamps.js`). The car reflects a soft
+studio environment of its own (`studioEnvironment` in `scene.js`), so its glossy paint, glass and chrome
+trim catch highlights; the model's near-black original paint is lifted a little.
 
 Lanes and objects are filtered before drawing (`static/js/road.js`, `scene.js`): lane lines are
 carried with the car's motion and eased toward each measurement by confidence, with hysteresis on
