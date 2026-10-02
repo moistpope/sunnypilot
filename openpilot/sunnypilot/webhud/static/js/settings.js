@@ -211,7 +211,7 @@ export class Settings {
       ['showGround', 'Ground texture', 'Fine textured ground that moves under the car with its speed and steering.'],
       ['showRoad', 'Inferred road', 'Fill in the road and lanes the cameras don\'t report, following the last known lanes and your path.'],
       ['showSigns', 'Traffic lights & signs', 'Lights, signs and stop lines the car\'s camera reports, placed where they most likely are.'],
-      ['showTracks', 'Power trails', 'The rear tires paint the road, colored by how hard the motors pull (blue light, through the spectrum to red at full power); longer the faster you go.'],
+      ['showTracks', 'Power trails', 'Glowing particle trails behind the rear tires, colored by how hard the motors pull (blue light, through the spectrum to red at full power); longer the faster you go.'],
       ['showPath', 'Planned path', 'Blue band along openpilot\'s path while steering is engaged.'],
       ['showUss', 'Parking sensors', 'Ultrasonic zone arcs around the car at low speed.'],
       ['showOpLeads', 'openpilot leads', 'Show radarState leads the ADAS object list doesn\'t already cover.'],

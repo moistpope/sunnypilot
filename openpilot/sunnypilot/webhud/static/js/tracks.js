@@ -1,18 +1,20 @@
-// Power trails: the rear tires paint the road as they roll. Each wheel sprays flat dabs of paint
-// across its tire width, colored by how hard the motors are asked to work at that moment -- blue at a
-// light load through the spectrum to red at full power -- and denser, with more overspray, the harder
-// the car pulls. Laid paint keeps its color, so a burst of power leaves a red stretch that slides
-// back behind the car while the newest paint is already blue again. The trail grows with speed to
-// one car length at 70 mph and fades out toward its end.
+// Power trails: the rear tires leave a trail of fine glowing particles as they roll -- a dense, bright
+// line along each tire track with a glow about it, and sparser dust that spreads out behind -- colored by
+// how hard the motors are asked to work at that moment: blue at a light load through the spectrum to red
+// at full power. The harder the car pulls, the denser the trail and the more dust it throws. Laid
+// particles keep their color, so a burst of power leaves a red stretch that slides back behind the car
+// while the newest trail is already blue again. The trail grows with speed to one car length at 70 mph
+// and fades out toward its end.
 //
-// The splats live in the `world` group (world-anchored), so the paint stays on the road; their fade
-// is computed on the GPU from how far the wheel has rolled since each was laid.
+// The particles live in the `world` group (world-anchored), so the trail stays on the road; their fade,
+// spread and twinkle are computed on the GPU from how far the wheel has rolled since each was laid.
 import * as THREE from '../vendor/three.module.min.js';
 
 const EGO_LEN = 4.775;
 const FULL_SPEED = 31.3;    // m/s (70 mph): the trail is one car length from here on
-const SPLATS = 1536;        // pool shared by both wheels (a full-power car length is ~600 per wheel)
-const DENSITY = [60, 130];  // splats per meter per wheel, light load .. full power
+const PARTICLES = 24576;    // pool shared by both wheels (a full-power car length is ~10000 per wheel)
+const DENSITY = [1000, 2100]; // particles per meter per wheel, light load .. full power
+const GLOW = 0.12;          // share of particles that are soft halo rather than specks
 const LIFT = 0.03;          // above lane lines (0.02)
 const KW_FULL = 150;        // demanded power for full red...
 const TQ_FULL = 6000;       // ...or wheel torque (both axles, Nm), e.g. a hard launch with little speed yet
@@ -43,96 +45,73 @@ function loadColor(load, out, light) {
   return out.setHSL((1 - load) * 240 / 360, 1, light, THREE.SRGBColorSpace);
 }
 
-// 2x2 atlas of paint dabs with ragged edges, a touch lighter where the paint is thickest
-function splatAtlas() {
-  const S = 128, H = S / 2;
-  const c = document.createElement('canvas');
-  c.width = c.height = S;
-  const ctx = c.getContext('2d');
-  const img = ctx.createImageData(S, S);
-  let seed = 7;
-  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let v = 0; v < 4; v++) {
-    const ox = (v % 2) * H, oy = (v >> 1) * H;
-    const waves = [2, 3, 5, 7].map(k => [k, rnd() * Math.PI * 2, 0.03 + rnd() * 0.05]);
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < H; x++) {
-        const dx = (x + 0.5) / H * 2 - 1, dy = (y + 0.5) / H * 2 - 1;
-        const r = Math.hypot(dx, dy), a = Math.atan2(dy, dx);
-        const edge = 0.74 + waves.reduce((acc, [k, ph, amp]) => acc + amp * Math.sin(k * a + ph), 0);
-        const alpha = 1 - THREE.MathUtils.smoothstep(r, edge - 0.1, edge);
-        const shade = Math.round(255 * (1 - 0.14 * THREE.MathUtils.smoothstep(r, 0, edge)));
-        img.data.set([shade, shade, shade, Math.round(255 * alpha)], ((oy + y) * S + ox + x) * 4);
-      }
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-// A pool of flat, instanced paint splats on the road. Per splat: center, orientation x radius, color
-// with opacity, and (distance its wheel had rolled when laid, wheel, atlas cell) for the fade.
-class Splats {
+// A pool of fine points on the road. Per particle: where it was laid, how it drifts per meter its wheel
+// has rolled since (across, up) and its size, color with opacity, and (distance its wheel had rolled
+// when laid, wheel, twinkle phase, glow) for the fade.
+class Particles {
   constructor(n) {
     this.n = n;
     this.next = 0;
     this.pos = new Float32Array(n * 3);
-    this.axis = new Float32Array(n * 2);
+    this.move = new Float32Array(n * 4);
     this.color = new Float32Array(n * 4);
-    this.trail = new Float32Array(n * 3);
-    const geo = new THREE.InstancedBufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], 3));
-    geo.setIndex([0, 1, 2, 0, 2, 3]);
+    this.trail = new Float32Array(n * 4);
+    const geo = new THREE.BufferGeometry();
     this.attrs = {
-      iPos: new THREE.InstancedBufferAttribute(this.pos, 3),
-      iAxis: new THREE.InstancedBufferAttribute(this.axis, 2),
-      iColor: new THREE.InstancedBufferAttribute(this.color, 4),
-      iTrail: new THREE.InstancedBufferAttribute(this.trail, 3),
+      position: new THREE.BufferAttribute(this.pos, 3),
+      aMove: new THREE.BufferAttribute(this.move, 4),
+      aColor: new THREE.BufferAttribute(this.color, 4),
+      aTrail: new THREE.BufferAttribute(this.trail, 4),
     };
     for (const [k, a] of Object.entries(this.attrs)) geo.setAttribute(k, a.setUsage(THREE.DynamicDrawUsage));
-    geo.instanceCount = n;
     this.geo = geo;
     this.dirtyFrom = -1;   // first pool slot written since the last upload
     this.dirtyCount = 0;
     this.clear();
     this.material = new THREE.ShaderMaterial({
-      uniforms: { uMap: { value: splatAtlas() }, uHead: { value: new THREE.Vector2() }, uLen: { value: 0 } },
+      uniforms: {
+        uHead: { value: new THREE.Vector2() }, uLen: { value: 0 }, uScale: { value: 800 }, uTime: { value: 0 },
+        uGlow: { value: 1 },
+      },
       vertexShader: `
-        attribute vec3 iPos;
-        attribute vec2 iAxis;
-        attribute vec4 iColor;
-        attribute vec3 iTrail;
+        attribute vec4 aMove;
+        attribute vec4 aColor;
+        attribute vec4 aTrail;
         uniform vec2 uHead;
         uniform float uLen;
+        uniform float uScale;
+        uniform float uTime;
+        uniform float uGlow;
         varying vec4 vColor;
-        varying vec2 vUv;
+        varying float vGlow;
         void main() {
-          float head = iTrail.y < 0.5 ? uHead.x : uHead.y;
-          float f = uLen > 0.01 ? clamp(1.0 - (head - iTrail.x) / uLen, 0.0, 1.0) : 0.0;
-          vColor = vec4(iColor.rgb, iColor.a * pow(f, 1.3));
-          if (vColor.a < 0.002) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }   // faded: skip it
-          vec2 off = iAxis * position.x + vec2(-iAxis.y, iAxis.x) * position.y;
-          vUv = (position.xy * 0.5 + 0.5 + vec2(mod(iTrail.z, 2.0), floor(iTrail.z / 2.0))) * 0.5;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(iPos + vec3(off.x, 0.0, off.y), 1.0);
+          float age = (aTrail.y < 0.5 ? uHead.x : uHead.y) - aTrail.x;   // meters rolled since laid
+          float f = uLen > 0.01 ? clamp(1.0 - age / uLen, 0.0, 1.0) : 0.0;
+          float twinkle = 0.6 + 0.4 * sin(uTime * (2.0 + 5.0 * fract(aTrail.z * 7.13)) + aTrail.z * 6.2832);
+          float fresh = 1.0 + 0.8 * (1.0 - smoothstep(0.0, 0.4, age));   // hot where it leaves the tire
+          vGlow = aTrail.w;
+          vColor = vec4(aColor.rgb, aColor.a * pow(f, 1.3) * mix(twinkle * fresh, uGlow, vGlow));
+          if (vColor.a < 0.002) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; return; }
+          vec4 mv = modelViewMatrix * vec4(position + aMove.xyz * age, 1.0);
+          gl_PointSize = max(1.5, aMove.w * uScale / max(0.5, -mv.z));
+          gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: `
-        uniform sampler2D uMap;
         varying vec4 vColor;
-        varying vec2 vUv;
+        varying float vGlow;
         void main() {
-          vec4 t = texture2D(uMap, vUv);
-          float a = vColor.a * t.a;
-          if (a < 0.004) discard;
-          gl_FragColor = vec4(vColor.rgb * t.rgb, a);
+          float d = length(gl_PointCoord - 0.5) * 2.0;
+          // a crisp speck, or a soft halo that adds up into a glow along the dense line
+          float a = vColor.a * mix(1.0 - smoothstep(0.45, 1.0, d), exp(-d * d * 4.0) * (1.0 - d), vGlow);
+          if (a < 0.003) discard;
+          gl_FragColor = vec4(vColor.rgb, a);
           #include <colorspace_fragment>
         }`,
-      transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      transparent: true, depthWrite: false,
     });
-    this.mesh = new THREE.Mesh(geo, this.material);
-    this.mesh.frustumCulled = false;
-    this.mesh.renderOrder = 3;
+    this.points = new THREE.Points(geo, this.material);
+    this.points.frustumCulled = false;
+    this.points.renderOrder = 3;
   }
 
   clear() {
@@ -140,15 +119,15 @@ class Splats {
     this.full = true;     // upload everything next flush
   }
 
-  add(x, z, radius, angle, r, g, b, alpha, s, wheel) {
+  add(x, z, dx, rise, dz, size, r, g, b, alpha, s, wheel, glow) {
     const i = this.next;
     this.next = (i + 1) % this.n;
     if (this.dirtyFrom < 0) this.dirtyFrom = i;
     this.dirtyCount++;
     this.pos.set([x, LIFT, z], i * 3);
-    this.axis.set([Math.cos(angle) * radius, Math.sin(angle) * radius], i * 2);
+    this.move.set([dx, rise, dz, size], i * 4);
     this.color.set([r, g, b, alpha], i * 4);
-    this.trail.set([s, wheel, Math.floor(Math.random() * 4)], i * 3);
+    this.trail.set([s, wheel, Math.random(), glow], i * 4);
   }
 
   // upload only what was written this frame (two ranges when the ring wrapped)
@@ -171,13 +150,17 @@ class Splats {
   }
 }
 
+// unit-ish normal spread, cheap
+const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) * 2;
+
 export class PowerTrails {
   constructor(world) {
     this.world = world;
-    this.splats = new Splats(SPLATS);
-    world.add(this.splats.mesh);
+    this.particles = new Particles(PARTICLES);
+    world.add(this.particles.points);
     this.load = 0;
-    this.color = new THREE.Color();
+    this.core = new THREE.Color();
+    this.dust = new THREE.Color();
     this.wheels = [0, 1].map(() => ({ last: null, s: 0, carry: 0 }));
     this.enabled = true;
     this._v = new THREE.Vector3();
@@ -186,28 +169,37 @@ export class PowerTrails {
 
   setTheme(dark) {
     this.dark = dark;
+    // light adds up on a dark road; on a light one the colors would wash out to white, so the
+    // specks are laid like ink there and the halo is only a faint tint
+    const m = this.particles.material;
+    m.blending = dark ? THREE.AdditiveBlending : THREE.NormalBlending;
+    m.uniforms.uGlow.value = dark ? 1 : 0.4;
+    m.needsUpdate = true;
   }
 
   clear() {
-    this.splats.clear();
+    this.particles.clear();
     for (const w of this.wheels) w.last = null;
   }
 
-  // ego: the car model (rear wheel positions); load: motorLoad() or null
-  update(dt, vehicle, ego, load, enabled) {
+  // ego: the car model (rear wheel positions); load: motorLoad() or null; pxScale: pixels per meter at 1 m
+  update(dt, vehicle, ego, load, enabled, pxScale) {
+    const P = this.particles;
     if (!enabled || !vehicle) {
       if (this.enabled) this.clear();
       this.enabled = false;
-      this.splats.mesh.visible = false;
+      P.points.visible = false;
       return;
     }
     this.enabled = true;
-    this.splats.mesh.visible = true;
+    P.points.visible = true;
     // the request arrives at 20 Hz in steps; ease it so the colors flow
     this.load += ((load ?? 0) - this.load) * (1 - Math.exp(-dt * 8));
-    const L = this.load, col = loadColor(L, this.color, this.dark ? 0.55 : 0.47);
+    const L = this.load, dark = this.dark;
+    const core = loadColor(L, this.core, dark ? 0.6 : 0.42), dust = loadColor(L, this.dust, dark ? 0.55 : 0.45);
     const density = DENSITY[0] + (DENSITY[1] - DENSITY[0]) * L;
-    const spray = 0.08 + 0.17 * L;   // share of fine overspray flung past the tire
+    const coreShare = 0.62 - 0.17 * L;   // the rest is dust, more of it the harder the car pulls
+    const alpha = dark ? 1 : 0.85;
 
     const rear = (ego.userData.wheels || []).filter(w => !w.front).map(w => w.steer.position);
     const zr = ego.userData.rearAxleZ ?? EGO_LEN - 0.93;
@@ -220,31 +212,48 @@ export class PowerTrails {
       w.last = { x: p.x, z: p.z };
       if (!last) return;
       const dx = p.x - last.x, dz = p.z - last.z, d = Math.hypot(dx, dz);
-      if (d > 6) { this.splats.clear(); return; }   // teleported (seek / pose wrap)
+      if (d > 6) { P.clear(); return; }   // teleported (seek / pose wrap)
       if (d < 1e-4) return;
-      const nx = -dz / d, nz = dx / d;   // across the tire
+      const tx = dx / d, tz = dz / d, nx = -tz, nz = tx;   // along and across the tire
       const s0 = w.s;
       w.s += d;
       w.carry += d * density;
       for (; w.carry >= 1; w.carry -= 1) {
-        const f = Math.random();
-        let off, radius;
-        if (Math.random() < spray) {
-          off = (Math.random() < 0.5 ? -1 : 1) * (0.12 + Math.random() * (0.14 + 0.12 * L));
-          radius = 0.012 + Math.random() * 0.022;
-        } else {
-          off = Math.max(-0.14, Math.min(0.14, (Math.random() + Math.random() + Math.random() - 1.5) * 0.13));
-          radius = 0.03 + Math.random() * 0.045 + 0.012 * L;
+        const f = Math.random(), k = Math.random();
+        // off: across the track; lat/fwd/rise: drift per meter rolled since (it spreads as it trails)
+        let off, lat = 0, fwd = 0, rise = 0, size, a, col = core, glow = 0;
+        if (k < GLOW) {   // halo
+          off = gauss() * 0.025;
+          size = 0.13 + Math.random() * 0.07;
+          a = 0.045 + Math.random() * 0.03;
+          glow = 1;
+        } else if (k < GLOW + coreShare) {   // the line itself, tight across the tire
+          off = Math.max(-0.1, Math.min(0.1, gauss() * 0.03));
+          size = 0.006 + Math.random() * 0.008;
+          a = 0.3 + 0.7 * Math.random() ** 2;   // mostly dim, a few bright sparks
+          lat = Math.sign(off) * Math.random() * 0.012;
+        } else {   // dust, thinning out away from the track and drifting further out
+          const side = Math.random() < 0.5 ? -1 : 1;
+          off = side * (0.04 + Math.min(4, -Math.log(1 - Math.random())) * (0.05 + 0.07 * L));
+          size = 0.005 + Math.random() * 0.007;
+          a = 0.15 + 0.6 * Math.random() ** 2;
+          lat = side * (0.008 + Math.random() * (0.03 + 0.05 * L));
+          fwd = (Math.random() - 0.5) * 0.02;
+          rise = Math.random() * 0.015;
+          col = dust;
         }
-        const shade = 0.88 + Math.random() * 0.24;   // uneven paint
-        this.splats.add(last.x + dx * f + nx * off, last.z + dz * f + nz * off, radius, Math.random() * Math.PI * 2,
+        const shade = 0.85 + Math.random() * 0.3;
+        P.add(last.x + dx * f + nx * off, last.z + dz * f + nz * off,
+          nx * lat + tx * fwd, rise, nz * lat + tz * fwd, size,
           Math.min(1, col.r * shade), Math.min(1, col.g * shade), Math.min(1, col.b * shade),
-          0.75 + Math.random() * 0.25, s0 + d * f, wi);
+          a * alpha, s0 + d * f, wi, glow);
       }
     });
-    this.splats.flush();
-    const u = this.splats.material.uniforms;
+    P.flush();
+    const u = P.material.uniforms;
     u.uHead.value.set(this.wheels[0].s, this.wheels[1].s);
     u.uLen.value = EGO_LEN * clamp01(vehicle.speed / FULL_SPEED);
+    u.uScale.value = pxScale;
+    u.uTime.value = (u.uTime.value + dt) % 1000;
   }
 }
