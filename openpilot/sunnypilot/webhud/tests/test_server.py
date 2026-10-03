@@ -77,6 +77,22 @@ class TestServer(OpenpilotTestCase):
     status, body, _ = self.request("GET", "/api/dbc")
     assert status == 200 and len(json.loads(body)["messages"]) > 80
 
+  def test_static_validators(self):
+    # the car model and every other file can be checked with a 304 instead of sent again
+    status, body, res = self.request("GET", "/models/pulse_ocean_v0.10.glb")
+    etag, modified = res.getheader("ETag"), res.getheader("Last-Modified")
+    assert status == 200 and etag and modified and len(body) > 1_000_000
+    status, body, res = self.request("GET", "/models/pulse_ocean_v0.10.glb", headers={"If-None-Match": etag})
+    assert status == 304 and body == b"" and res.getheader("ETag") == etag
+    assert self.request("GET", "/models/pulse_ocean_v0.10.glb", headers={"If-Modified-Since": modified})[0] == 304
+    assert self.request("GET", "/models/pulse_ocean_v0.10.glb", headers={"If-None-Match": '"0-0"'})[0] == 200
+    # gzip is its own entity; either tag matches the same file
+    status, _, res = self.request("GET", "/js/main.js", headers={"Accept-Encoding": "gzip"})
+    gz_tag = res.getheader("ETag")
+    assert status == 200 and gz_tag.endswith('-gz"') and res.getheader("Vary") == "Accept-Encoding"
+    assert self.request("GET", "/js/main.js", headers={"If-None-Match": gz_tag})[0] == 304
+    assert self.request("GET", "/sw.js")[2].getheader("Cache-Control") == "no-cache"
+
   def test_overrides_api(self):
     status, body, _ = self.request("GET", "/api/overrides")
     data = json.loads(body)

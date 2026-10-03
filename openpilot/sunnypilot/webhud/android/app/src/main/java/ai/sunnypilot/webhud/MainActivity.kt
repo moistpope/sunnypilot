@@ -4,7 +4,9 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -18,6 +20,7 @@ import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -56,12 +59,50 @@ class MainActivity : Activity(), Link.Listener {
     private var reloads = 0           // reloads in a row, for backoff
     private var pillPending = false
     private var fileCallback: ValueCallback<Array<Uri>>? = null
+    private var forcedNight: Boolean? = null   // started in the page's own day/night instead of the car's
 
     private val showPill = Runnable {
         pillPending = false
         if (connected == null && page == Page.LOADED) pill.visibility = View.VISIBLE
     }
     private val retryLoad = Runnable { if (connected != null) load() }
+
+    /**
+     * Start in the page's last theme setting when it's Day or Night rather than Auto, so the window,
+     * the WebView behind the page and the connecting card don't show the car's day/night colors and
+     * then flip once the page has loaded. Auto follows the car (the page reads prefers-color-scheme,
+     * which follows this configuration), so it's left alone. The page reports its setting through
+     * [PageBridge].
+     */
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        val night = when (base.getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_THEME, null)) {
+            "dark" -> true
+            "light" -> false
+            else -> return
+        }
+        val uiMode = base.resources.configuration.uiMode
+        val mode = if (night) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO
+        applyOverrideConfiguration(Configuration().apply { this.uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or mode })
+        forcedNight = night
+    }
+
+    private fun carIsNight() =
+        (applicationContext.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+
+    /** Called by the page (window.WebHudApp), on its JavaBridge thread. */
+    private inner class PageBridge {
+        @JavascriptInterface
+        fun setTheme(theme: String) {
+            if (theme !in THEMES) return
+            val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+            if (prefs.getString(PREF_THEME, null) == theme) return
+            prefs.edit().putString(PREF_THEME, theme).apply()
+            // switched to Auto while started in a fixed day/night the car isn't in: the page's
+            // prefers-color-scheme would stay pinned to that until a restart, so restart now
+            if (theme == "auto") ui.post { if (forcedNight.let { it != null && it != carIsNight() }) recreate() }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -196,6 +237,7 @@ class MainActivity : Activity(), Link.Listener {
         w.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true)
         w.webViewClient = Client()
         w.webChromeClient = Chrome()
+        w.addJavascriptInterface(PageBridge(), "WebHudApp")
         holder.addView(w, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         web = w
     }
@@ -368,5 +410,8 @@ class MainActivity : Activity(), Link.Listener {
         const val MAX_RELOAD_DELAY_MS = 30_000L
         const val ASSET_LOAD_WINDOW_MS = 30_000L
         const val REQUEST_FILE = 1
+        const val PREFS = "page"
+        const val PREF_THEME = "theme"   // the page's theme setting: auto, light or dark
+        val THEMES = setOf("auto", "light", "dark")
     }
 }

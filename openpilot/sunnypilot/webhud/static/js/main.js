@@ -109,6 +109,8 @@ class App {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     $('meta[name=theme-color]').setAttribute('content', dark ? '#101216' : '#eceef1');
     this.scene.setTheme(dark);
+    // the Android app starts in this theme next time (its loading screen and background), see MainActivity
+    try { window.WebHudApp?.setTheme(t); } catch { /* not in the app */ }
   }
 
   updateLayout() {

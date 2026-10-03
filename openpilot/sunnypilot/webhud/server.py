@@ -27,6 +27,7 @@ import socket
 import threading
 import time
 from collections.abc import Callable
+from email.utils import formatdate, parsedate_to_datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
@@ -437,6 +438,19 @@ class HudHandler(BaseHTTPRequestHandler):
       self._error(500, f"{type(e).__name__}: {e}")
 
   # static -----------------------------------------------------------------------
+  def _not_modified(self, mtime: int, etags: tuple[str, ...]) -> bool:
+    """The request's If-None-Match (or, without one, If-Modified-Since) says its copy is current."""
+    inm = self.headers.get("If-None-Match")
+    if inm is not None:
+      return inm.strip() == "*" or any(t.strip().removeprefix("W/") in etags for t in inm.split(","))
+    ims = self.headers.get("If-Modified-Since")
+    if ims:
+      try:
+        return mtime <= parsedate_to_datetime(ims).timestamp()
+      except (TypeError, ValueError):
+        return False
+    return False
+
   def _static(self, path: str) -> None:
     rel = unquote(path).lstrip("/") or "index.html"
     prefix = next(p for p in STATIC_ROOTS if rel.startswith(p))
@@ -446,9 +460,25 @@ class HudHandler(BaseHTTPRequestHandler):
       # unknown paths fall back to the app shell so deep links work
       full, prefix = os.path.join(STATIC_DIR, "index.html"), ""
     ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
+    st = os.stat(full)
+    mtime = st.st_mtime
+    gzip_ok = ctype.startswith(GZIP_TYPES)
+    # Validators, so the page's service worker (and browser caches) can check a file with a tiny 304
+    # instead of pulling it again -- the car model is ~25 MB. The gzip encoding is its own entity.
+    etag = f'"{st.st_mtime_ns // 1_000_000:x}-{st.st_size:x}"'
+    etag_gz = etag[:-1] + '-gz"'
+    use_gz = gzip_ok and "gzip" in self.headers.get("Accept-Encoding", "")
     # third-party libs and the car model rarely change; the app's own files always revalidate
-    headers = {"Cache-Control": "max-age=86400" if prefix else "no-cache"}
-    mtime = os.path.getmtime(full)
+    headers = {"Cache-Control": "max-age=86400" if prefix else "no-cache", "ETag": etag_gz if use_gz else etag,
+               "Last-Modified": formatdate(mtime, usegmt=True)}
+    if gzip_ok:
+      headers["Vary"] = "Accept-Encoding"
+    if self._not_modified(int(mtime), (etag, etag_gz)):
+      self.send_response(304)
+      for k, v in headers.items():
+        self.send_header(k, v)
+      self.end_headers()
+      return
     cached = self._gzip_cache.get(full)
     if cached is None or cached[0] != mtime:
       with open(full, "rb") as f:
@@ -457,9 +487,8 @@ class HudHandler(BaseHTTPRequestHandler):
       cached = (mtime, raw, gz)
       self._gzip_cache[full] = cached
     _, raw, gz = cached
-    if gz and "gzip" in self.headers.get("Accept-Encoding", ""):
+    if gz and use_gz:
       headers["Content-Encoding"] = "gzip"
-      headers["Vary"] = "Accept-Encoding"
       self._send(200, gz, ctype + ("; charset=utf-8" if ctype.startswith("text/") else ""), headers)
     else:
       self._send(200, raw, ctype + ("; charset=utf-8" if ctype.startswith("text/") else ""), headers)

@@ -150,6 +150,13 @@ m/s and degrees. The ADAS list has no speeds; its tags show this view's tracking
 openpilot lead merged into an ADAS car is listed on that car's tag. Tags stack instead of overlapping,
 so an object two sources report shows both.
 
+Loading: static files carry an `ETag`/`Last-Modified`, and the server answers a current copy with
+`304`. The page's service worker (`static/sw.js`) keeps the car model, three.js and the app's files
+in Cache Storage and checks them on each load, so the ~25 MB model crosses the network once. It
+needs a secure context, such as the Android app's `http://127.0.0.1` or `localhost`. A plain
+`http://sunnypilot.local` browser tab uses the HTTP cache instead. The day/night theme is applied
+from the saved setting before the first paint.
+
 **Open:** `http://sunnypilot.local:8088` (or `http://<device-ip>:8088`; port 80 is also served when
 the process is allowed to bind it). Toggle: *Settings → Developer → Web HUD* (`EnableWebHud`, on by
 default). On the car's own screen, where the comma joins the head unit's hotspot and `.local` names

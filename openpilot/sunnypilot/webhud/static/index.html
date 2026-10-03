@@ -7,6 +7,18 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>sunnypilot HUD</title>
+<script>
+  // Day/night before the first paint: the last theme setting, read here so the page doesn't show light
+  // while its scripts and the car model load (main.js applies it again, and tells the Android app).
+  try {
+    var theme = (JSON.parse(localStorage.getItem('webhud.settings') || '{}').theme) || 'auto';
+    var dark = theme === 'dark' || (theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    document.querySelector('meta[name=theme-color]').setAttribute('content', dark ? '#101216' : '#eceef1');
+  } catch (e) { /* no storage: light until main.js */ }
+  // keep the car model and scripts on this device between loads (see sw.js)
+  if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('/sw.js').catch(function () {});
+</script>
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>

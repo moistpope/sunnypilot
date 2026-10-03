@@ -48,6 +48,21 @@ chip says *offline*. Back opens a menu: reload, search again, set the address, c
 The screen stays on and the system bars are hidden. Rotation keeps the page. The page's *auto* theme
 follows the car's day/night mode.
 
+## Loading fast
+
+The page keeps its files on the head unit in a service worker cache (`static/sw.js`): the ~25 MB car
+model, three.js and its own scripts. The WebView's HTTP cache is too small to hold the model, so
+before this it was downloaded on every start. The first start still downloads everything. After
+that, each start only checks every file with the comma, which answers with an empty `304` while
+nothing has changed, so an update shows up on the next start. If the comma doesn't answer within
+2.5 s, the cached copy is used. Service workers need a secure context, and the relay's
+`http://127.0.0.1` origin is one.
+
+The page also tells the app its theme setting (`window.WebHudApp.setTheme`). With *Day* or *Night*
+picked in the HUD, the app starts in that mode next time: its window, the WebView behind the page
+and the connecting card. So it no longer flashes the car's mode before the page loads. *Auto* keeps
+following the car. The page sets its own theme before its first paint.
+
 ## Build and install
 
 Needs JDK 17+ and the Android SDK (`ANDROID_HOME`, or `sdk.dir` in `local.properties`).
