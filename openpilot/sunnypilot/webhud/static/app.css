@@ -150,15 +150,23 @@ button, select, input { font: inherit; color: inherit; }
 .ri .lamp.red { background: #e5413a; } .ri .lamp.amber { background: #f0a020; } .ri .lamp.green { background: #2fa84f; }
 .ri small { color: var(--muted); }
 
-/* ---------- view bar ---------- */
-.viewbar { position: absolute; right: 16px; bottom: 16px; display: flex; gap: 6px; z-index: 5; padding: 6px; border-radius: 16px; background: var(--panel); box-shadow: var(--shadow); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
-.viewbar button { min-width: 56px; height: 44px; border: 0; border-radius: 11px; background: transparent; color: var(--muted); font-weight: 600; font-size: 14px; padding: 0 12px; }
-.viewbar button.on { background: var(--accent-soft); color: var(--accent); }
 button.icon { width: 44px; min-width: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 button.icon svg { width: 22px; height: 22px; }
 
+/* ---------- view dock: camera views behind one button, and the HUD settings ---------- */
+.viewdock { position: absolute; right: 16px; bottom: 16px; display: flex; gap: 10px; z-index: 7; transition: opacity .25s, transform .3s; }
+.viewdock > button.icon { width: 54px; height: 54px; border: 0; border-radius: 50%; background: var(--panel); color: var(--muted); box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+.viewdock > button.icon.on { color: var(--accent); }
+.viewmenu { position: absolute; right: 0; bottom: 64px; display: flex; flex-direction: column; gap: 2px; min-width: 160px; padding: 6px; border-radius: 16px;
+  background: var(--panel); box-shadow: var(--shadow); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); transform-origin: bottom right; animation: pop .16s ease-out; }
+.viewmenu button { height: 46px; border: 0; border-radius: 11px; background: transparent; color: var(--text); font-weight: 600; font-size: 15px; text-align: left; padding: 0 14px; }
+.viewmenu button.on { background: var(--accent-soft); color: var(--accent); }
+@keyframes pop { from { transform: scale(.92); opacity: 0; } to { transform: none; opacity: 1; } }
+html.carmode .viewdock { opacity: 0; transform: translateY(16px); pointer-events: none; }
+
 /* ---------- replay bar ---------- */
-/* sits just left of the view bar (its width is measured into --viewbar-w) so it never covers the view buttons */
+/* sits just left of the view dock (its width is measured into --viewbar-w) so it never covers its buttons */
 .replaybar { position: absolute; right: calc(var(--viewbar-w, 360px) + 28px); bottom: 16px; width: min(820px, calc(100vw - var(--viewbar-w, 360px) - 60px)); display: flex; align-items: center; gap: 8px; padding: 8px 12px; z-index: 6; }
 .replaybar button { height: 40px; border: 0; border-radius: 10px; background: transparent; color: var(--text); font-weight: 600; }
 .replaybar button.small { padding: 0 8px; font-size: 13px; color: var(--muted); }
@@ -297,10 +305,8 @@ a { color: var(--accent); }
   .chips { top: calc(10px + env(safe-area-inset-top)); right: 10px; }
   .roadinfo { top: calc(44px + env(safe-area-inset-top)); right: 10px; }
   .alerts { top: calc(var(--drive-h, 200px) + 10px); left: 10px; right: 10px; width: auto; transform: none; }
-  .viewbar { left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); gap: 4px; padding: 5px; }
-  .viewbar button { flex: 1 1 0; min-width: 0; padding: 0 4px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .viewbar button.icon { flex: 0 0 44px; }
-  .replaybar { left: 10px; right: 10px; bottom: calc(70px + env(safe-area-inset-bottom)); width: auto; min-width: 0; transform: none; flex-wrap: wrap; }
+  .viewdock { right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); }
+  .replaybar { left: 10px; right: 10px; bottom: calc(76px + env(safe-area-inset-bottom)); width: auto; min-width: 0; transform: none; flex-wrap: wrap; }
   .replaybar .rp-track { order: -1; flex-basis: 100%; }
   .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
   .sheet { width: 100vw; }
@@ -308,9 +314,122 @@ a { color: var(--accent); }
 @media (max-width: 760px) and (min-aspect-ratio: 1/1) {
   #drive { width: 250px; padding: 10px 14px; }
   .alerts { width: min(420px, 40vw); }
-  .replaybar { right: 16px; bottom: 76px; width: min(560px, calc(100vw - 32px)); }   /* no room beside the view bar: above it */
+  .replaybar { right: 16px; bottom: 82px; width: min(560px, calc(100vw - 32px)); }   /* no room beside the view dock: above it */
 }
 @media (max-height: 520px) and (min-aspect-ratio: 1/1) {
   .speed { font-size: 58px; }
   #drive { padding: 8px 14px; }
+}
+
+/* ---------- car controls mockup (carcontrols.js) ---------- */
+/* category ribbon: hidden below the screen until the car is tapped */
+.carribbon { position: absolute; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 10; display: flex; align-items: center; gap: 4px;
+  max-width: calc(100vw - 32px); padding: 6px; border-radius: 22px; background: var(--panel); box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2);
+  transform: translate(-50%, calc(100% + 40px)); opacity: 0; pointer-events: none;
+  transition: transform .38s cubic-bezier(.2, .8, .2, 1), opacity .25s; }
+html.carmode .carribbon { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+.carribbon .cats { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; overscroll-behavior: contain; scroll-behavior: smooth; }
+.carribbon .cats::-webkit-scrollbar { display: none; }
+.carribbon .cat { flex: none; width: 76px; height: 64px; border: 0; border-radius: 15px; background: transparent; color: var(--muted);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.carribbon .cat svg { width: 25px; height: 25px; }
+.carribbon .cat.on { background: var(--accent-soft); color: var(--accent); }
+.carribbon .sep { flex: none; width: 1px; align-self: stretch; margin: 12px 4px; background: var(--line); }
+.carribbon .done { flex: none; width: 50px; height: 50px; margin-left: 4px; border: 0; border-radius: 50%; background: var(--bg2); color: var(--text); }
+.carribbon .mock { flex: none; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 9px; font-weight: 800; letter-spacing: 1.2px;
+  text-transform: uppercase; color: var(--muted); opacity: .8; padding: 0 2px; }
+
+/* half-screen panel: a sheet on the right in landscape, from the bottom in portrait */
+.carpanel { position: absolute; z-index: 9; display: flex; flex-direction: column; overflow: hidden; background: var(--panel-solid); box-shadow: 0 10px 50px rgba(0, 0, 0, .22);
+  top: 16px; right: 16px; bottom: calc(var(--ribbon-h, 76px) + 28px); width: min(44vw, 700px); border-radius: var(--radius);
+  transform: translateX(calc(100% + 40px)); visibility: hidden; transition: transform .38s cubic-bezier(.2, .8, .2, 1), visibility 0s .38s; }
+.carpanel.open { transform: none; visibility: visible; transition: transform .38s cubic-bezier(.2, .8, .2, 1); }
+.carpanel header { display: flex; align-items: center; gap: 8px; padding: 10px 14px 10px 8px; border-bottom: 1px solid var(--line); }
+.carpanel header h2 { flex: 1; margin: 0; font-size: 19px; font-weight: 650; display: flex; align-items: center; gap: 10px; }
+.carpanel header h2 .tt { width: 24px; height: 24px; color: var(--accent); }
+.carpanel header .back { height: 44px; border: 0; background: transparent; border-radius: 10px; color: var(--muted); }
+.carpanel .pbody { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 16px 18px 20px; -webkit-overflow-scrolling: touch; }
+.carpanel .pfoot { padding: 8px 18px 12px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--line); }
+
+/* panel controls (the rest reuse .rows/.row, .seg, .switch, the range input and .btn) */
+.row.slider { flex-wrap: wrap; row-gap: 2px; }
+.row.slider .lbl { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.row.slider .lbl em { font-style: normal; font-size: 14px; font-weight: 650; color: var(--accent); font-variant-numeric: tabular-nums; }
+.row.slider input[type=range] { flex: 1 0 100%; }
+.stepper { display: inline-flex; align-items: center; gap: 6px; }
+.stepper button { width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line); background: var(--bg2); font-size: 22px; font-weight: 500; line-height: 1; }
+.stepper b { min-width: 74px; text-align: center; font-size: 24px; font-weight: 300; font-variant-numeric: tabular-nums; }
+.levels { display: inline-flex; gap: 4px; }
+.levels button { width: 42px; height: 40px; border-radius: 11px; border: 1px solid var(--line); background: var(--bg2); color: var(--muted); display: inline-flex; align-items: center; justify-content: center; gap: 2px; }
+.levels button i { width: 4px; border-radius: 2px; background: currentColor; opacity: .35; }
+.levels button i:nth-child(1) { height: 8px; } .levels button i:nth-child(2) { height: 13px; } .levels button i:nth-child(3) { height: 18px; }
+.levels button.on { color: #fff; border-color: transparent; }
+.levels button.on i { opacity: 1; }
+.levels.heat button.on { background: #ef6a2c; } .levels.vent button.on { background: #2f8fe6; } .levels.plain button.on { background: var(--accent); }
+.levels button.off { width: auto; padding: 0 10px; font-size: 12px; font-weight: 700; }
+.dots { display: flex; gap: 8px; flex-wrap: wrap; }
+.dots button { width: 34px; height: 34px; border-radius: 50%; border: 2px solid transparent; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15); }
+.dots button.on { border-color: var(--text); }
+.checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 2px 12px; padding: 6px 2px; }
+.checks label { display: flex; align-items: center; gap: 10px; min-height: 40px; font-size: 14px; }
+.checks input { width: 20px; height: 20px; accent-color: var(--accent); }
+.plist .row .lbl small.ok { color: var(--green); }
+.hero { display: flex; align-items: center; gap: 18px; padding: 14px 16px; margin-bottom: 18px; border-radius: 16px; background: var(--bg2); border: 1px solid var(--line); }
+.hero .big { font-size: 46px; font-weight: 300; line-height: 1; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+.hero .big small { font-size: 18px; color: var(--muted); margin-left: 2px; }
+.hero .meta { flex: 1; min-width: 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
+.hero .meta b { display: block; font-size: 16px; color: var(--text); font-weight: 650; }
+.hero .bar { height: 8px; border-radius: 4px; margin-top: 8px; background: var(--line); overflow: hidden; }
+.hero .bar i { display: block; height: 100%; border-radius: 4px; background: var(--green); }
+.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 4px; }
+.modes button { padding: 12px 10px 11px; border-radius: 14px; border: 2px solid var(--line); background: var(--bg2); text-align: left; }
+.modes button b { display: block; font-size: 16px; font-weight: 700; }
+.modes button small { display: block; font-size: 11.5px; color: var(--muted); margin-top: 3px; line-height: 1.3; }
+.modes button.on { border-color: var(--mode, var(--accent)); background: color-mix(in srgb, var(--mode, var(--accent)) 14%, var(--bg2)); }
+.modes button.on b { color: var(--mode, var(--accent)); }
+.pad { display: grid; grid-template-columns: repeat(3, 38px); grid-template-rows: repeat(3, 38px); gap: 3px; }
+.pad button { border: 1px solid var(--line); border-radius: 10px; background: var(--bg2); color: var(--muted); font-size: 15px; }
+.pad button:active { background: var(--accent); color: #fff; }
+.pad i { grid-area: 2 / 2; border-radius: 10px; background: var(--accent-soft); }
+
+/* callouts and on-car cards, placed every frame next to points on the car (leader lines in #carlines) */
+.caranchors { position: absolute; inset: 0; z-index: 4; overflow: hidden; pointer-events: none; }
+#carlines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+#carlines line { stroke: var(--accent); stroke-width: 1.5; opacity: .75; }
+#carlines circle { fill: var(--accent); }
+#carlines circle.ring { fill: none; stroke: var(--accent); stroke-width: 1.5; opacity: .5; }
+.callout { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px 0 10px; border: 0; border-radius: 99px;
+  background: var(--panel); color: var(--text); box-shadow: var(--shadow); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+  font-size: 13.5px; font-weight: 650; white-space: nowrap; pointer-events: auto; will-change: transform; animation: fadein .3s ease-out; }
+.callout .tt { width: 20px; height: 20px; color: var(--accent); }
+.callout.iconly { padding: 0; width: 40px; justify-content: center; }
+.callout.iconly span { display: none; }
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+.ccard { position: absolute; left: 0; top: 0; width: 290px; padding: 10px 12px 10px; border-radius: 18px; background: var(--panel); box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2); pointer-events: auto; will-change: transform; animation: fadein .3s ease-out; }
+.ccard h4 { margin: 2px 2px 6px; font-size: 11.5px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); }
+.ccard .crow { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; padding: 2px 2px; font-size: 14px; font-weight: 600; }
+.ccard .crow + .crow { border-top: 1px solid var(--line); }
+.ccard .crow.stack { flex-direction: column; align-items: stretch; gap: 6px; padding: 6px 2px 8px; }
+.ccard .seg { flex-wrap: nowrap; }
+.ccard .seg button { padding: 0 9px; height: 34px; font-size: 12.5px; }
+.ccard input[type=range] { height: 24px; }
+.carback { position: absolute; left: 50%; top: calc(16px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 5; height: 40px; padding: 0 16px 0 10px; border: 0;
+  border-radius: 99px; background: var(--panel); color: var(--text); box-shadow: var(--shadow); font-weight: 650; font-size: 14px; display: flex; align-items: center; gap: 6px; pointer-events: auto; }
+.carback svg { width: 18px; height: 18px; }
+
+@media (max-aspect-ratio: 1/1) {
+  .carribbon { left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); max-width: none; transform: translateY(calc(100% + 40px)); }
+  html.carmode .carribbon { transform: none; }
+  .carribbon .cats { flex: 1; }
+  .carribbon .cat { width: 70px; }
+  .carpanel { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 50%; border-radius: 26px 26px 0 0; transform: translateY(100%); }
+  .carpanel .pbody { padding-bottom: calc(var(--ribbon-h, 76px) + 24px); }
+  .carpanel .pfoot { display: none; }
+  .carback { top: calc(var(--drive-h, 200px) + 12px); }
+}
+@media (max-width: 760px) and (min-aspect-ratio: 1/1) {
+  .carpanel { width: 50vw; top: 8px; right: 8px; }
+  .ccard { width: 250px; }
 }

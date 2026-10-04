@@ -57,11 +57,11 @@ class App {
     this.applyTheme();
     this.scene.setEgoLook(this.settings.egoPaint, this.settings.egoWheels);
     this.setView(this.settings.view, true);
-    this.bindViewbar();
+    this.bindViewdock();
     this.bindReplaybar();
     this.updateLayout();
     window.addEventListener('resize', () => this.updateLayout());
-    if (window.ResizeObserver) new ResizeObserver(() => this.updateLayout()).observe($('#viewbar'));   // web fonts, icons
+    if (window.ResizeObserver) new ResizeObserver(() => this.updateLayout()).observe($('#viewdock'));   // web fonts, icons
     // mobile toolbars showing/hiding change the visible height without always firing window resize
     if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { this.scene.resize(); this.updateLayout(); });
     matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => this.applyTheme());
@@ -116,7 +116,7 @@ class App {
   updateLayout() {
     // landscape: center the car in the area right of the status card
     const portrait = window.innerWidth <= window.innerHeight;
-    document.documentElement.style.setProperty('--viewbar-w', `${$('#viewbar').offsetWidth}px`);
+    document.documentElement.style.setProperty('--viewbar-w', `${$('#viewdock').offsetWidth}px`);
     const card = $('#drive');
     const shift = portrait ? 0 : (card.getBoundingClientRect().right + 16) / 2 / window.innerWidth;
     this.scene.setLayoutOffset(shift);
@@ -262,21 +262,43 @@ class App {
     }
   }
 
-  // ---- view bar -----------------------------------------------------------------------------------------
-  bindViewbar() {
-    $$('#viewbar button[data-view]').forEach(b => b.addEventListener('click', () => {
+  // ---- view dock -----------------------------------------------------------------------------------------
+  bindViewdock() {
+    // the camera views live in a menu behind the camera button
+    const menu = $('#viewmenu'), cam = $('#btn-camera');
+    cam.innerHTML = iconSvg('camera');
+    const showMenu = (on) => {
+      setClass(menu, 'hidden', !on);
+      setClass(cam, 'on', on);
+      cam.setAttribute('aria-expanded', String(on));
+    };
+    cam.addEventListener('click', () => showMenu(menu.classList.contains('hidden')));
+    document.addEventListener('pointerdown', (e) => { if (!$('#viewdock').contains(e.target)) showMenu(false); });
+    $$('#viewmenu button[data-view]').forEach(b => b.addEventListener('click', () => {
+      showMenu(false);
       this.autoViewActive = false;
       this.manualViewAt = performance.now();
       this.setSetting('view', b.dataset.view);
       this.setView(b.dataset.view);
     }));
-    // double-tap the scene to recenter on the car
-    let lastTap = 0;
-    $('#scene').addEventListener('pointerup', () => {
+    // double-tap the scene to recenter on the car; only taps count, not the end of a drag or pinch
+    const scene = $('#scene'), down = new Map();
+    let tap = null, lastTap = 0;
+    scene.addEventListener('pointerdown', (e) => {
+      down.set(e.pointerId, true);
+      tap = down.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
+    });
+    const up = (e) => {
+      down.delete(e.pointerId);
       const now = performance.now();
+      const isTap = tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8 && now - tap.t < 350;
+      tap = null;
+      if (!isTap) return;
       if (now - lastTap < 300) this.setView(this.scene.view || this.settings.view);
       lastTap = now;
-    });
+    };
+    scene.addEventListener('pointerup', up);
+    scene.addEventListener('pointercancel', up);
   }
 
   setView(name, instant = false) {
@@ -284,7 +306,7 @@ class App {
     this.markView(name);
   }
 
-  markView(name) { $$('#viewbar button[data-view]').forEach(b => setClass(b, 'on', b.dataset.view === name)); }
+  markView(name) { $$('#viewmenu button[data-view]').forEach(b => setClass(b, 'on', b.dataset.view === name)); }
 
   // ---- replay -------------------------------------------------------------------------------------------
   replay(action, extra = {}) {

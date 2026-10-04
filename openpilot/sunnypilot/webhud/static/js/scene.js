@@ -11,6 +11,7 @@ import { RoadFurniture } from './furniture.js';
 import { RoadField } from './ground.js';
 import { PowerTrails, motorLoad } from './tracks.js';
 import { ObjectLabels } from './labels.js';
+import { Cutaway } from './cutaway.js';
 import { STEER_RATIO } from './vehicle.js';
 
 const EGO_LEN = 4.775;
@@ -35,6 +36,8 @@ const LOW_CONF_ALPHA = 0.2;           // ...or, with "Low-confidence objects", n
 const DEG = Math.PI / 180;
 const EGO_ENV = { light: .75, dark: 0.55 };   // reflection strength on the ego car, by theme
 const UP = new THREE.Vector3(0, 1, 0);
+const STUDIO_FILL = 0.8;              // car controls: a framed part fills this much of the free screen area
+const STUDIO_MIN_DIST = 1.0;          // ...and the camera may come this close
 
 // headlight throw: narrow and bright at the bumper (bottom), widening and fading down the road (top)
 let beamTexture = null;
@@ -287,6 +290,7 @@ export class CarScene {
       this._lightEgo(g);
       this.scene.add(g);
       this.setEgoLook(this.egoLook.paint, this.egoLook.wheels);
+      this.cutaway.attach(g);
     }).catch((e) => console.warn('Ocean model unavailable, keeping the procedural car', e));
 
     // lane & path materials (colors set by theme)
@@ -322,6 +326,8 @@ export class CarScene {
     this.worldObjs = new Map();   // world-model object id -> drawn object (see _worldObjects)
     this.radarDot = new THREE.RingGeometry(0.16, 0.3, 24).rotateX(-Math.PI / 2);
     this.labels = new ObjectLabels(document.getElementById('olabels'));   // Display -> Object stats
+    this.cutaway = new Cutaway(this);   // car controls mockup: roof, highlights and the parts drawn over the car
+    this.lampOverride = null;           // lamp states shown instead of the car's (the lighting preview)
     this.theme = THEMES.light;
     this.odometer = 0;
     this.clock = 0;
@@ -348,6 +354,9 @@ export class CarScene {
     this.controls.addEventListener('end', () => { this.interacting = false; this.lastInteract = performance.now(); });
 
     this.viewOffset = { x: 0, y: VIEWS.chase.offY };
+    this.layoutX = 0;      // horizontal shift that centers the car right of the status card (setLayoutOffset)
+    this.studio = null;    // car controls: { target } the camera frames instead of following the car
+    this.frameRect = null; // ...and the screen area left free for it, px
     this.setView('chase', true);
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -368,6 +377,7 @@ export class CarScene {
     this.tracks.setTheme(dark);
     this.egoEnvLevel = dark ? EGO_ENV.dark : EGO_ENV.light;
     this._lightEgo(this.ego);
+    this.cutaway.setTheme(dark);
     this.hemi.color.set(t.hemiSky);
     this.hemi.groundColor.set(t.hemiGround);
     this.mats.line.color.set(t.line);
@@ -409,21 +419,105 @@ export class CarScene {
     fitWheels(this.ego, wheels);
   }
 
-  setLayoutOffset(xFrac) { this.viewOffset.x = xFrac; this.resize(); }
+  setLayoutOffset(xFrac) {
+    this.layoutX = xFrac;
+    if (!this.studio && !this.viewAnim) this.viewOffset.x = xFrac;
+    this.resize();
+  }
 
   setView(name, instant = false) {
     const v = VIEWS[name] || VIEWS.chase;
     this.view = name;
     const to = new THREE.Spherical(v.r * (name === 'chase' ? this.chaseDolly : 1), v.phi, v.theta);
+    this._animate(this.target, to, { x: this.layoutX, y: v.offY }, instant, this.camLag);
+  }
+
+  // Camera move to a spherical position about `target`, shifting the projection to `off` (fractions of the
+  // screen). `lag` is the camera inertia's heading offset, which the animation leaves out and adds back.
+  _animate(target, to, off, instant, lag = 0) {
     const from = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.controls.target));
-    from.theta -= this.camLag;   // the animation works without the lag and adds the current one
-    this.viewAnim = instant ? null : { from, to, t: 0, targetFrom: this.controls.target.clone(), offFrom: this.viewOffset.y, offTo: v.offY };
+    from.theta -= lag;
+    this.viewAnim = instant ? null : {
+      from, to, t: 0, lag: lag !== 0, targetFrom: this.controls.target.clone(), targetTo: target.clone(),
+      offFrom: { ...this.viewOffset }, offTo: off,
+    };
     if (instant) {
-      this.controls.target.copy(this.target);
-      this.camera.position.copy(this.target).add(new THREE.Vector3().setFromSpherical(new THREE.Spherical(to.radius, to.phi, to.theta + this.camLag)));
-      this.viewOffset.y = v.offY;
+      this.controls.target.copy(target);
+      this.camera.position.copy(target).add(new THREE.Vector3().setFromSpherical(new THREE.Spherical(to.radius, to.phi, to.theta + lag)));
+      Object.assign(this.viewOffset, off);
       this.resize();
     }
+  }
+
+  // ---- car controls (studio) --------------------------------------------------------------------
+  // While the car controls are open the camera frames parts of the car (it sits still at the origin, so
+  // the frame stays put while the car drives): the camera inertia, speed dolly and recentering on the
+  // car are suspended, and the user can still orbit and zoom about the framed part.
+
+  enterStudio() {
+    this.studio = { target: this.target.clone() };
+    this.view = 'studio';
+    this.controls.minDistance = STUDIO_MIN_DIST;
+  }
+
+  exitStudio() {
+    this.studio = null;
+    this.frameRect = null;
+    this.controls.minDistance = 4;
+  }
+
+  // the screen area the framed part is centered in, px from the canvas' top-left (the rest is covered)
+  setFrame(rect) {
+    this.frameRect = rect;
+  }
+
+  // f: { at: [x, y, z] car frame (scene axes), az: deg (0 from ahead, 90 from the right, 180 from behind),
+  //      el: deg above the horizon (90 = straight down), fit: [width, height] m to fill the frame, or r: m }
+  focus(f, instant = false) {
+    if (!this.studio) return;
+    const target = new THREE.Vector3(...f.at);
+    this.studio.target.copy(target);
+    const phi = Math.max(0.004, (90 - f.el) * DEG), theta = Math.PI - f.az * DEG;
+    const r = f.fit ? this._fitDistance(f.fit) : f.r;
+    this._animate(target, new THREE.Spherical(r, phi, theta), this._frameOffset(), instant);
+  }
+
+  _frameOffset() {
+    const w = this.canvas.clientWidth || window.innerWidth, h = this.canvas.clientHeight || window.innerHeight;
+    const f = this.frameRect || { left: 0, top: 0, right: w, bottom: h };
+    return { x: ((f.left + f.right) / 2 - w / 2) / w, y: ((f.top + f.bottom) / 2 - h / 2) / h };
+  }
+
+  // distance at which [width, height] m (across and up the screen) fill STUDIO_FILL of the free area
+  _fitDistance([fw, fh]) {
+    const w = this.canvas.clientWidth || window.innerWidth, h = this.canvas.clientHeight || window.innerHeight;
+    const f = this.frameRect || { left: 0, top: 0, right: w, bottom: h };
+    // at distance r a meter is h / (2 r tan(fov / 2)) px; size * that <= fill * free px gives the least r
+    const k = h / (2 * Math.tan(this.camera.fov * DEG / 2) * STUDIO_FILL);
+    return Math.max(STUDIO_MIN_DIST, fw * k / Math.max(1, f.right - f.left), fh * k / Math.max(1, f.bottom - f.top));
+  }
+
+  // the canvas point (client px) as a ray into the scene
+  _ray(clientX, clientY) {
+    const rect = this.canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2((clientX - rect.left) / rect.width * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    const rc = this._raycaster || (this._raycaster = new THREE.Raycaster());
+    rc.setFromCamera(ndc, this.camera);
+    return rc.ray;
+  }
+
+  // whether a tap at (clientX, clientY) lands on the ego car (its bounding box: quick, and forgiving)
+  pickEgo(clientX, clientY) {
+    if (!this._egoBox || this._egoBoxOf !== this.ego) {
+      this._egoBox = new THREE.Box3().setFromObject(this.ego);
+      this._egoBoxOf = this.ego;
+    }
+    return this._ray(clientX, clientY).intersectsBox(this._egoBox);
+  }
+
+  // the car-controls zone (cutaway.js) under a tap, or null
+  pickZone(clientX, clientY) {
+    return this.cutaway.pick(this._ray(clientX, clientY));
   }
 
   resize() {
@@ -974,7 +1068,7 @@ export class CarScene {
     const vs = this.vehicle;
     const ud = this.ego.userData;
     if (!vs) return;
-    const L = vs.lamps;
+    const L = this.lampOverride || vs.lamps;
 
     if (ud.lamps) applyLamps(ud.lamps, L);
 
@@ -1005,6 +1099,7 @@ export class CarScene {
 
   _camera(dt) {
     const now = performance.now();
+    const home = this.studio ? this.studio.target : this.target;
     // inertia: the camera's heading follows the car's on a critically damped spring, so in a sharp turn
     // the car swings round in the frame first and the camera catches up as it straightens out. Applied
     // as an orbit about the car (Spherical theta), on top of the view and any user rotation.
@@ -1019,7 +1114,7 @@ export class CarScene {
         cy.v = carRate;
       }
     }
-    const lag = cy.h - h, dLag = lag - this.camLag;
+    const lag = this.studio ? this.camLag : cy.h - h, dLag = lag - this.camLag;
     this.camLag = lag;
     if (!this.viewAnim && dLag) {
       const off = this.camera.position.clone().sub(this.controls.target).applyAxisAngle(UP, dLag);
@@ -1044,27 +1139,28 @@ export class CarScene {
       const sph = new THREE.Spherical(
         a.from.radius + (a.to.radius - a.from.radius) * e,
         a.from.phi + (a.to.phi - a.from.phi) * e,
-        a.from.theta + ((((a.to.theta - a.from.theta) + Math.PI) % (2 * Math.PI)) - Math.PI) * e + this.camLag,
+        a.from.theta + (((((a.to.theta - a.from.theta) % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * e + (a.lag ? this.camLag : 0),
       );
-      this.controls.target.lerpVectors(a.targetFrom, this.target, e);
+      this.controls.target.lerpVectors(a.targetFrom, a.targetTo, e);
       this.camera.position.copy(this.controls.target).add(new THREE.Vector3().setFromSpherical(sph));
-      this.viewOffset.y = a.offFrom + (a.offTo - a.offFrom) * e;
+      this.viewOffset.x = a.offFrom.x + (a.offTo.x - a.offFrom.x) * e;
+      this.viewOffset.y = a.offFrom.y + (a.offTo.y - a.offFrom.y) * e;
       this.resize();
       if (a.t >= 1) this.viewAnim = null;
     } else if (!this.interacting && now - this.lastInteract > RECENTER_S * 1000) {
-      // panned away? glide the orbit center back onto the car
-      const d = this.controls.target.distanceTo(this.target);
+      // panned away? glide the orbit center back onto the car (or the part the car controls frame)
+      const d = this.controls.target.distanceTo(home);
       if (d > 0.05) {
-        const delta = this.target.clone().sub(this.controls.target).multiplyScalar(1 - Math.exp(-dt * 3));
+        const delta = home.clone().sub(this.controls.target).multiplyScalar(1 - Math.exp(-dt * 3));
         this.controls.target.add(delta);
         this.camera.position.add(delta);
       }
     }
     // keep panning within reach of the car
-    const off = this.controls.target.clone().sub(this.target);
+    const off = this.controls.target.clone().sub(home);
     if (off.length() > 40) {
       off.setLength(40);
-      const corr = this.target.clone().add(off).sub(this.controls.target);
+      const corr = home.clone().add(off).sub(this.controls.target);
       this.controls.target.add(corr);
       this.camera.position.add(corr);
     }
@@ -1092,6 +1188,7 @@ export class CarScene {
     this._worldObjects(dt);
     this._ego(dt);
     this._tracks(dt);
+    this.cutaway.update(dt, this.clock);
     this.renderer.render(this.scene, this.camera);
     this._labels();   // after render: the camera's matrices are this frame's
   }

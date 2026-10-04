@@ -327,6 +327,7 @@ export function loadEgoModel(url) {
       g.add(shadow);
       const rear = wheels.filter(w => !w.front);
       Object.assign(g.userData, {
+        model, mats, meshes,   // the glTF scene, and its materials and meshes by material name (cutaway.js)
         paint: [mats.get(RIG.paint)].filter(Boolean), wheelFace: mats.get(RIG.wheelFace), rims, lamps, wheels,
         length: size.z, width: OCEAN.width, height: size.y, gltf: true,
         rearAxleZ: rear.length ? rear.reduce((a, w) => a + w.pos.z, 0) / rear.length : size.z - OCEAN.axles[0],

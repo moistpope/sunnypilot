@@ -59,14 +59,23 @@
   <!-- traffic light / sign (top right) -->
   <div id="roadinfo" class="roadinfo"></div>
 
-  <!-- view controls -->
-  <div id="viewbar" class="viewbar">
-    <button data-view="chase" class="on" title="Chase view">Chase</button>
-    <button data-view="top" title="Top-down view">Top</button>
-    <button data-view="close" title="Close-up view">Close</button>
-    <button data-view="far" title="Wide view">Wide</button>
+  <!-- view dock: the camera views (a menu behind the camera button) and the HUD settings -->
+  <div id="viewdock" class="viewdock">
+    <div id="viewmenu" class="viewmenu hidden" role="menu">
+      <button data-view="chase" class="on" role="menuitemradio">Chase</button>
+      <button data-view="top" role="menuitemradio">Top</button>
+      <button data-view="close" role="menuitemradio">Close</button>
+      <button data-view="far" role="menuitemradio">Wide</button>
+    </div>
     <button id="btn-settings" class="icon" title="Settings" aria-label="Settings"></button>
+    <button id="btn-camera" class="icon" title="Camera view" aria-label="Camera view" aria-haspopup="menu"></button>
   </div>
+
+  <!-- car controls mockup (carcontrols.js): badges and cards pinned to the car, the category ribbon and
+       the half-screen panel. Nothing in it is sent to the car. -->
+  <div id="caranchors" class="caranchors"><svg id="carlines" aria-hidden="true"></svg></div>
+  <nav id="carribbon" class="carribbon" aria-label="Car controls"></nav>
+  <aside id="carpanel" class="carpanel" aria-hidden="true"></aside>
 
   <!-- replay transport -->
   <div id="replaybar" class="replaybar card hidden">

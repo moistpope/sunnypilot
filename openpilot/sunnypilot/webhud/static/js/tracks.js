@@ -45,6 +45,25 @@ export function motorLoad(state) {
   return clamp01(Math.max(force * v / 1000 / KW_FULL, force * 0.39 / TQ_FULL));
 }
 
+// The particles' look, shared with the drive-mode pulse (cutaway.js). Per point: vColor (alpha included)
+// and vGlow, 0 for a crisp speck, 1 for a soft halo that adds up into a glow where points are dense.
+export const SPECK_FRAGMENT = `
+  varying vec4 vColor;
+  varying float vGlow;
+  void main() {
+    float d = length(gl_PointCoord - 0.5) * 2.0;
+    float a = vColor.a * mix(1.0 - smoothstep(0.45, 1.0, d), exp(-d * d * 4.0) * (1.0 - d), vGlow);
+    if (a < 0.003) discard;
+    gl_FragColor = vec4(vColor.rgb, a);
+    #include <colorspace_fragment>
+  }`;
+
+// light adds up on a dark road; on a light one the colors would wash out to white, so the specks are
+// laid like ink there
+export function speckBlending(dark) {
+  return dark ? THREE.AdditiveBlending : THREE.NormalBlending;
+}
+
 // blue (240 deg) -> cyan -> green -> yellow -> red (0 deg)
 function loadColor(load, out, light) {
   return out.setHSL((1 - load) * 240 / 360, 1, light, THREE.SRGBColorSpace);
@@ -101,17 +120,7 @@ class Particles {
           gl_PointSize = max(1.5, aMove.w * uScale / max(0.5, -mv.z));
           gl_Position = projectionMatrix * mv;
         }`,
-      fragmentShader: `
-        varying vec4 vColor;
-        varying float vGlow;
-        void main() {
-          float d = length(gl_PointCoord - 0.5) * 2.0;
-          // a crisp speck, or a soft halo that adds up into a glow along the dense line
-          float a = vColor.a * mix(1.0 - smoothstep(0.45, 1.0, d), exp(-d * d * 4.0) * (1.0 - d), vGlow);
-          if (a < 0.003) discard;
-          gl_FragColor = vec4(vColor.rgb, a);
-          #include <colorspace_fragment>
-        }`,
+      fragmentShader: SPECK_FRAGMENT,
       transparent: true, depthWrite: false,
     });
     this.points = new THREE.Points(geo, this.material);
@@ -174,10 +183,9 @@ export class PowerTrails {
 
   setTheme(dark) {
     this.dark = dark;
-    // light adds up on a dark road; on a light one the colors would wash out to white, so the
-    // specks are laid like ink there and the halo is only a faint tint
+    // on a light road the halo is only a faint tint (see speckBlending)
     const m = this.particles.material;
-    m.blending = dark ? THREE.AdditiveBlending : THREE.NormalBlending;
+    m.blending = speckBlending(dark);
     m.uniforms.uGlow.value = dark ? 1 : 0.4;
     m.needsUpdate = true;
   }
