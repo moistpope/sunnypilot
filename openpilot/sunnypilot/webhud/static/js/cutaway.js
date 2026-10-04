@@ -2,20 +2,32 @@
 // cabin shows from above, the parts a category is about glow, and what the model lacks is drawn over it:
 // the drive units and battery in x-ray, the charge-port door, the trunk amplifier, air from the vents,
 // sound rings over the seats, the sensors' coverage on the ground, and the ring of particles a drive-mode
-// change sends out. It only draws: nothing here talks to the car.
+// change sends out. It also moves the model's own parts: the windows and sunroof open, the front seats
+// slide, tilt and recline, and the center screen turns for Hollywood Mode. It only draws: nothing here
+// talks to the car.
 //
 // Car frame = scene frame (the ego car sits still at the origin): X right, Y up, Z back, the front bumper
 // at Z = 0. The part names are the nodes tools/export_ocean_glb.py splits out of the Ocean model.
 import * as THREE from '../vendor/three.module.min.js';
 import { SPECK_FRAGMENT, speckBlending } from './tracks.js';
 
-const ROOF_NODES = ['Roof', 'Tailgate__PBR_glass_dark', 'Tailgate__black'];   // everything between the rails, and the rear window
+// everything between the rails (with the sunroof and its shade), and the rear window
+const ROOF_NODES = ['Roof', 'Sunroof', 'Sunshade', 'Tailgate__PBR_glass_dark', 'Tailgate__black'];
 const ROOF_MIN = 0.08;      // the faded roof keeps this much opacity: a faint glassy edge
-const DOORS = {             // hinge axis (glTF, local) and open angle, from the model's controls.json
-  Door_Front_L: ['y', -1.134], Door_Front_R: ['y', 1.134], Door_Rear_L: ['y', -1.134], Door_Rear_R: ['y', 1.134], Tailgate: ['z', -1.396],
+// The windows that open, by short name, and their glass. Each winds down from the top: a plane that cuts
+// it moves from its top edge to its sill, so the glass seems to sink into the door, full width below its
+// top edge (moving the glass itself would show its narrower top sinking, as if it shrank). The rear
+// window's glass and its black frit go down together.
+const WINDOWS = {
+  FL: ['Window_Front_L'], FR: ['Window_Front_R'], RL: ['Window_Rear_L'], RR: ['Window_Rear_R'],
+  QL: ['Window_Quarter_L'], QR: ['Window_Quarter_R'], rear: ['Tailgate__PBR_glass_dark', 'Tailgate__black'],
 };
-const WINDOWS = ['Window_Front_L', 'Window_Front_R', 'Window_Rear_L', 'Window_Rear_R', 'Window_Quarter_L', 'Window_Quarter_R', 'Tailgate__PBR_glass_dark'];
-const WINDOW_DROP = 0.42;   // m the side glass winds down (into the door, cut at its sill)
+const WINDOW_RATE = 0.3;    // of the travel per second: ~3.3 s top to bottom, like a power window
+const SUNROOF_LIFT = 0.045; // m the sunroof's panel rises before it slides back over the rear panel...
+const SUNROOF_SLIDE = 0.72; // m ...and how far back it goes
+const SUNROOF_TILT = -0.055;  // rad, tilted: the panel's rear edge raised (about its front edge)
+const SEAT_LEN = 0.5;       // m between the cushion's front and rear lifts (its tilt)
+const SCREEN_PORTRAIT = Math.PI / 2;   // the model's screen is landscape; the car's shows portrait until Hollywood Mode
 const TIRES = ['Wheel_Front_L__PBR_tire', 'Wheel_Front_R__PBR_tire', 'Wheel_Rear_L__PBR_tire', 'Wheel_Rear_R__PBR_tire'];
 const LAMP_NODES = ['Body__Light_Headlights_L', 'Body__Light_Headlights_R', 'Body__Light_DRL_L', 'Body__Light_DRL_R', 'Body__Light_DRL_Center'];
 
@@ -30,7 +42,8 @@ export const ZONES = {
   sensors: { boxes: [[-0.3, 1.2, 1.0, 0.3, 1.6, 1.75], [-0.3, 0.2, -0.15, 0.3, 0.5, 0.15]], at: [0.12, 0.9, 0.05], built: ['sensors'] },
   port: { boxes: [[-1.1, 0.75, 1.1, -0.75, 1.15, 1.6]], at: [-0.95, 0.98, 1.36], built: ['port'] },
   amp: { boxes: [[0.2, 0.55, 3.85, 0.95, 1.1, 4.65]], at: [0.55, 0.95, 4.2], built: ['amp'] },
-  doors: { boxes: [[-1.05, 0.4, 1.6, -0.75, 1.3, 3.65]], mirror: true, at: [-0.98, 1.05, 2.55], nodes: [...Object.keys(DOORS)] },
+  windows: { boxes: [[-0.86, 1.08, 1.75, -0.6, 1.58, 4.05], [-0.6, 1.55, 2.2, 0.6, 1.72, 3.35], [-0.55, 1.15, 4.1, 0.55, 1.5, 4.7]], mirror: true,
+    at: [-0.86, 1.36, 2.2], nodes: ['Window_Front_L', 'Window_Front_R', 'Window_Rear_L', 'Window_Rear_R', 'Window_Quarter_L', 'Window_Quarter_R', 'Sunroof'] },
   wheels: { boxes: [[0.72, 0, 0.5, 1.05, 0.78, 1.36], [0.72, 0, 3.4, 1.05, 0.78, 4.25]], mirror: true, at: [0.98, 0.8, 0.93], nodes: TIRES },
   screen: { boxes: [[-0.25, 0.7, 1.72, 0.25, 1.15, 2.0]], at: [0, 1.12, 1.86], nodes: ['Center_Screen', 'Driver_Display'] },
 };
@@ -40,7 +53,8 @@ export const ANCHORS = {
   lampL: [-0.66, 0.92, 0.3], lampR: [0.66, 0.92, 0.3],
   seatFL: [-0.39, 1.3, 2.42], seatFR: [0.39, 1.3, 2.42], seatRL: [-0.48, 1.05, 3.2], seatRM: [0, 1.05, 3.25], seatRR: [0.48, 1.05, 3.2],
   wheelFL: [-0.96, 0.4, 0.93], wheelFR: [0.96, 0.4, 0.93], wheelRL: [-0.96, 0.4, 3.82], wheelRR: [0.96, 0.4, 3.82],
-  doorFL: [-0.96, 1.0, 2.05], doorFR: [0.96, 1.0, 2.05], doorRL: [-0.96, 1.0, 3.05], doorRR: [0.96, 1.0, 3.05], tailgate: [0, 1.2, 4.75],
+  winFL: [-0.8, 1.33, 2.2], winFR: [0.8, 1.33, 2.2], winRL: [-0.79, 1.35, 3.06], winRR: [0.79, 1.35, 3.06],
+  winQL: [-0.7, 1.4, 3.78], winQR: [0.7, 1.4, 3.78], winRear: [0, 1.33, 4.43], sunroof: [0, 1.64, 2.6],
   port: [-0.95, 0.98, 1.36], camera: [0, 1.47, 1.82], radar: [0, 0.37, 0.0], amp: [0.55, 0.9, 4.2],
 };
 
@@ -192,8 +206,10 @@ export class Cutaway {
     this.lit = new Set();        // zones glowing
     this.overview = false;       // all zones pulse softly
     this.tints = new Map();      // node -> { color, level }: steady glows set by a control (seat heat)
-    this.doors = new Map();      // node -> { node, axis, angle, k, want }
-    this.windows = { k: 0, want: 0, list: [] };
+    this.windows = new Map();    // WINDOWS key -> { nodes, plane, top, sill, k, want }: open 0..1
+    this.seats = new Map();      // 'FL' | 'FR' -> { node, back, rest, want, k }: slide, front, rear (m), recline (rad)
+    this.sunroof = null;         // { hinge, shade, k, want, tilt, wantTilt }
+    this.screen = null;          // { node, face, k, want (1 = portrait) }
     this.built = {};             // drawn parts
     this.groups = new THREE.Group();   // everything drawn here, in the car frame
     this.groups.name = 'cutaway';
@@ -213,20 +229,26 @@ export class Cutaway {
     this.meshes = [];   // the model's own meshes (for the ghost)
     model.traverse((o) => { if (o.isMesh) this.meshes.push(o); });
 
-    // Windows: each its own glass, cut at its sill so it winds down into the door. The rear window is
-    // also part of the roof (below), which fades this same copy.
-    for (const name of WINDOWS) {
-      const node = find(name);
-      if (!node) continue;
-      const box = new THREE.Box3().setFromObject(node);
-      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(box.min.y + 0.01));   // keeps what's above the sill
-      node.traverse((o) => {
-        if (!o.isMesh) return;
-        o.material = o.material.clone();
-        o.material.clippingPlanes = [plane];
-        o.material.userData.own = true;
-      });
-      this.windows.list.push({ node, rest: node.position.clone(), drop: name.includes('Quarter') || name.startsWith('Tailgate') ? 0.3 : WINDOW_DROP });
+    // windows: their own glass, cut by their own plane (WINDOWS); the rear window's copy also fades with
+    // the roof (below)
+    const planes = new Map();   // node name -> the plane cutting it
+    for (const [key, names] of Object.entries(WINDOWS)) {
+      const nodes = names.map(find).filter(Boolean);
+      if (!nodes.length) continue;
+      const box = new THREE.Box3();
+      for (const n of nodes) box.expandByObject(n);
+      const top = box.max.y + 0.01;
+      const plane = new THREE.Plane(new THREE.Vector3(0, -1, 0), top);   // keeps what's below the glass's top edge
+      for (const n of nodes) {
+        planes.set(n.name, plane);
+        n.traverse((o) => {
+          if (!o.isMesh) return;
+          o.material = o.material.clone();
+          o.material.clippingPlanes = [plane];
+          o.material.userData.own = true;
+        });
+      }
+      this.windows.set(key, { nodes, plane, top, sill: box.min.y, k: 0, want: 0 });
     }
 
     // roof: its own copies of the materials it shares with the body, so it can fade alone
@@ -243,18 +265,29 @@ export class Cutaway {
     for (const m of fading) m.userData.base = { opacity: m.opacity, transparent: m.transparent, depthWrite: m.depthWrite };
     this.roof.mats = [...fading];
 
-    // front seats, which the position pad moves
-    this.seats = new Map();
-    for (const name of ['Seat_FL', 'Seat_FR']) {
-      const node = find(name);
-      if (node) this.seats.set(name, { node, rest: node.position.clone(), fwd: 0, up: 0, k: [0, 0] });
+    // The sunroof's panel hangs from a hinge at its front edge (Body's frame = glTF axes: +x forward, +y up),
+    // so it can tilt about it, then rise and slide back over the rear panel; the shade under it slides back.
+    const panel = find('Sunroof');
+    if (panel) {
+      const box = new THREE.Box3().setFromObject(panel);
+      const hinge = new THREE.Group();
+      hinge.name = 'Sunroof_Hinge';
+      panel.parent.add(hinge);
+      hinge.position.copy(panel.parent.worldToLocal(new THREE.Vector3(0, box.max.y, box.min.z)));
+      hinge.attach(panel);
+      const shade = find('Sunshade');
+      this.sunroof = { hinge, rest: hinge.position.clone(), shade, shadeRest: shade && shade.position.clone(), k: 0, want: 0, tilt: 0, wantTilt: 0 };
     }
 
-    // doors
-    for (const [name, [axis, angle]] of Object.entries(DOORS)) {
-      const node = find(name);
-      if (node) this.doors.set(name, { node, axis, angle, k: 0, want: 0 });
+    // front seats: the cushion slides and tilts about its middle, the back reclines at the hip
+    for (const side of ['FL', 'FR']) {
+      const node = find('Seat_' + side);
+      if (!node) continue;
+      const zero = { slide: 0, front: 0, rear: 0, recline: 0 };
+      this.seats.set(side, { node, back: find(`Seat_${side}_Back`), rest: node.position.clone(), want: { ...zero }, k: { ...zero } });
     }
+
+    this._buildScreen(find);
 
     // glows over the model's parts: one per node, sharing its geometry and following its moves
     const nodes = new Set(Object.values(ZONES).flatMap(z => z.nodes || []));
@@ -262,9 +295,11 @@ export class Cutaway {
       const node = find(name);
       if (!node) continue;
       const material = glowMaterial(this.accent);
+      const plane = planes.get(name);
+      if (plane) material.clippingPlanes = [plane];   // a window's glow winds down with it
       const meshes = [];
       node.traverse((o) => {
-        if (!o.isMesh || o.userData.cutaway || o.material.clippingPlanes) return;   // not the winding glass
+        if (!o.isMesh || o.userData.cutaway || (!plane && o.material.clippingPlanes)) return;
         const m = new THREE.Mesh(o.geometry, material);
         m.userData.cutaway = true;
         m.renderOrder = 6;
@@ -320,16 +355,38 @@ export class Cutaway {
     else this.tints.set(node, { color: new THREE.Color(color), level });
   }
 
-  // move a front seat from where it's modeled: fwd, up (m)
-  seatOffset(name, fwd, up) {
+  // a front seat ('FL' | 'FR') from where it's modeled: slide forward, the cushion's front and rear edges
+  // up (m), the back reclined (rad)
+  seatPose(side, pose) {
     this.awake = true;
-    const s = this.seats && this.seats.get(name);
-    if (s) { s.fwd = fwd; s.up = up; }
+    const s = this.seats.get(side);
+    if (s) Object.assign(s.want, pose);
   }
 
-  setDoor(name, open) { const d = this.doors.get(name); if (d) d.want = open ? 1 : 0; this.awake = true; }
-  doorOpen(name) { const d = this.doors.get(name); return !!(d && d.want); }
-  setWindows(down) { this.windows.want = down ? 1 : 0; this.awake = true; }
+  // a window (WINDOWS key) open 0..1
+  setWindow(key, open) {
+    this.awake = true;
+    const w = this.windows.get(key);
+    if (w) w.want = Math.max(0, Math.min(1, open));
+  }
+
+  // the sunroof open 0..1 (slid back), or tilted
+  setSunroof(open, tilt = false) {
+    this.awake = true;
+    if (!this.sunroof) return;
+    this.sunroof.want = Math.max(0, Math.min(1, open));
+    this.sunroof.wantTilt = tilt && open <= 0 ? 1 : 0;
+  }
+
+  // the center screen landscape (Hollywood Mode) or portrait, how bright, and in which appearance
+  setScreen(landscape, brightness = 1, light = false) {
+    this.awake = true;
+    const sc = this.screen;
+    if (!sc) return;
+    sc.want = landscape ? 0 : 1;
+    sc.mat.color.setScalar(0.3 + 0.7 * brightness);
+    if (sc.light !== light) { sc.light = light; this._drawScreen(); }
+  }
 
   // x-ray drive units, in the drive mode's color
   setPowertrain(on, color) {
@@ -500,6 +557,45 @@ export class Cutaway {
     door.add(shell);
     this.glows.set('port', { meshes: [shell], material: glow, level: 0 });
     this.built.port = { frame, hinge, socket, ring, ringMat, sign: hingeX > 0 ? 1 : -1, k: 0, want: 0, charging: false };
+  }
+
+  // The center screen sits portrait until Hollywood Mode turns it landscape, as the model has it. Its face
+  // shows a picture drawn here: the car's home screen (light or dark), or a film for Hollywood Mode.
+  _buildScreen(find) {
+    const node = find('Center_Screen');
+    let face = null;
+    node?.traverse((o) => { if (o.isMesh && o.material.name === 'PBR_intD') face = o; });
+    if (!face) return;
+    // UVs across and up the face as the driver sees it (+z is the car's right)
+    const pos = face.geometry.attributes.position;
+    const box = new THREE.Box3().setFromBufferAttribute(pos);
+    const uv = new Float32Array(pos.count * 2);
+    for (let i = 0; i < pos.count; i++) {
+      uv[i * 2] = (pos.getZ(i) - box.min.z) / (box.max.z - box.min.z);
+      uv[i * 2 + 1] = (pos.getY(i) - box.min.y) / (box.max.y - box.min.y);
+    }
+    face.geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = Math.round(512 * (box.max.y - box.min.y) / (box.max.z - box.min.z));
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = face.material = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+    this.screen = { node, mat, canvas, tex, k: 1, want: 1, portrait: true, light: false };   // mat: the ghost may swap the face's
+    node.rotation.x = SCREEN_PORTRAIT;
+    this._drawScreen();
+  }
+
+  _drawScreen() {
+    const sc = this.screen, c = sc.canvas, ctx = c.getContext('2d');
+    ctx.save();
+    if (sc.portrait) {   // drawn sideways: the screen turned a quarter shows it upright
+      ctx.translate(0, c.height);
+      ctx.rotate(-Math.PI / 2);
+      drawHome(ctx, c.height, c.width, sc.light);
+    } else drawFilm(ctx, c.width, c.height);
+    ctx.restore();
+    sc.tex.needsUpdate = true;
   }
 
   _buildAmp() {
@@ -774,21 +870,38 @@ export class Cutaway {
       for (const m of g.meshes) m.visible = vis;
     }
 
-    // doors and windows
-    for (const d of this.doors.values()) {
-      if (d.k === d.want) continue;
-      d.k = Math.abs(d.want - d.k) < 0.002 ? d.want : d.k + ease(d.want - d.k, dt, 3.2);
-      d.node.rotation[d.axis] = d.angle * smooth(d.k);
+    // windows wind at a power window's steady rate; the cutting plane goes from the glass's top to its sill
+    const step = (k, want, rate) => (k < want ? Math.min(want, k + rate * dt) : Math.max(want, k - rate * dt));
+    for (const w of this.windows.values()) {
+      if (w.k === w.want) continue;
+      w.k = step(w.k, w.want, WINDOW_RATE);
+      w.plane.constant = w.top - (w.top - w.sill) * w.k;
     }
-    for (const s of (this.seats || new Map()).values()) {
-      s.k[0] += ease(s.fwd - s.k[0], dt, 6);
-      s.k[1] += ease(s.up - s.k[1], dt, 6);
-      s.node.position.set(s.rest.x + s.k[0], s.rest.y + s.k[1], s.rest.z);   // glTF: +x forward, +y up
+    // the sunroof: tilted about its front edge, or raised and slid back; the shade goes first
+    const sr = this.sunroof;
+    if (sr && (sr.k !== sr.want || sr.tilt !== sr.wantTilt)) {
+      sr.tilt = sr.k > 0 ? step(sr.tilt, 0, 1.2) : step(sr.tilt, sr.wantTilt, 1.2);
+      sr.k = sr.tilt > 0 ? step(sr.k, 0, 0.3) : step(sr.k, sr.want, 0.3);
+      const lift = Math.min(1, sr.k / 0.12), slide = Math.max(0, (sr.k - 0.12) / 0.88);
+      sr.hinge.position.set(sr.rest.x - SUNROOF_SLIDE * smooth(slide), sr.rest.y + SUNROOF_LIFT * smooth(lift), sr.rest.z);
+      sr.hinge.rotation.z = SUNROOF_TILT * smooth(sr.tilt);
+      if (sr.shade) sr.shade.position.x = sr.shadeRest.x - 0.9 * smooth(Math.min(1, (sr.k + sr.tilt) * 3));
     }
-    const w = this.windows;
-    if (w.k !== w.want) {
-      w.k = Math.abs(w.want - w.k) < 0.002 ? w.want : w.k + ease(w.want - w.k, dt, 2.2);
-      for (const x of w.list) x.node.position.y = x.rest.y - x.drop * smooth(w.k);
+    // front seats follow their controls closely (the buttons step them)
+    for (const st of this.seats.values()) {
+      const k = st.k, want = st.want;
+      for (const key of ['slide', 'front', 'rear', 'recline']) k[key] += ease(want[key] - k[key], dt, 7);
+      st.node.position.set(st.rest.x + k.slide, st.rest.y + (k.front + k.rear) / 2, st.rest.z);   // glTF: +x forward, +y up
+      st.node.rotation.z = Math.atan2(k.front - k.rear, SEAT_LEN);   // front up = nose up
+      if (st.back) st.back.rotation.z = k.recline;                   // + leans it back
+    }
+    // the center screen turns between portrait and landscape; its picture swaps halfway
+    const sc = this.screen;
+    if (sc && sc.k !== sc.want) {
+      sc.k = step(sc.k, sc.want, 0.8);
+      sc.node.rotation.x = SCREEN_PORTRAIT * smooth(sc.k);
+      const portrait = sc.k > 0.5;
+      if (portrait !== sc.portrait) { sc.portrait = portrait; this._drawScreen(); }
     }
 
     const B = this.built;
@@ -860,10 +973,12 @@ export class Cutaway {
 
     // asleep once everything is back as modeled
     const moving = (p) => p && (p.k > 0 || p.want > 0);
+    const posed = (st) => ['slide', 'front', 'rear', 'recline'].some(key => Math.abs(st.k[key]) > 1e-4 || st.want[key]);
     this.awake = this.lit.size > 0 || this.overview || this.tints.size > 0 || r.k > 0 || r.want > 0 || this.ghost.k > 0 || this.ghost.want > 0
-      || [...this.glows.values()].some(x => x.level > 0.004) || [...this.doors.values()].some(moving) || moving(w)
+      || [...this.glows.values()].some(x => x.level > 0.004) || [...this.windows.values()].some(moving)
+      || (sr && (moving(sr) || sr.tilt > 0 || sr.wantTilt > 0)) || (sc && sc.k !== sc.want)
       || ['motors', 'battery', 'port', 'amp', 'sensors', 'air'].some(k => moving(B[k])) || Object.values(B.rings || {}).some(moving)
-      || (B.pulse && B.pulse.points.visible) || [...(this.seats || new Map()).values()].some(x => Math.abs(x.k[0]) + Math.abs(x.k[1]) > 1e-4 || x.fwd || x.up);
+      || (B.pulse && B.pulse.points.visible) || [...this.seats.values()].some(posed);
   }
 
   // Swap every model mesh but the kept ones to one see-through material (and back). Opaque kept parts
@@ -891,6 +1006,115 @@ export class Cutaway {
     }
     this.ghostMat.uniforms.uFade.value = smooth(g.k);
   }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// the head unit's home screen, portrait w x h: a map with the route, a media card and the dock
+function drawHome(ctx, w, h, light) {
+  const bg = light ? '#eef1f5' : '#0d1015', card = light ? '#ffffff' : '#1a1f27', line = light ? '#d5dbe3' : '#2a313c';
+  const fg = light ? '#1a1d22' : '#e9edf3', accent = '#3e8bff';
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = fg;
+  ctx.font = `600 ${Math.round(h * 0.026)}px sans-serif`;
+  ctx.fillText('9:41', w * 0.06, h * 0.035);
+  ctx.fillText('72°', w * 0.82, h * 0.035);
+  // map
+  const mx = w * 0.05, my = h * 0.055, mw = w * 0.9, mh = h * 0.55;
+  ctx.save();
+  roundRect(ctx, mx, my, mw, mh, 12);
+  ctx.fillStyle = light ? '#e3e8ee' : '#141922';
+  ctx.fill();
+  ctx.clip();
+  ctx.strokeStyle = light ? '#ffffff' : '#252c37';
+  ctx.lineWidth = w * 0.035;
+  for (const [x0, y0, x1, y1] of [[0.1, 0.1, 0.9, 0.35], [0.25, 0, 0.35, 1], [0.6, 0, 0.75, 1], [0, 0.7, 1, 0.55]]) {
+    ctx.beginPath();
+    ctx.moveTo(mx + x0 * mw, my + y0 * mh);
+    ctx.lineTo(mx + x1 * mw, my + y1 * mh);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = w * 0.025;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(mx + 0.32 * mw, my + 0.92 * mh);
+  ctx.lineTo(mx + 0.3 * mw, my + 0.62 * mh);
+  ctx.lineTo(mx + 0.67 * mw, my + 0.6 * mh);
+  ctx.lineTo(mx + 0.62 * mw, my + 0.18 * mh);
+  ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(mx + 0.32 * mw, my + 0.92 * mh, w * 0.03, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  // media card
+  const cy = my + mh + h * 0.025, ch = h * 0.13;
+  roundRect(ctx, mx, cy, mw, ch, 10);
+  ctx.fillStyle = card;
+  ctx.fill();
+  const art = ctx.createLinearGradient(mx, cy, mx + ch, cy + ch);
+  art.addColorStop(0, '#ff7a2f');
+  art.addColorStop(1, '#8a3cff');
+  roundRect(ctx, mx + h * 0.015, cy + h * 0.015, ch - h * 0.03, ch - h * 0.03, 8);
+  ctx.fillStyle = art;
+  ctx.fill();
+  ctx.fillStyle = line;
+  for (const [y, l] of [[0.32, 0.45], [0.55, 0.3]]) {
+    roundRect(ctx, mx + ch + w * 0.02, cy + ch * y, mw * l, h * 0.014, 4);
+    ctx.fill();
+  }
+  // dock
+  const dy = h * 0.93;
+  ctx.fillStyle = card;
+  ctx.fillRect(0, dy - h * 0.045, w, h * 0.115);
+  for (let i = 0; i < 5; i++) {
+    ctx.fillStyle = i === 2 ? accent : line;
+    ctx.beginPath();
+    ctx.arc(w * (0.14 + i * 0.18), dy, w * 0.045, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// Hollywood Mode, landscape w x h: a film playing, with its controls
+function drawFilm(ctx, w, h) {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const fh = h * 0.86, fw = Math.min(w, fh * 16 / 9), fx = (w - fw) / 2, fy = (h - fh) / 2;
+  const sky = ctx.createLinearGradient(0, fy, 0, fy + fh);
+  sky.addColorStop(0, '#2b1a5c');
+  sky.addColorStop(0.55, '#e4683a');
+  sky.addColorStop(1, '#f5b04c');
+  ctx.fillStyle = sky;
+  ctx.fillRect(fx, fy, fw, fh);
+  ctx.fillStyle = '#ffd98a';
+  ctx.beginPath();
+  ctx.arc(fx + fw * 0.62, fy + fh * 0.62, fh * 0.16, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#1b1430';
+  ctx.beginPath();
+  ctx.moveTo(fx, fy + fh);
+  for (const [x, y] of [[0, 0.72], [0.18, 0.55], [0.32, 0.7], [0.5, 0.5], [0.7, 0.74], [0.85, 0.6], [1, 0.7], [1, 1]]) ctx.lineTo(fx + x * fw, fy + y * fh);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.beginPath();
+  ctx.moveTo(fx + fw * 0.47, fy + fh * 0.36);
+  ctx.lineTo(fx + fw * 0.47, fy + fh * 0.56);
+  ctx.lineTo(fx + fw * 0.55, fy + fh * 0.46);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillRect(fx + fw * 0.06, fy + fh * 0.9, fw * 0.88, h * 0.012);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(fx + fw * 0.06, fy + fh * 0.9, fw * 0.33, h * 0.012);
 }
 
 // cold blue .. a cool neutral (about 22 deg C) .. warm orange, over 16..28 deg C

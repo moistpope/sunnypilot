@@ -368,9 +368,6 @@ html.carmode .carribbon { transform: translate(-50%, 0); opacity: 1; pointer-eve
 .levels button.on i { opacity: 1; }
 .levels.heat button.on { background: #ef6a2c; } .levels.vent button.on { background: #2f8fe6; } .levels.plain button.on { background: var(--accent); }
 .levels button.off { width: auto; padding: 0 10px; font-size: 12px; font-weight: 700; }
-.dots { display: flex; gap: 8px; flex-wrap: wrap; }
-.dots button { width: 34px; height: 34px; border-radius: 50%; border: 2px solid transparent; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15); }
-.dots button.on { border-color: var(--text); }
 .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 2px 12px; padding: 6px 2px; }
 .checks label { display: flex; align-items: center; gap: 10px; min-height: 40px; font-size: 14px; }
 .checks input { width: 20px; height: 20px; accent-color: var(--accent); }
@@ -388,10 +385,20 @@ html.carmode .carribbon { transform: translate(-50%, 0); opacity: 1; pointer-eve
 .modes button small { display: block; font-size: 11.5px; color: var(--muted); margin-top: 3px; line-height: 1.3; }
 .modes button.on { border-color: var(--mode, var(--accent)); background: color-mix(in srgb, var(--mode, var(--accent)) 14%, var(--bg2)); }
 .modes button.on b { color: var(--mode, var(--accent)); }
-.pad { display: grid; grid-template-columns: repeat(3, 38px); grid-template-rows: repeat(3, 38px); gap: 3px; }
-.pad button { border: 1px solid var(--line); border-radius: 10px; background: var(--bg2); color: var(--muted); font-size: 15px; }
-.pad button:active { background: var(--accent); color: #fff; }
-.pad i { grid-area: 2 / 2; border-radius: 10px; background: var(--accent-soft); }
+/* a seat's adjusters beside a side view of the seat */
+.seatpos { display: flex; align-items: center; gap: 10px; }
+.seatpic { flex: 0 0 104px; }
+.seatpic svg { width: 104px; height: 72px; display: block; overflow: visible; }
+.seatpic .seat rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+.seatpic .rail { fill: var(--line); }
+.adjs { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
+.adj { display: flex; align-items: center; gap: 4px; }
+.adj small { flex: 1; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.adj button { width: 36px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg2); color: var(--text); font-size: 14px; touch-action: none; }
+.adj button:active { background: var(--accent); color: #fff; }
+.memory { display: flex; align-items: center; gap: 6px; }
+.btn.small { height: 36px; padding: 0 12px; font-size: 13px; }
+.btns .btnsub { flex-basis: 100%; font-size: 12px; color: var(--muted); }
 
 /* callouts and on-car cards, placed every frame next to points on the car (leader lines in #carlines) */
 .caranchors { position: absolute; inset: 0; z-index: 4; overflow: hidden; pointer-events: none; }
@@ -421,6 +428,27 @@ html.carmode .carribbon { transform: translate(-50%, 0); opacity: 1; pointer-eve
 .callout.on { background: var(--accent); color: #fff; }
 .callout.on .tt { color: #fff; }
 html.carmode #replaybar { display: none; }
+.callout.slotpin { padding: 0 12px; font-weight: 800; letter-spacing: .5px; }
+
+/* mock automated parking */
+.hero.apa .pmark { flex: none; width: 46px; height: 46px; border-radius: 12px; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 800; }
+.hero.apa .meta span { display: block; }
+.spaces { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.space { min-width: 96px; padding: 8px 12px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg2); text-align: left; }
+.space b { display: block; font-size: 17px; }
+.space small { font-size: 11px; color: var(--muted); }
+.space.on { border-color: var(--accent); background: var(--accent-soft); }
+.space:disabled { opacity: .6; }
+.cansig { display: grid; grid-template-columns: auto auto 1fr; gap: 5px 10px; align-items: baseline; font-size: 12.5px; }
+.cansig code { font: 600 11.5px ui-monospace, Menlo, Consolas, monospace; }
+.cansig small { font-size: 11px; text-align: right; color: var(--muted); }
+.cansig small.to, .canlog .to b { color: var(--accent); }
+.cansig small.from, .canlog .from b { color: var(--green); }
+.canlog { display: flex; flex-direction: column; gap: 4px; font: 11.5px/1.35 ui-monospace, Menlo, Consolas, monospace; }
+.canlog div { display: grid; grid-template-columns: 52px auto; gap: 0 8px; }
+.canlog small { color: var(--muted); }
+.canlog span { grid-column: 2; color: var(--text); opacity: .85; overflow-wrap: anywhere; }
 
 /* rows whose control is too wide to sit beside the label */
 .row.stack { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 12px 12px; }

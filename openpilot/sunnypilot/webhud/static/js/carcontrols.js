@@ -5,19 +5,21 @@
 // nothing is sent anywhere -- this file makes no requests, to the car, the comma or the server.
 import * as THREE from '../vendor/three.module.min.js';
 import { $, $$, el, iconSvg, setClass, setText } from './util.js';
-import { CATEGORIES, DRIVE_MODES, defaults } from './carcatalog.js';
+import { CATEGORIES, DRIVE_MODES, SEAT_LIMITS, SEAT_MEMORY, defaults } from './carcatalog.js';
 import { ZONES, ANCHORS } from './cutaway.js';
+import { ApaMock, APA_SIGNALS } from './apamock.js';
 
 const OVERVIEW = { at: [0, 0.6, 2.4], az: 180, el: 90, fit: [2.3, 5.1] };   // top down, nose up...
 const OVERVIEW_WIDE = { at: [0, 0.6, 2.4], az: 90, el: 90, fit: [5.1, 2.3] };   // ...or right, on a short screen
 const SHORT_PX = 420;     // free height below which the overview turns the car on its side
 const MOCK_NOTE = 'Mockup: nothing here changes the car';
-const SEAT_HEAT = 0xff6a2a, SEAT_VENT = 0x3e9bff;
+const SEAT_HEAT = 0xff6a2a;
 const CARD_GAP = 56;      // px between a card and the point it's about
 const CARDS_MIN_W = 840;  // px of free width that fits two cards beside the car; narrower, they go in the panel
 const CHIP_GAP = 46;      // px a chip sits out from its point, away from the car's center
 const SEATS_FOR_STAGE = { all: ['FL', 'FR', 'RL', 'RR'], driver: ['FL'], passenger: ['FR'], front: ['FL', 'FR'], rear: ['RL', 'RR'] };
-const DOOR_NODES = ['Door_Front_L', 'Door_Front_R', 'Door_Rear_L', 'Door_Rear_R', 'Tailgate'];
+const WINDOWS = ['FL', 'FR', 'RL', 'RR', 'QL', 'QR', 'rear'];   // cutaway.js WINDOWS; the sunroof is apart
+const SEAT_STEP = { slide: 0.01, front: 0.004, rear: 0.004, recline: 0.025 };   // per press, and every 90 ms held
 const RANGE_MI = 330;     // EPA range at 100%, for the mock range readout
 
 export class CarControls {
@@ -34,13 +36,16 @@ export class CarControls {
     this.pins = [];
     this.watchers = [];
     this.flash = null;   // lamps shown for a moment (lighting preview), { until, lamps }
+    this.memory = Object.fromEntries(Object.entries(SEAT_MEMORY).map(([k, p]) => [k, { ...p }]));   // the driver's saved positions
+    this.apa = null;     // the mock automated parking, while it runs (apamock.js)
     this._p = new THREE.Vector3();
     this._c = new THREE.Vector3();
     this.buildRibbon();
   }
 
   get cut() { return this.scene.cutaway; }
-  get category() { return CATEGORIES.find(c => c.id === this.cat) || null; }
+  get category() { return this.find(this.cat); }
+  find(id) { return CATEGORIES.find(c => c.id === id) || (this.apa && id === 'apa' ? this.apa.category : null); }
 
   // ---- open / close ----------------------------------------------------------------------------------
 
@@ -60,11 +65,12 @@ export class CarControls {
     this.cat = null;
     document.documentElement.classList.remove('carmode');
     this.ribbon.setAttribute('aria-hidden', 'true');
+    this.stopApa();
     this.showPanel(null);
     this.clearPins();
-    for (const n of DOOR_NODES) this.v['door.' + n] = false;
-    this.v['doors.california'] = false;
-    this.v['energy.port'] = false;
+    // the car as it was: windows up, sunroof shut, the screen back to portrait
+    for (const k of WINDOWS) this.v['win.' + k] = 0;
+    Object.assign(this.v, { 'win.sunroof': 0, 'win.sunroofMode': 'closed', 'display.hollywood': false, 'energy.port': false });
     this.apply();
     this.cut.setRoof(false);
     this.cut.setGhost(false);
@@ -76,7 +82,8 @@ export class CarControls {
 
   // a category, or null for the overview
   select(id) {
-    const c = CATEGORIES.find(x => x.id === id) || null;
+    if (id !== 'apa') this.stopApa();
+    const c = this.find(id);
     this.cat = c && c.id;
     $$('.cat', this.ribbon).forEach(b => {
       setClass(b, 'on', b.dataset.cat === this.cat);
@@ -93,11 +100,12 @@ export class CarControls {
     this.layout();
   }
 
-  back() { this.select(null); }
+  back() { this.select(this.cat === 'apa' ? 'assist' : null); }
 
   // A tap on the 3D view while open: a zone opens its category; anywhere else goes back to the
   // overview, or from there closes.
   tap(x, y) {
+    if (this.apa) { this.apa.tap(x, y); return; }   // a parking space, or nothing
     const zone = this.scene.pickZone(x, y);
     const c = zone && CATEGORIES.find(k => k.zone === zone);
     if (c && c.id !== this.cat) this.select(c.id);
@@ -173,7 +181,8 @@ export class CarControls {
     const close = el('button.back.icon', { 'aria-label': 'Close', title: 'Close', onclick: () => this.exit() });
     close.innerHTML = iconSvg('close');
     const body = el('div.pbody');
-    for (const sec of c.sections || c.cards.map(card => ({ title: card.title, controls: card.controls }))) {
+    if (c.render) body.append(...c.render());
+    for (const sec of c.render ? [] : c.sections || c.cards.map(card => ({ title: card.title, controls: card.controls }))) {
       const s = el('div.section');
       if (sec.title) s.append(el('h3', sec.title));
       if (sec.note) s.append(el('p.desc', sec.note));
@@ -221,6 +230,7 @@ export class CarControls {
       this.pins.push(pin);
       return pin;
     };
+    if (c && c.pins) { c.pins(add); return; }
     if (!c) {   // overview: a badge on each category's part
       for (const k of CATEGORIES.filter(x => x.zone)) {
         const b = el('button.callout.iconly', { title: k.label, 'aria-label': k.label, onclick: () => this.select(k.id) });
@@ -250,15 +260,21 @@ export class CarControls {
     b.append(ic, label);
     const show = () => {
       let text = chip.label, icon = chip.kind;
-      if (chip.kind === 'door') { text = `${chip.label} · ${this.v[chip.id] ? 'Close' : 'Open'}`; icon = 'door'; }
+      if (chip.kind === 'window') {
+        const pct = this.v[chip.id];
+        const tilted = chip.id === 'win.sunroof' && this.v['win.sunroofMode'] === 'tilt';
+        text = `${chip.label} · ${tilted ? 'tilted' : pct <= 0 ? 'closed' : pct >= 100 ? 'open' : `${pct}%`}`;
+      }
       if (chip.kind === 'port') { text = this.v[chip.id] ? 'Close charge port' : 'Open charge port'; icon = 'plug'; }
       if (chip.kind === 'heat') { const l = this.v[chip.id]; text = `${chip.label} · ${l ? `heat ${l}` : 'heat off'}`; icon = 'seat'; }
       if (ic.dataset.icon !== icon) { ic.innerHTML = iconSvg(icon); ic.dataset.icon = icon; }
       setText(label, text);
-      setClass(b, 'on', chip.kind === 'heat' ? this.v[chip.id] > 0 : !!this.v[chip.id]);
+      setClass(b, 'on', chip.kind === 'heat' ? this.v[chip.id] > 0 : chip.kind === 'window' ? this.v[chip.id] > 0 || text.endsWith('tilted') : !!this.v[chip.id]);
     };
     b.addEventListener('click', () => {
-      if (chip.kind === 'door' || chip.kind === 'port') this.set(chip.id, !this.v[chip.id]);
+      if (chip.id === 'win.sunroof') this.set('win.sunroofMode', this.v['win.sunroofMode'] === 'closed' ? 'open' : 'closed');
+      else if (chip.kind === 'window') this.set(chip.id, this.v[chip.id] > 0 ? 0 : 100);   // one touch: all the way
+      else if (chip.kind === 'port') this.set(chip.id, !this.v[chip.id]);
       else if (chip.kind === 'heat') this.set(chip.id, (this.v[chip.id] + 1) % 4);
       else if (chip.kind === 'tire') this.app.toast('Tire pressures (mockup)');
     });
@@ -281,9 +297,14 @@ export class CarControls {
     const midX = (r.left + r.right) / 2;
     const placed = [];
     for (const p of this.pins) {
-      const [sx, sy, front] = proj(p.at);
+      const [sx, sy, front] = proj(p.atFn ? p.atFn() : p.at);
+      let gone = false;
+      if (p.slot && this.apa) {   // a parking space's badge: lit when chosen, and only that one once it parks
+        setClass(p.el, 'on', p.slot === this.apa.selected);
+        gone = ['park', 'done'].includes(this.apa.phase) && p.slot !== this.apa.selected;
+      }
       if (!p.w) { p.w = p.el.offsetWidth; p.h = p.el.offsetHeight; }
-      const show = front && sx > -50 && sx < W + 50 && sy > -50 && sy < H + 50;
+      const show = !gone && front && sx > -50 && sx < W + 50 && sy > -50 && sy < H + 50;
       p.el.style.visibility = show ? '' : 'hidden';
       if (p.line) p.line.style.visibility = p.dot.style.visibility = show ? '' : 'hidden';
       if (!show) continue;
@@ -331,6 +352,30 @@ export class CarControls {
     }
   }
 
+  // Before the HUD takes this frame's data: the mock parking drive moves first, and while it runs its state
+  // stands in for the live one (main.js).
+  beforeFrame(dt) {
+    const a = this.apa;
+    if (!a) return;
+    a.tick(dt);
+    this._apaRefresh = (this._apaRefresh || 0) + dt;
+    if (a.changed || (a.phase === 'park' && this._apaRefresh > 0.2)) { a.changed = false; this._apaRefresh = 0; this.notify(); }
+  }
+
+  startApa() {
+    this.stopApa();
+    this.apa = new ApaMock(this);
+    this.select('apa');
+  }
+
+  stopApa() {
+    if (!this.apa) return;
+    if (!['done', 'canceled'].includes(this.apa.phase)) this.apa.cancel();
+    this.apa.dispose();
+    this.apa = null;
+    this.scene.update(this.app.state || {}, this.app.settings);   // the live data again
+  }
+
   // things that change on their own: the lighting preview's flashes, the battery charging
   _tick(dt) {
     if (this.cat === 'lighting') this.scene.lampOverride = this.lamps();
@@ -354,6 +399,33 @@ export class CarControls {
     if (id === 'climate.sync' && value) this.v['climate.tempR'] = this.v['climate.tempL'];
     if (id === 'climate.tempL' && this.v['climate.sync']) this.v['climate.tempR'] = value;
     if (id === 'climate.tempR' && this.v['climate.sync'] && value !== this.v['climate.tempL']) this.v['climate.sync'] = false;
+    // the sunroof's mode and opening follow each other
+    if (id === 'win.sunroofMode') this.v['win.sunroof'] = value === 'open' ? (this.v['win.sunroof'] || 100) : 0;
+    if (id === 'win.sunroof') this.v['win.sunroofMode'] = value > 0 ? 'open' : this.v['win.sunroofMode'] === 'tilt' ? 'tilt' : 'closed';
+    if (id === 'seat.memory') this.v['seat.FL.pos'] = { ...this.memory[value] };
+    this.apply();
+    this.notify();
+  }
+
+  // the panels' buttons that do something rather than set something
+  act(action) {
+    const v = this.v;
+    if (action === 'california') {
+      for (const k of WINDOWS) v['win.' + k] = 100;
+      Object.assign(v, { 'win.sunroof': 100, 'win.sunroofMode': 'open' });
+      this.app.toast('California Mode: all eight open');
+    } else if (action === 'closeAll') {
+      for (const k of WINDOWS) v['win.' + k] = 0;
+      Object.assign(v, { 'win.sunroof': 0, 'win.sunroofMode': 'closed' });
+    } else if (action === 'hollywood') {
+      v['display.hollywood'] = !v['display.hollywood'];
+    } else if (action === 'saveMemory') {
+      this.memory[v['seat.memory']] = { ...v['seat.FL.pos'] };
+      this.app.toast(`Seat saved to memory ${v['seat.memory']} (mockup)`);
+    } else if (action === 'apa') {
+      this.startApa();
+      return;
+    }
     this.apply();
     this.notify();
   }
@@ -375,11 +447,12 @@ export class CarControls {
     const v = this.v, cut = this.cut, c = this.cat;
     if (!cut) return;
     if (c !== 'lighting') this.scene.lampOverride = null;
-    // seats: heat glows orange, ventilation blue, in every view (and not at all once closed)
+    // seats: heat glows orange, in every view (and not at all once closed)
     const open = this.isOpen;
     for (const s of ['FL', 'FR']) {
-      const heat = v[`seat.${s}.heat`], vent = v[`seat.${s}.vent`];
-      cut.tint(`Seat_${s}`, open && heat ? SEAT_HEAT : open && vent ? SEAT_VENT : null, (heat || vent) / 3 * 0.55);
+      const heat = v[`seat.${s}.heat`];
+      cut.tint(`Seat_${s}`, open && heat ? SEAT_HEAT : null, heat / 3 * 0.55);
+      cut.seatPose(s, open ? v[`seat.${s}.pos`] : SEAT_MEMORY[1]);
     }
     const rear = Math.max(v['seat.RL.heat'], v['seat.RR.heat']);
     cut.tint('Seat_Rear', open && rear ? SEAT_HEAT : null, rear / 3 * 0.45);
@@ -396,12 +469,10 @@ export class CarControls {
     if (v['icc.bsd'] || v['icc.bacm'] || v['icc.fcta']) kinds.push('corner');
     if (v['icc.chime'] || v['icc.apa']) kinds.push('ultrasonic');
     cut.setSensors(c === 'assist' && v['icc.global'], kinds);
-    for (const n of DOOR_NODES) cut.setDoor(n, !!v['door.' + n]);
-    cut.setWindows(!!v['doors.california']);
-    for (const s of ['FL', 'FR']) {
-      const p = (open && v[`seat.${s}.pos`]) || [0, 0];
-      cut.seatOffset(`Seat_${s}`, p[0], p[1]);
-    }
+    for (const k of WINDOWS) cut.setWindow(k, v['win.' + k] / 100);
+    cut.setSunroof(v['win.sunroof'] / 100, v['win.sunroofMode'] === 'tilt');
+    const theme = v['display.theme'], dark = document.documentElement.dataset.theme === 'dark';
+    cut.setScreen(!!v['display.hollywood'], v['display.bright'] / 100, theme === 'light' || (theme === 'auto' && !dark));
   }
 
   // ---- controls ----------------------------------------------------------------------------------------
@@ -430,7 +501,7 @@ export class CarControls {
       }
       case 'slider': {
         const out = el('em');
-        const fmt = (x) => `${c.min < 0 && x > 0 ? '+' : ''}${x}${c.unit ? (c.unit === '%' ? '%' : ' ' + c.unit) : ''}`;
+        const fmt = (x) => `${c.min < 0 && x > 0 ? '+' : ''}${x}${c.unit ? (c.unit.startsWith('%') ? c.unit : ' ' + c.unit) : ''}`;
         const input = el('input', { type: 'range', min: c.min, max: c.max, step: c.step, value: this.v[c.id] });
         const paint = () => {
           const x = Number(input.value);
@@ -464,29 +535,15 @@ export class CarControls {
         mark();
         return row(compact ? el('span', c.label) : lbl(), box);
       }
-      case 'swatches': {
-        const dots = el('div.dots');
-        for (const [val, text, css] of c.options) {
-          dots.append(el('button', { title: text, 'aria-label': text, dataset: { v: val }, style: { background: css }, onclick: () => this.set(c.id, val) }));
-        }
-        const mark = () => $$('button', dots).forEach(b => setClass(b, 'on', b.dataset.v === this.v[c.id]));
+      case 'seatpos': return this.seatPos(c, compact);
+      case 'memory': {
+        const seg = el('div.seg');
+        for (const n of [1, 2, 3]) seg.append(el('button', { dataset: { v: String(n) }, onclick: () => this.set(c.id, n) }, String(n)));
+        const mark = () => $$('button', seg).forEach(b => setClass(b, 'on', b.dataset.v === String(this.v[c.id])));
         this.watch(mark, !compact);
         mark();
-        return compact ? el('div.crow', el('span', c.label), dots) : stack(lbl(), dots);
-      }
-      case 'pad': {
-        const pad = el('div.pad');
-        const seat = c.id.split('.')[1];
-        const move = (fwd, up) => {
-          const p = this.v[c.id] || [0, 0];
-          this.set(c.id, [Math.max(-0.12, Math.min(0.12, p[0] + fwd)), Math.max(-0.05, Math.min(0.05, p[1] + up))]);
-        };
-        const btn = (area, text, label, fwd, up) => el('button', { style: { gridArea: area }, 'aria-label': label, onclick: () => move(fwd, up) }, text);
-        // seen from the side: forward is left on the pad for the driver's seat, as it faces the screen
-        pad.append(el('i'), btn('1 / 2', '▲', 'Up', 0, 0.02), btn('3 / 2', '▼', 'Down', 0, -0.02),
-          btn('2 / 1', '◀', 'Forward', 0.03, 0), btn('2 / 3', '▶', 'Back', -0.03, 0));
-        pad.dataset.seat = seat;
-        return row(compact ? el('span', c.label) : lbl(), pad);
+        const save = el('button.btn.small', { onclick: () => this.act('saveMemory') }, 'Save');
+        return row(compact ? el('span', c.label) : lbl(), el('div.memory', seg, save));
       }
       case 'modes': {
         const box = el('div.modes');
@@ -511,6 +568,11 @@ export class CarControls {
         const b = el(`button.btn${c.style ? '.' + c.style : ''}`, { onclick: () => this.app.toast(c.toast || MOCK_NOTE) }, c.label);
         return el('div.btns', b);
       }
+      case 'action': {
+        const b = el(`button.btn${c.style ? '.' + c.style : ''}`, { title: c.sub || '', onclick: () => this.act(c.action) }, c.label);
+        if (c.action === 'hollywood') this.watch(() => setText(b, this.v['display.hollywood'] ? 'Exit Hollywood Mode' : c.label), !compact);
+        return el('div.btns', b, c.sub ? el('small.btnsub', c.sub) : null);
+      }
       case 'list': return el('div.rows.plist', ...c.items.map(([t, s, ok]) => el('div.row', el('div.lbl', el('b', t), el(ok ? 'small.ok' : 'small', s)))));
       case 'info': return el('div.kv.info', ...c.items.flatMap(([k, val]) => [el('span', k), el('span', val)]));
       case 'note': return el('p.desc', c.text);
@@ -519,6 +581,101 @@ export class CarControls {
       case 'lock': return this.lockHero();
       default: return null;
     }
+  }
+
+  // A seat's adjusters, laid out like the switch on the seat's side: the cushion slides, its front and
+  // rear edges go up and down, the back reclines. Beside them, the seat seen from the side (facing left,
+  // the way the car goes), drawn in the position set (movements exaggerated so they read). Held, a button
+  // keeps going.
+  seatPos(c, compact) {
+    const id = c.id;
+    const pic = el('div.seatpic');
+    pic.innerHTML = `<svg viewBox="0 0 150 104" aria-hidden="true">
+      <rect class="rail" x="38" y="92" width="74" height="4" rx="2"/>
+      <g class="seat"><g class="cushion"><rect x="36" y="64" width="70" height="15" rx="7"/></g>
+      <g class="back"><rect x="94" y="14" width="15" height="60" rx="7"/><rect x="96" y="1" width="12" height="15" rx="5"/></g></g></svg>`;
+    const seat = pic.querySelector('.seat'), cushion = pic.querySelector('.cushion'), backrest = pic.querySelector('.back');
+    const draw = () => {
+      const q = this.v[id];
+      seat.setAttribute('transform', `translate(${(-q.slide * 180).toFixed(1)} ${(-(q.front + q.rear) / 2 * 260).toFixed(1)})`);
+      cushion.setAttribute('transform', `rotate(${(-Math.atan2(q.front - q.rear, 0.5) / Math.PI * 180 * 2.5).toFixed(1)} 71 71)`);
+      backrest.setAttribute('transform', `rotate(${(q.recline / Math.PI * 180).toFixed(1)} 101 72)`);
+    };
+    const nudge = (key, sign) => {
+      const q = { ...this.v[id] }, [lo, hi] = SEAT_LIMITS[key];
+      q[key] = Math.max(lo, Math.min(hi, q[key] + sign * SEAT_STEP[key]));
+      this.set(id, q);
+    };
+    const hold = (label, text, fn) => {
+      const b = el('button', { 'aria-label': label, title: label }, text);
+      let timer = 0;
+      const stop = () => clearInterval(timer);
+      b.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); stop(); timer = setInterval(fn, 90); });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, stop);
+      b.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } });
+      return b;
+    };
+    const pair = (name, key, a, b) => el('div.adj', el('small', name),
+      hold(`${name} ${a[0]}`, a[1], () => nudge(key, a[2])), hold(`${name} ${b[0]}`, b[1], () => nudge(key, b[2])));
+    const grid = el('div.adjs',
+      pair('Slide', 'slide', ['forward', '◀', 1], ['back', '▶', -1]),
+      pair('Back', 'recline', ['up', '↶', -1], ['down', '↷', 1]),
+      pair('Front', 'front', ['up', '▲', 1], ['down', '▼', -1]),
+      pair('Rear', 'rear', ['up', '▲', 1], ['down', '▼', -1]));
+    this.watch(draw, !compact);
+    draw();
+    const box = el('div.seatpos', pic, grid);
+    return compact ? el('div.crow.stack', el('span', c.label), box) : el('div.row.stack', el('div.lbl', el('b', c.label)), box);
+  }
+
+  // The mock parking's panel: where it's at, the spaces it found, start and cancel, and the CAN signals
+  // both sides would have sent, with a log of each change.
+  apaPanel(apa) {
+    const title = el('b'), sub = el('span'), bar = el('div.bar', el('i'));
+    const hero = el('div.hero.apa', el('div.pmark', 'P'), el('div.meta', title, sub, bar));
+    const spaces = el('div.spaces');
+    const dir = el('div.seg', ...[[true, 'Back in'], [false, 'Nose in']].map(([back, text]) =>
+      el('button', { dataset: { v: String(back) }, onclick: () => apa.setDirection(back) }, text)));
+    const start = el('button.btn.primary', { onclick: () => apa.start() }, 'Start parking');
+    const cancel = el('button.btn.danger', { onclick: () => apa.cancel() }, 'Cancel');
+    const done = el('button.btn', { onclick: () => this.select('assist') }, 'Done');
+    const sigs = el('div.cansig'), log = el('div.canlog');
+    const show = () => {
+      const [t, s] = apa.status();
+      setText(title, t);
+      setText(sub, s);
+      const driving = apa.phase === 'park' || apa.phase === 'done';
+      bar.style.display = driving ? '' : 'none';
+      bar.firstChild.style.width = `${(apa.progress() * 100).toFixed(1)}%`;
+      if (spaces.childElementCount !== apa.found.length) {
+        spaces.replaceChildren(...apa.found.map(q => el('button.space', { dataset: { id: String(q.id) }, onclick: () => apa.choose(q.id) },
+          el('b', `P${q.id}`), el('small', 'Perpendicular · right'))));
+      }
+      if (!apa.found.length) spaces.replaceChildren(el('p.desc', 'None yet: the car reports spaces once it has passed them.'));
+      $$('button.space', spaces).forEach(b => { setClass(b, 'on', Number(b.dataset.id) === apa.selected); b.disabled = driving; });
+      $$('button', dir).forEach(b => { setClass(b, 'on', b.dataset.v === String(apa.dirBack)); b.disabled = driving; });
+      start.disabled = apa.phase !== 'ready';
+      const over = apa.phase === 'done' || apa.phase === 'canceled';
+      cancel.style.display = over ? 'none' : '';
+      done.style.display = over ? '' : 'none';
+      sigs.replaceChildren(...Object.entries(APA_SIGNALS).flatMap(([key, [way, msg, name, table]]) => {
+        const val = apa.sig[key];
+        return [el('code', name), el('span', val == null ? '–' : table ? table[val] ?? String(val) : String(val)),
+          el(`small.${way}`, `${way === 'to' ? 'head unit →' : 'ADAS →'} ${msg}`)];
+      }));
+      log.replaceChildren(...apa.log.slice(0, 16).map(e => el(`div.${e.dir}`, el('small', `+${e.t.toFixed(1)} s`),
+        el('b', `${e.dir === 'to' ? '→' : '←'} ${e.msg}`), el('span', e.text))));
+    };
+    this.watch(show, true);
+    show();
+    const section = (name, ...kids) => el('div.section', name ? el('h3', name) : null, ...kids);
+    return [
+      hero,
+      section('Spaces', spaces, el('div.rows', el('div.row', el('div.lbl', el('b', 'Park'), el('small', 'ICC_APAParkInDirSetting')), dir))),
+      el('div.btns', start, cancel, done),
+      section('On CAN', el('p.desc', 'Signal names and values from fisker_ocean_adas_world.dbc. The order they come in is our reading of the DBC, not a recorded drive.'), sigs),
+      section('Messages', log),
+    ];
   }
 
   // climate: driver and passenger set temperatures, in the units General asks for

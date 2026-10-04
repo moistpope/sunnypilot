@@ -81,10 +81,15 @@ class App {
       requestAnimationFrame(loop);   // schedule first: one bad frame must not stop the HUD
       const dt = (now - last) / 1000;
       last = now;
-      try { this.vehicle.update(this.state, now - this.lastStateAt, dt); } catch (e) { this.reportError(e); }
+      // the car controls' mock parking drive stands in for the live data while it runs
+      try { this.car.beforeFrame(dt); } catch (e) { this.reportError(e); }
+      const mock = this.car.apa;
+      const state = mock ? mock.state : this.state, settings = mock ? mock.settings : this.settings;
+      try { this.vehicle.update(state, mock ? 0 : now - this.lastStateAt, dt); } catch (e) { this.reportError(e); }
+      try { if (mock) this.scene.update(state, settings); } catch (e) { this.reportError(e); }
       try { this.scene.frame(dt, this.vehicle); } catch (e) { this.reportError(e); }
       try { this.car.frame(dt); } catch (e) { this.reportError(e); }
-      try { if (this.state) this.hud.update(this.state, this.settings, this.vehicle); } catch (e) { this.reportError(e); }
+      try { if (state) this.hud.update(state, settings, this.vehicle); } catch (e) { this.reportError(e); }
     };
     requestAnimationFrame(loop);
     setInterval(() => this.watchdog(), 1000);
@@ -103,7 +108,7 @@ class App {
     if (key === 'theme') this.applyTheme();
     if (key === 'egoPaint' || key === 'egoWheels') this.scene.setEgoLook(this.settings.egoPaint, this.settings.egoWheels);
     if (key === 'showRadar') this.updateRadarChip();
-    this.scene.update(this.state, this.settings);
+    if (!this.car.apa) this.scene.update(this.state, this.settings);
     if (this.ui.isOpen && this.ui.tab === 'display') this.ui.show('display', true);
   }
 
@@ -223,7 +228,7 @@ class App {
     const prevMode = this.state && this.state.mode;
     this.state = state;
     this.lastStateAt = performance.now();
-    this.scene.update(state, this.settings);
+    if (!this.car.apa) this.scene.update(state, this.settings);
     const replay = state.mode === 'replay' && state.replay;
     const chip = $('#chip-mode');
     chip.className = 'chip ' + (replay ? 'replay' : 'ok');

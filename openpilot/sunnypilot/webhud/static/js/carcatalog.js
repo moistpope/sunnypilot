@@ -12,19 +12,31 @@
 // A control: { id, type, label, sub, def, ... } with type
 //   toggle, seg (options), slider (min max step unit), stepper (min max step unit), select (options),
 //   levels (max, kind: heat | vent | plain), swatches (options [value, label, css color]), modes,
-//   checks (options, def = [values]), pad (seat position), button (style, toast), list (items), info
-//   (items [key, value]), hero (energy summary), note (text).
+//   checks (options, def = [values]), seatpos (a seat's adjusters), button (style, toast), action (does
+//   something on the car: action), list (items), info (items [key, value]), hero (energy summary), lock
+//   (locked / unlocked), note (text).
 
 const T = (id, label, def, sub) => ({ id, type: 'toggle', label, def, sub });
 const S = (id, label, options, def, sub) => ({ id, type: 'seg', label, options, def, sub });
 const R = (id, label, min, max, step, def, unit, sub) => ({ id, type: 'slider', label, min, max, step, def, unit, sub });
 const SEL = (id, label, options, def, sub) => ({ id, type: 'select', label, options, def, sub });
 const B = (label, toast, style, sub) => ({ type: 'button', label, toast, style, sub });
+const ACT = (label, action, style, sub) => ({ type: 'action', label, action, style, sub });   // carcontrols.js actions
 
 // ---- option lists from the DBCs (raw value -> label) --------------------------------------------------
 const OFF_WARN_BRAKE = [[0, 'Off'], [1, 'Warn'], [2, 'Warn + brake']];             // ICC_FACM_Setting, ICC_BACM_Setting, ICC_FCTA_Setting
 const SENSITIVITY = [[2, 'Late'], [0, 'Normal'], [1, 'Early']];                     // ICC_AEB_Sensitivity, ICC_BACM_Sensitivity, ICC_FCTA_Sensitivity, ICC_BSD_Sensitivity
 const ALERT_LEVELS = [[0, 'Off'], [1, 'Visual'], [2, '+ Sound'], [3, '+ Vibration']];   // ICC_BSDSetting, ICC_WarnTypeSetting
+
+// The Ocean's seats heat (no ventilation) and adjust: the cushion slides, its front and rear edges rise
+// and drop, and the back reclines (no lumbar). Positions: slide (+ forward), front and rear (+ up), m;
+// recline (+ back), rad.
+export const SEAT_LIMITS = { slide: [-0.12, 0.12], front: [-0.03, 0.04], rear: [-0.03, 0.05], recline: [-0.14, 0.45] };
+export const SEAT_MEMORY = {   // memory positions, mock
+  1: { slide: 0, front: 0, rear: 0, recline: 0 },
+  2: { slide: -0.08, front: 0.01, rear: -0.01, recline: 0.14 },
+  3: { slide: 0.06, front: 0.02, rear: 0.03, recline: -0.06 },
+};
 
 export const DRIVE_MODES = [   // Ocean drive modes, with the color the car shows for each
   ['earth', 'Earth', 'Range first, gentle response', '#2fa84f'],
@@ -51,8 +63,7 @@ export const CATEGORIES = [
           S('light.home', 'Follow me home', [[0, 'Off'], [1, '15 s'], [2, '30'], [3, '45'], [4, '60']], 2),   // BCM_FolwMeSetStsFb
           T('light.welcome', 'Welcome lights', true),
           S('light.interior', 'Interior lights off after', [[1, '0 s'], [2, '15'], [3, '30'], [4, '45'], [5, '60']], 3),   // BCM_IntLampTiSetSts
-          { id: 'light.ambient', type: 'swatches', label: 'Ambient', def: 'blue',
-            options: [['white', 'White', '#e9eef5'], ['blue', 'Ocean blue', '#3e8bff'], ['teal', 'Teal', '#18b6a4'], ['amber', 'Amber', '#f0a020'], ['magenta', 'Magenta', '#d63f9a']] },
+          T('light.ambient', 'Ambient lighting', true),   // white only on the Ocean
           R('light.ambientLevel', 'Ambient brightness', 0, 100, 5, 60, '%'),
         ],
       },
@@ -199,6 +210,7 @@ export const CATEGORIES = [
           T('icc.chime', 'Parking sensor chime', true),                                                // ICC_ParkAsstChmAlrt
           T('icc.autoView', 'Camera view when parking', true),                                         // ICC_AutomaticViewReq
           T('icc.overlay', 'Camera guide lines', true),                                                // ICC_GraphicOverlayReq
+          ACT('Mock APA', 'apa', 'primary', 'Try automated parking in a demo parking lot'),
         ],
       },
     ],
@@ -213,7 +225,7 @@ export const CATEGORIES = [
         title: 'Charging',
         controls: [
           R('energy.limit', 'Charge limit', 50, 100, 5, 80, '%', 'Daily use; 100% before a long trip'),
-          R('energy.amps', 'Charge current', 8, 48, 1, 32, 'A'),
+          R('energy.amps', 'Charge current', 8, 32, 1, 32, 'A'),   // the Ocean's onboard charger tops out at 32 A
           T('energy.charging', 'Charging', false, 'Plugged in, as if at home'),
           T('energy.schedule', 'Scheduled charging', true, 'Starts when off-peak rates do'),
           SEL('energy.start', 'Start at', [['21:00', '9:00 PM'], ['23:00', '11:00 PM'], ['00:00', '12:00 AM'], ['01:00', '1:00 AM']], '23:00'),
@@ -261,34 +273,51 @@ export const CATEGORIES = [
     ],
   },
   {
-    id: 'doors', label: 'Doors', icon: 'door', zone: 'doors', roof: false,
-    focus: { at: [0, 0.75, 2.6], az: -138, el: 24, fit: [4.7, 2.2] },
+    id: 'windows', label: 'Windows', icon: 'window', zone: 'windows', roof: false,
+    focus: { at: [0, 0.95, 2.9], az: -142, el: 30, fit: [4.6, 2.6] },
     chips: [
-      { anchor: 'doorFL', id: 'door.Door_Front_L', kind: 'door', label: 'Front left' },
-      { anchor: 'doorFR', id: 'door.Door_Front_R', kind: 'door', label: 'Front right' },
-      { anchor: 'doorRL', id: 'door.Door_Rear_L', kind: 'door', label: 'Rear left' },
-      { anchor: 'doorRR', id: 'door.Door_Rear_R', kind: 'door', label: 'Rear right' },
-      { anchor: 'tailgate', id: 'door.Tailgate', kind: 'door', label: 'Liftgate' },
+      { anchor: 'winFL', id: 'win.FL', kind: 'window', label: 'Front left' },
+      { anchor: 'winFR', id: 'win.FR', kind: 'window', label: 'Front right' },
+      { anchor: 'winRL', id: 'win.RL', kind: 'window', label: 'Rear left' },
+      { anchor: 'winRR', id: 'win.RR', kind: 'window', label: 'Rear right' },
+      { anchor: 'winQL', id: 'win.QL', kind: 'window', label: 'Left quarter' },
+      { anchor: 'winQR', id: 'win.QR', kind: 'window', label: 'Right quarter' },
+      { anchor: 'winRear', id: 'win.rear', kind: 'window', label: 'Rear window' },
+      { anchor: 'sunroof', id: 'win.sunroof', kind: 'window', label: 'Sunroof', toward: [0.4, -0.9] },
     ],
     sections: [
-      { controls: [{ id: 'doors.locked', type: 'lock', def: true }] },
       {
-        title: 'Locking',
         controls: [
-          S('doors.unlock', 'Unlock', [[0, "Driver's door"], [1, 'All doors']], 1),     // BCM_DoorUnlockSetFb
-          T('doors.walkaway', 'Lock when walking away', true),
-          T('doors.offUnlock', 'Unlock when powered off', false),                         // BCM_OffAutoUnlckSetSts
-          T('doors.closeWin', 'Close windows when locking', true),                        // BCM_ArmedClsWinSetSts
-          T('doors.rain', 'Close the sunroof in rain', true),                             // BCM_RainClsSunroofSetSts
-          T('doors.fold', 'Fold mirrors when locking', true),                             // BCM_MirrLockAutoSetSts
+          ACT('California Mode', 'california', 'primary', 'Opens all eight: the windows, the rear window and the sunroof'),
+          ACT('Close all', 'closeAll'),
         ],
       },
       {
         title: 'Windows',
         controls: [
-          T('doors.california', 'California Mode', false, 'Every window down at once'),
-          T('doors.child', 'Rear child locks', false),
+          R('win.FL', 'Front left', 0, 100, 5, 0, '% open'),
+          R('win.FR', 'Front right', 0, 100, 5, 0, '% open'),
+          R('win.RL', 'Rear left', 0, 100, 5, 0, '% open'),
+          R('win.RR', 'Rear right', 0, 100, 5, 0, '% open'),
+          R('win.QL', 'Left quarter', 0, 100, 5, 0, '% open', 'The doggie window behind the rear door'),
+          R('win.QR', 'Right quarter', 0, 100, 5, 0, '% open', 'The doggie window behind the rear door'),
+          R('win.rear', 'Rear window', 0, 100, 5, 0, '% open', 'Drops into the liftgate'),
+        ],
+      },
+      {
+        title: 'Sunroof',
+        controls: [
+          S('win.sunroofMode', 'Sunroof', [['closed', 'Closed'], ['tilt', 'Tilt'], ['open', 'Open']], 'closed'),
+          R('win.sunroof', 'Opening', 0, 100, 5, 0, '% open'),
+        ],
+      },
+      {
+        title: 'Settings',
+        controls: [
+          T('doors.closeWin', 'Close windows when locking', true),                        // BCM_ArmedClsWinSetSts
+          T('doors.rain', 'Close the sunroof in rain', true),                             // BCM_RainClsSunroofSetSts
           T('doors.winLock', 'Lock rear window switches', false),
+          T('doors.child', 'Rear child locks', false),
         ],
       },
     ],
@@ -331,7 +360,7 @@ export const CATEGORIES = [
           R('display.bright', 'Brightness', 0, 100, 5, 70, '%'),
           T('display.auto', 'Auto brightness', true),
           S('display.theme', 'Appearance', [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']], 'auto'),
-          T('display.hollywood', 'Hollywood Mode', false, 'Turns the screen sideways, for video when parked'),
+          ACT('Hollywood Mode', 'hollywood', null, 'Turns the screen sideways, for video when parked'),
           S('display.cluster', 'Driver display', [['minimal', 'Minimal'], ['standard', 'Standard'], ['map', 'Map']], 'standard'),
           T('display.clean', 'Clean screen', false, 'Locks the screen for 30 s to wipe it'),
         ],
@@ -384,6 +413,16 @@ export const CATEGORIES = [
           { type: 'list', items: [['Phone key', 'Driver 1 · this phone', 'ok'], ['Key card', 'Driver 1'], ['Key fob', 'Driver 2']] },
           B('Add a key', 'Hold the new key to the reader (mockup)'),
           T('profile.valet', 'Valet mode', false, 'Limits speed and locks the glovebox and settings'),
+        ],
+      },
+      {
+        title: 'Locking',
+        controls: [
+          { id: 'doors.locked', type: 'lock', def: true },
+          S('doors.unlock', 'Unlock', [[0, "Driver's door"], [1, 'All doors']], 1),     // BCM_DoorUnlockSetFb
+          T('doors.walkaway', 'Lock when walking away', true),
+          T('doors.offUnlock', 'Unlock when powered off', false),                         // BCM_OffAutoUnlckSetSts
+          T('doors.fold', 'Fold mirrors when locking', true),                             // BCM_MirrLockAutoSetSts
         ],
       },
     ],
@@ -450,12 +489,10 @@ export const CATEGORIES = [
 function seatControls(seat, driver) {
   return [
     { id: `seat.${seat}.heat`, type: 'levels', label: 'Heat', kind: 'heat', max: 3, def: driver ? 2 : 0 },
-    { id: `seat.${seat}.vent`, type: 'levels', label: 'Ventilation', kind: 'vent', max: 3, def: 0 },
-    { id: `seat.${seat}.pos`, type: 'pad', label: 'Position' },
-    R(`seat.${seat}.lumbar`, 'Lumbar', 0, 10, 1, driver ? 4 : 2, ''),
+    { id: `seat.${seat}.pos`, type: 'seatpos', label: 'Position', def: { ...SEAT_MEMORY[1] } },
     ...(driver ? [
-      S('seat.memory', 'Memory', [[1, '1'], [2, '2'], [3, '3']], 1),
-      T('seat.easy', 'Easy entry', true),
+      { id: 'seat.memory', type: 'memory', label: 'Memory', def: 1 },
+      T('seat.easy', 'Easy entry', true, 'Slides the seat back for getting in and out'),
     ] : []),
   ];
 }
@@ -463,7 +500,9 @@ function seatControls(seat, driver) {
 // the default of every control by id
 export function defaults() {
   const out = {};
-  const add = (c) => { if (c.id && c.def !== undefined) out[c.id] = Array.isArray(c.def) ? [...c.def] : c.def; };
+  const add = (c) => {
+    if (c.id && c.def !== undefined) out[c.id] = Array.isArray(c.def) ? [...c.def] : typeof c.def === 'object' ? { ...c.def } : c.def;
+  };
   for (const cat of CATEGORIES) {
     for (const card of cat.cards || []) card.controls.forEach(add);
     for (const sec of cat.sections || []) sec.controls.forEach(add);
@@ -471,7 +510,7 @@ export function defaults() {
   Object.assign(out, {
     'climate.tempL': 21.5, 'climate.tempR': 21.5, 'climate.sync': true,
     'seat.RL.heat': 0, 'seat.RR.heat': 0, 'energy.soc': 72, 'energy.port': false,
-    'door.Door_Front_L': false, 'door.Door_Front_R': false, 'door.Door_Rear_L': false, 'door.Door_Rear_R': false, 'door.Tailgate': false,
+    'display.hollywood': false,
   });
   return out;
 }
