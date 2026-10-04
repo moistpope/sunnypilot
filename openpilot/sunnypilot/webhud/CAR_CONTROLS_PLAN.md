@@ -10,13 +10,20 @@ The mockup is built: everything in the plan below is in the branch, with the cha
 Done:
 - Camera dock, studio camera and car-mode CSS (part 1).
 - The model: `models/pulse_ocean_v0.10_parts.glb` replaces `pulse_ocean_v0.10.glb`, built by
-  `tools/export_ocean_glb.py` (run in Blender 4.3+). New nodes: `Roof`, `Seat_FL`, `Seat_FR`, `Seat_Rear`,
-  `Dash_Vents`, `Center_Screen`, `Driver_Display`, `Console` under Body, `Window_Front_L/R` and
-  `Window_Rear_L/R` under the doors, `Window_Quarter_L/R` under Body. Triangle counts per material match
+  `tools/export_ocean_glb.py` (run in Blender 4.3+). New nodes: `Roof`, `Sunroof`, `Sunshade`, `Seat_FL`
+  and `Seat_FR` (cushions, pivoted at their middle) with `Seat_FL_Back`/`Seat_FR_Back` hanging from them
+  (pivoted at the hip), `Seat_Rear`, `Dash_Vents`, `Center_Screen` (pivoted at its middle; its stand stays),
+  `Driver_Display`, `Console` under Body, `Window_Front_L/R` and `Window_Rear_L/R` under the doors,
+  `Window_Quarter_L/R` under Body. Parts made of several pieces (the roof glass's front and rear panels,
+  the seats' backs, the screen and its stand) are told apart by island. Triangle counts per material match
   the package's glb exactly, every triangle matched its part within 3 mm, and the rig, paints, wheels,
   lamps and animations are unchanged. The tool rebuilds the file byte for byte.
 - `cutaway.js`: roof fade, zone glows, ghost, drive units, battery, charge-port door, amplifier, sensor
-  fans, airflow, sound rings, drive-mode pulse, doors and liftgate, windows, seat moves. It sleeps once
+  fans, airflow, sound rings, drive-mode pulse, windows (cut from the top by a moving plane, so the glass
+  sinks rather than shrinks), sunroof (tilt, or lift and slide back over the rear panel, the shade with
+  it), seat slide, cushion tilt and recline, and the center screen (portrait, turning landscape for
+  Hollywood Mode, with a home screen or film drawn on it).
+- `apamock.js`: *Assist → Parking → Mock APA*, automated parking in a demo lot (see the README). It sleeps once
   the car is back as modeled, so the HUD pays nothing for it with car mode closed.
 - `carcatalog.js` (15 categories) and `carcontrols.js` (ribbon, panels, badges, cards, chips, mock state),
   wired into `main.js`.
@@ -30,7 +37,7 @@ Changes from the plan:
 - **The export:** the tool doesn't re-export from Blender. It splits the package's glb in place: each
   triangle is matched to its master part by centroid, then the groups' triangles move into nodes of their
   own, so nothing else can drift.
-- **The roof** is `Roof` plus the liftgate's glass and frit, which also lower in California Mode. The
+- **The roof** is `Roof`, `Sunroof` and `Sunshade` plus the liftgate's glass and frit. The
   headliner mesh also carries the pillar trims, so only its part above 0.76 m and within 0.57 m of the
   center line counts as roof.
 - **The overview** pulses the parts one after another, as a wave, rather than all at once, which washed the
@@ -38,6 +45,11 @@ Changes from the plan:
 - **Lighting and Seats** show their cards in the panel when the free area is narrower than 840 px (phones,
   small landscape).
 - **Driving** also turns the rest of the car see-through, like Seats.
+- **After review (2026-10-04):** Doors became Windows (the four door windows, the doggie windows, the rear
+  window and the sunroof; California Mode a button that opens all eight); locking moved to Profiles &
+  Keys and the doors no longer open. Ambient lighting is white only; charging tops out at 32 A; the seats
+  heat but don't ventilate and have no lumbar, and adjust by slide, cushion front and rear height and
+  recline, with memory 1–3. Hollywood Mode is a button. Mock APA was added.
 - **Zones** (tap targets and badge spots) are boxes in the car frame (`cutaway.js` `ZONES`). The glows are
   shells that share each part's geometry, not one shader injected into every material.
 
@@ -49,6 +61,13 @@ saved view, with no console errors. The new modules contain no `api(`, `fetch`, 
 calls. codespell and ruff pass. `pytest openpilot/sunnypilot/webhud/tests` can't run on the Mac (it needs
 the compiled `libparams_c`), so `test_server.py`'s model and static-file checks were done by hand with
 curl against `--demo`.
+
+This round, checked the same way at 1920×1080 and 1080×1920: each window at part travel (the glass sinks
+with a flat top edge), California Mode and Close all, the sunroof sliding back, the driver's seat slid,
+tilted and reclined and back to its memory position, Hollywood Mode both ways (both pictures upright), and
+Mock APA backing into P2 and driving nose first into P3 (picked by tapping the ground), Cancel mid-way,
+and Done, which hands the HUD back to the live data. The pane only renders while it's in view, so the APA
+runs were stepped frame by frame from the console. Exiting restores the windows, sunroof, seats and screen.
 
 Open:
 - Head-unit performance. The glows double the draw calls of the parts they cover, but only while car

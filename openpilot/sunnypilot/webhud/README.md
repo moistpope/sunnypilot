@@ -167,7 +167,7 @@ hotspot, runs the HUD full screen and rides out dropouts.
 
 A look at fuller car controls on top of the HUD (this branch only). Nothing in it reaches the car: the
 settings live in the page, in memory, and its modules (`static/js/carcontrols.js`, `carcatalog.js`,
-`cutaway.js`) make no requests. The panels and the ribbon say so, so its driver-assistance switches
+`cutaway.js`, `apamock.js`) make no requests. The panels and the ribbon say so, so its driver-assistance switches
 aren't mistaken for the *CAN settings* tab.
 
 Tap the car. A ribbon of categories slides up, the camera goes to a top view with the roof (everything
@@ -176,29 +176,45 @@ shows, and the part of the car each category is about pulses in turn under a bad
 a ribbon item opens its category; a tap on the background goes back, and from there (or with ✕)
 closes it and restores the car and your view. Auto view and the replay bar wait while it's open.
 
-The car's parts come first: Lighting, Climate, Seats, Driving, Assist, Energy, Audio, Doors, Service and
+The car's parts come first: Lighting, Climate, Seats, Driving, Assist, Energy, Audio, Windows, Service and
 Display; then Connectivity, Profiles & Keys, Navigation, General and Software. Lighting and Seats put
 their settings on cards beside the lamps and seats (in a panel when the screen is too narrow for them);
 the rest open a half-screen panel, beside the car in landscape and under it in portrait, with the car
 framed in what's left. Each category moves the camera to its part and shows its settings on the car:
-the lighting preview drives the model's lamps; seat heat and ventilation glow orange and blue, and the
-position pad moves the seat; Climate blows air from the vents, tinted by each side's temperature; Seats
+the lighting preview drives the model's lamps; seat heat glows orange, and the seat's adjusters (the
+cushion slides, its front and rear edges rise and drop, the back reclines) move the model's seat;
+Climate blows air from the vents, tinted by each side's temperature; Seats
 and Driving turn the rest of the car see-through; Driving shows the drive units in x-ray, and a drive
 mode change sends a ring of particles out from the car in the mode's color (Earth green, Fun blue,
 Hyper orange), styled like the tire trails; Assist draws the sensors' coverage on the ground; Energy
 opens a charge-port door on the left front fender and fills an x-ray battery to the charge level;
-Audio lights the trunk amplifier and rings over the seats of the chosen sound stage; Doors opens the
-model's doors and liftgate on their hinges, and California Mode winds every window down.
+Audio lights the trunk amplifier and rings over the seats of the chosen sound stage; Windows winds each
+of the four door windows, the two quarter (doggie) windows and the rear window down to where its slider
+says, opens or tilts the sunroof (its front panel lifts and slides back over the rear one), and California
+Mode opens all eight at once; Display's Hollywood Mode turns the center screen to landscape.
 
-The menus follow the Ocean user guide where it shows them. Lighting, Doors and driver assistance use the
-option values the head unit sends on CAN (`carcatalog.js` names each list's DBC signal); the rest are
+*Mock APA* (*Assist → Parking*) demos automated parking in a parking lot drawn around the car. The car
+scans along the aisle and reports the open spaces it passes; you pick one (on the ground or in the
+panel), the ADAS confirms it, and *Start parking* backs it in (or drives it in nose first) on its own.
+`apamock.js` plays both sides of the CAN exchange from `fisker_ocean_adas_world.dbc`: the head unit's
+`ICC_0x35B` (`ICC_APAActivation`, `ICC_APAParkSelect`, `ICC_APAParkInDirSetting`) and the ADAS's slots
+(`ADAS_APASlot1..6`), state (`ADAS_APASts`), confirmed slot (`ADAS_APASlotSel*`), gear and standstill
+requests (`ADAS_0x117`) and chime. The panel shows every signal's value and a log of each change. The
+DBC doesn't say in what order these come, so the sequence is our reading of it, not a recorded drive.
+While it runs, its simulated drive replaces the live data in the HUD, decoded as `fisker_world.py` would,
+so the HUD's own parking drawing (slot outlines, parking-sensor arcs, closest distance per bumper) and
+the status card show it.
+
+The menus follow the Ocean user guide where it shows them. Lighting, locking, windows and driver
+assistance use the option values the head unit sends on CAN (`carcatalog.js` names each list's DBC signal); the rest are
 plausible values for a mockup.
 
-The model's roof, seats, windows, vents, screens and console are meshes of their own in
-`pulse_ocean_v0.10_parts.glb`. `tools/export_ocean_glb.py` splits them out of the Pulse Ocean package's
-glb, which merges every part into one mesh per material: it matches each triangle to the part it came
-from in the package's master .blend, and leaves everything else (rig, materials, textures, animations)
-as it was:
+The model's roof, sunroof, seats (cushion and back apart), windows, vents, screens and console are meshes
+of their own in `pulse_ocean_v0.10_parts.glb`. `tools/export_ocean_glb.py` splits them out of the Pulse
+Ocean package's glb, which merges every part into one mesh per material: it matches each triangle to the
+part it came from in the package's master .blend (and, for parts made of several pieces, which piece),
+puts the seat backs and the screen on pivots of their own, and leaves everything else (rig, materials,
+textures, animations) as it was:
 
 ```
 blender -b Pulse-Ocean-Master.blend --python openpilot/sunnypilot/webhud/tools/export_ocean_glb.py -- \
@@ -220,7 +236,7 @@ blender -b Pulse-Ocean-Master.blend --python openpilot/sunnypilot/webhud/tools/e
 | `dbc.py` | Small DBC reader/decoder that keeps value tables, comments and cycle times. |
 | `../selfdrive/car/can_overrides.py` | Validates/applies `FiskerCanOverrides`; card polls it at 10 Hz and updates the dicts carcontroller reads, in place. |
 | `static/` | The app (plain ES modules, no build step). three.js, the Ocean model and the DBC subset live in `openpilot/third_party/webhud/`. |
-| `tools/export_ocean_glb.py` | Rebuilds the Ocean model with its roof, seats, windows and dash parts split out, for the car controls mockup (run in Blender). |
+| `tools/export_ocean_glb.py` | Rebuilds the Ocean model with its roof, sunroof, seats, windows and dash parts split out, for the car controls mockup (run in Blender). |
 | `android/` | Head-unit app: finds the comma on the hotspot and shows the HUD full screen through a local relay. Not shipped to the device. |
 
 ## ADASBUS signals used
