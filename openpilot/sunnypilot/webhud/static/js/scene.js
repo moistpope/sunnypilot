@@ -284,7 +284,7 @@ export class CarScene {
     this._lightEgo(this.ego);
     this.scene.add(this.ego);
     this.egoLook = { paint: null, wheels: null };
-    loadEgoModel('/models/pulse_ocean_v0.10.glb').then((g) => {
+    loadEgoModel('/models/pulse_ocean_v0.10_parts.glb').then((g) => {
       this.scene.remove(this.ego);
       this.ego = g;
       this._lightEgo(g);

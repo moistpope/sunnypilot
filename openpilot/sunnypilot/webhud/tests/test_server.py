@@ -66,7 +66,7 @@ class TestServer(OpenpilotTestCase):
     # third-party assets are served from openpilot/third_party/webhud
     status, body, res = self.request("GET", "/vendor/OrbitControls.js")
     assert status == 200 and b"OrbitControls" in body and "max-age" in res.getheader("Cache-Control")
-    status, body, res = self.request("GET", "/models/pulse_ocean_v0.10.glb")
+    status, body, res = self.request("GET", "/models/pulse_ocean_v0.10_parts.glb")
     assert status == 200 and body[:4] == b"glTF" and res.getheader("Content-Type") == "model/gltf-binary"
     for path in ("/../../server.py", "/vendor/../../../sunnypilot/webhud/server.py"):
       status, body, _ = self.request("GET", path)
@@ -79,13 +79,13 @@ class TestServer(OpenpilotTestCase):
 
   def test_static_validators(self):
     # the car model and every other file can be checked with a 304 instead of sent again
-    status, body, res = self.request("GET", "/models/pulse_ocean_v0.10.glb")
+    status, body, res = self.request("GET", "/models/pulse_ocean_v0.10_parts.glb")
     etag, modified = res.getheader("ETag"), res.getheader("Last-Modified")
     assert status == 200 and etag and modified and len(body) > 1_000_000
-    status, body, res = self.request("GET", "/models/pulse_ocean_v0.10.glb", headers={"If-None-Match": etag})
+    status, body, res = self.request("GET", "/models/pulse_ocean_v0.10_parts.glb", headers={"If-None-Match": etag})
     assert status == 304 and body == b"" and res.getheader("ETag") == etag
-    assert self.request("GET", "/models/pulse_ocean_v0.10.glb", headers={"If-Modified-Since": modified})[0] == 304
-    assert self.request("GET", "/models/pulse_ocean_v0.10.glb", headers={"If-None-Match": '"0-0"'})[0] == 200
+    assert self.request("GET", "/models/pulse_ocean_v0.10_parts.glb", headers={"If-Modified-Since": modified})[0] == 304
+    assert self.request("GET", "/models/pulse_ocean_v0.10_parts.glb", headers={"If-None-Match": '"0-0"'})[0] == 200
     # gzip is its own entity; either tag matches the same file
     status, _, res = self.request("GET", "/js/main.js", headers={"Accept-Encoding": "gzip"})
     gz_tag = res.getheader("ETag")
