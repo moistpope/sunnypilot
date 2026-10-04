@@ -506,10 +506,11 @@ export class CarScene {
     return rc.ray;
   }
 
-  // whether a tap at (clientX, clientY) lands on the ego car (its bounding box: quick, and forgiving)
+  // whether a tap at (clientX, clientY) lands on the ego car (its bounding box: quick, and forgiving; the
+  // model's, so what the car controls draw around it doesn't count)
   pickEgo(clientX, clientY) {
     if (!this._egoBox || this._egoBoxOf !== this.ego) {
-      this._egoBox = new THREE.Box3().setFromObject(this.ego);
+      this._egoBox = new THREE.Box3().setFromObject(this.ego.userData.model || this.ego);
       this._egoBoxOf = this.ego;
     }
     return this._ray(clientX, clientY).intersectsBox(this._egoBox);
