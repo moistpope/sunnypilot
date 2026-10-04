@@ -40,7 +40,7 @@ import android.window.OnBackInvokedDispatcher
  * if part of it failed to load, and replaces the WebView if its renderer dies. It also hands the page
  * what the head unit is playing and its next turn ([Infotainment]). Back opens a small menu.
  */
-class MainActivity : Activity(), Link.Listener, Infotainment.Listener {
+class MainActivity : Activity(), Link.Listener, Infotainment.Listener, CanBridge.Listener {
 
     private enum class Page { NONE, LOADING, LOADED, FAILED }
 
@@ -111,6 +111,10 @@ class MainActivity : Activity(), Link.Listener, Infotainment.Listener {
         /** A button on the music card: toggle, next or prev. */
         @JavascriptInterface
         fun media(action: String) = Infotainment.command(action)
+
+        /** The car's current state (IBUS frames) the page decodes, as JSON; the page asks on start. */
+        @JavascriptInterface
+        fun canState(): String = CanBridge.snapshot()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -135,6 +139,7 @@ class MainActivity : Activity(), Link.Listener, Infotainment.Listener {
 
         link = Link.get(this)
         HudListener.grantInBackground(this, link.root)
+        CanBridge.start(this)
         createWebView()
         hideSystemBars()
     }
@@ -146,11 +151,13 @@ class MainActivity : Activity(), Link.Listener, Infotainment.Listener {
         link.resume()
         link.attach(this)
         Infotainment.addListener(this)
+        CanBridge.addListener(this)
         if (page == Page.LOADED) reloadInfotainment()   // what changed while the HUD was away
     }
 
     override fun onStop() {
         Infotainment.removeListener(this)
+        CanBridge.removeListener(this)
         link.detach(this)
         link.pause()
         web?.onPause()
@@ -209,6 +216,15 @@ class MainActivity : Activity(), Link.Listener, Infotainment.Listener {
 
     private fun reloadInfotainment() {
         web?.evaluateJavascript("window.dispatchEvent(new Event('webhud:infotainment'))", null)
+    }
+
+    // CanBridge calls this on its own reader thread; the WebView may only be touched on the main thread
+    override fun onCanFrames(json: String) {
+        ui.post {
+            if (page == Page.LOADED) {   // the page asks for the current state when it starts
+                web?.evaluateJavascript("window.dispatchEvent(new CustomEvent('webhud:can',{detail:$json}))", null)
+            }
+        }
     }
 
     // ---- page ---------------------------------------------------------------------------------------

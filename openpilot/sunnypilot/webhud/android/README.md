@@ -92,6 +92,34 @@ which app gives the turns there (the built-in navigation, or Android Auto / CarP
 unknown. `adb logcat -s WebHud` lists every notification's app and category (not its words), and the
 navigation ones in full at debug level, so it shows which app to add if none of these is it.
 
+## Live car state
+
+Pulse (the add-on SBC the app runs on) has two MCP251x CAN controllers wired to the car: `can1` =
+IBUS1, `can2` = IBUS2, both 500 kbit/s. The gateway broadcasts the body, climate, powertrain and
+battery status on these buses all the time. The app reads the messages the car-control menus show and
+forwards each changed frame to the page, which decodes them (`static/js/carstate.js`) and fills a
+"From the car" read-out in those menus.
+
+**Receive only.** The reading is done by a bundled helper, `libcanbridge.so` (`canbridge/main.go`),
+which opens the sockets with a receive-only CAN filter and has no transmit path at all — it never
+constructs a sendable frame or writes to a socket. `CanBridge.kt` only starts it and reads its stdout.
+Nothing in the app or the helper writes to the bus.
+
+The helper is a plain executable shipped as a `.so` so Android installs it into the app's
+`nativeLibraryDir`, the one directory an app may exec from (`android:extractNativeLibs="true"`,
+`useLegacyPackaging`). It needs no root: an app can open CAN sockets here, the same way Pulse's own app
+does. It reads about ten status IDs per bus (kept in step with `static/js/carsignals.js`), forwards
+only frames whose payload changed, and the app coalesces them to ~15 Hz. The page asks for the current
+state when it loads (`window.WebHudApp.canState()`), then gets changes as `webhud:can` events.
+
+Rebuild the helper (needs only the Go toolchain) with `canbridge/build.sh`. `adb logcat -s WebHud`
+shows `CAN helper: ready` and `CAN frames flowing` when it's up.
+
+Pulse drops a large share of received frames (about half on IBUS1, two-thirds on IBUS2): both CAN
+controllers share one SPI bus and every interrupt lands on CPU 0. Status messages repeat, so the
+read-out still settles; it just lags. Reducing the loss (RT priority on the `mcp251x`/SPI IRQ threads,
+or the SoC's own CAN controller) would help this and Pulse's own app.
+
 ## Build and install
 
 Needs JDK 17+ and the Android SDK (`ANDROID_HOME`, or `sdk.dir` in `local.properties`).

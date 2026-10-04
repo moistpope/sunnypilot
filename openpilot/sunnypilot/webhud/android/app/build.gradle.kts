@@ -24,6 +24,12 @@ android {
         }
     }
 
+    packaging {
+        // the CAN helper ships as a .so so it installs into nativeLibraryDir, the one place an app may
+        // exec from; useLegacyPackaging keeps it a real file on disk rather than mapped from the APK
+        jniLibs.useLegacyPackaging = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
