@@ -680,8 +680,14 @@ export class Cutaway {
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     const mat = face.material = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
-    this.screen = { node, mat, canvas, tex, k: 1, want: 1, portrait: true, light: false };   // mat: the ghost may swap the face's
-    node.rotation.x = SCREEN_PORTRAIT;
+    // It turns in its own plane, about the axis through its face: the screen leans back, so turning it
+    // about the car's forward axis twisted it and swung one edge into the dash. The face's normal (the
+    // node's frame) points at the driver; the axis points the other way, as the forward axis did.
+    const nrm = face.geometry.attributes.normal, axis = new THREE.Vector3(), n = new THREE.Vector3();
+    for (let i = 0; i < nrm.count; i++) axis.sub(n.fromBufferAttribute(nrm, i));
+    axis.normalize();
+    this.screen = { node, mat, canvas, tex, axis, k: 1, want: 1, portrait: true, light: false };   // mat: the ghost may swap the face's
+    node.quaternion.setFromAxisAngle(axis, SCREEN_PORTRAIT);
     this._drawScreen();
   }
 
@@ -1003,7 +1009,7 @@ export class Cutaway {
     const sc = this.screen;
     if (sc && sc.k !== sc.want) {
       sc.k = step(sc.k, sc.want, 0.8);
-      sc.node.rotation.x = SCREEN_PORTRAIT * smooth(sc.k);
+      sc.node.quaternion.setFromAxisAngle(sc.axis, SCREEN_PORTRAIT * smooth(sc.k));
       const portrait = sc.k > 0.5;
       if (portrait !== sc.portrait) { sc.portrait = portrait; this._drawScreen(); }
     }

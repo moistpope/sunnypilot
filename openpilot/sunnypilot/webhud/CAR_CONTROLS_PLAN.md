@@ -101,6 +101,11 @@ the zone every point of the car picks from the overview's top view (seats, rear 
 amplifier each their own, Doors & Windows only at the sides and the liftgate); and picks at the doors,
 windows, rear window, liftgate and sunroof from the Doors & Windows and Audio views.
 
+- **Fourth review (2026-10-04):** in portrait the center screen cut into the dash. It turned about the
+  car's forward axis, but the screen leans back about 20 degrees, so that twisted it out of its own
+  plane and swung one edge into the dash. It now turns about the axis through its face (the face's
+  mean normal), as the real mount does, and stands in front of the dash in both orientations.
+
 Performance (2026-10-04, after the HMI was seen dropping frames in car mode). Measured in the Browser pane
 (1024×768 at pixel ratio 1.75, Apple GPU), median of 40 frames timed to a GPU sync: the HUD 4.3 ms (236
 draw calls, 815k triangles); car mode 3.1–5.2 ms, with the overview the heaviest (356 calls, 1.2M
