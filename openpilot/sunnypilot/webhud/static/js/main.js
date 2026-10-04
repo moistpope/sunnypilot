@@ -6,6 +6,7 @@ import { OCEAN_PAINT_DEFAULT, OCEAN_WHEELS_DEFAULT } from './models.js';
 import { LANE_CONF_THRESHOLD } from './road.js';
 import { Hud } from './hud.js';
 import { FrameMeter } from './perf.js';
+import { Infotainment } from './infotainment.js';
 import { Settings } from './settings.js';
 import { VehicleState } from './vehicle.js';
 
@@ -18,7 +19,7 @@ const DEFAULTS = {
   showPath: true, showUss: true, showOpLeads: true, autoView: true, showGround: true, showRoad: true, showSigns: true,
   showTracks: true, showRadar: false, radarAllTracks: false, showLowConf: false, showObjectStats: false, objectMode: 'world',
   laneHeadingSign: 1, laneCurvatureSign: 1, objectHeadingSign: 1, laneConfThreshold: LANE_CONF_THRESHOLD,
-  showFps: true, renderScale: 'auto',
+  showFps: true, renderScale: 'auto', showMusic: true, showNav: true, demoInfotainment: false,
 };
 
 function loadSettings() {
@@ -79,6 +80,7 @@ class App {
     api('/api/params').then(p => { this.hud.isMetric = !!p.IsMetric; }).catch(() => {});
 
     this.meter = new FrameMeter(this);
+    this.info = new Infotainment(this);
     let last = performance.now();
     const loop = (now) => {
       requestAnimationFrame(loop);   // schedule first: one bad frame must not stop the HUD
@@ -94,6 +96,7 @@ class App {
       try { this.scene.frame(dt, this.vehicle); } catch (e) { this.reportError(e); }
       try { this.car.frame(dt); } catch (e) { this.reportError(e); }
       try { if (state) this.hud.update(state, settings, this.vehicle); } catch (e) { this.reportError(e); }
+      try { this.info.frame(dt); } catch (e) { this.reportError(e); }
       this.meter.tick(now, dt * 1000, performance.now() - t0);
     };
     requestAnimationFrame(loop);
@@ -114,6 +117,7 @@ class App {
     if (key === 'egoPaint' || key === 'egoWheels') this.scene.setEgoLook(this.settings.egoPaint, this.settings.egoWheels);
     if (key === 'showRadar') this.updateRadarChip();
     if (key === 'showFps' || key === 'renderScale') this.meter.apply();
+    if (key === 'showMusic' || key === 'showNav' || key === 'demoInfotainment') this.info.apply();
     if (!this.car.apa) this.scene.update(this.state, this.settings);
     if (this.ui.isOpen && this.ui.tab === 'display') this.ui.show('display', true);
   }
@@ -138,6 +142,7 @@ class App {
     // portrait overlays stack below the status header
     document.documentElement.style.setProperty('--drive-h', `${Math.round(card.getBoundingClientRect().bottom)}px`);
     if (this.car) this.car.layout(true);   // car controls: refit the car to what's left of the screen
+    if (this.info) this.info.layout();
   }
 
   // ---- connection -----------------------------------------------------------------------------------

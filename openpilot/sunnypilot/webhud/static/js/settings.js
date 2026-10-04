@@ -252,6 +252,9 @@ export class Settings {
     body.append(this.toggleRows([
       ['showTracks', 'Power trails', 'Glowing particle trails behind the rear tires, colored by how hard the motors pull (blue light, through the spectrum to red at full power); longer the faster you go.'],
       ['autoView', 'Auto view', 'Switch to the top view while parking and back when driving.'],
+      ['showMusic', 'Music', 'What the head unit is playing, in a card at the bottom with its controls. Needs the HUD\'s Android app on the car\'s screen.'],
+      ['showNav', 'Navigation', 'The next turn from the head unit\'s navigation, in a card at the top and as an arrow on the road once it\'s near. ' +
+        'Needs the HUD\'s Android app on the car\'s screen.'],
     ]));
   }
 
@@ -319,6 +322,8 @@ export class Settings {
       ['radarAllTracks', 'All radar tracks', 'Radar objects: also show tracks younger than 1.3 s, most of which flicker in and out (the radar reports every candidate).'],
       ['showObjectStats', 'Object stats', 'Tag every object with its source (ADAS camera, openpilot, radar), track ID, position (x ahead, y left/right), ' +
         'speed over the ground and relative, heading and size, in m, m/s and degrees. The ADAS reports no speeds: those are this view\'s estimate.'],
+      ['demoInfotainment', 'Demo music & navigation', 'A made-up playlist and route in the music and navigation cards, the next turn ' +
+        'coming nearer as the car drives, for trying them without the head unit.'],
       ['showFps', 'Frame rate', 'Frames per second under the status card. Tap it for the slowest frame, the HUD\'s own script time per frame, ' +
         'draw calls, triangles and the render resolution.'],
     ]));

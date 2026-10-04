@@ -12,6 +12,7 @@ import { RoadField } from './ground.js';
 import { PowerTrails, motorLoad } from './tracks.js';
 import { ObjectLabels } from './labels.js';
 import { Cutaway } from './cutaway.js';
+import { NavArrow } from './navarrow.js';
 import { STEER_RATIO } from './vehicle.js';
 
 const EGO_LEN = 4.775;
@@ -316,6 +317,8 @@ export class CarScene {
     }
     this.ribbons.path.mesh.renderOrder = 1;
     this.road = new RoadModel();
+    this.navArrow = new NavArrow(this.road);   // the next turn, on the road (infotainment.js sets it)
+    this.scene.add(this.navArrow.group);
     this.roadOut = null;   // this frame's road (RoadModel.update)
     this.ribbons.zebra = new Ribbon(this.mats.marking, 256);
     this.scene.add(this.ribbons.zebra.mesh);
@@ -1200,6 +1203,7 @@ export class CarScene {
     this._ego(dt);
     this._tracks(dt);
     this.cutaway.update(dt, this.clock);
+    this.navArrow.update(toScene, this.clock);
     this.renderer.render(this.scene, this.camera);
     this._labels();   // after render: the camera's matrices are this frame's
   }

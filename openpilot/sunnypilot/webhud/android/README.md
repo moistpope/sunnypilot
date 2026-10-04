@@ -63,6 +63,35 @@ picked in the HUD, the app starts in that mode next time: its window, the WebVie
 and the connecting card. So it no longer flashes the car's mode before the page loads. *Auto* keeps
 following the car. The page sets its own theme before its first paint.
 
+## Music and navigation
+
+The HUD shows what the head unit is playing (a card at the bottom, with previous, play/pause and next)
+and its navigation's next turn (a card at the top, and an arrow on the road once the turn is near).
+The app gets them as a notification listener (`HudListener`), which Android lets see other apps'
+media sessions and notifications:
+
+- **Media:** every active media session is followed, and the card shows the one playing, else the most
+  recent: title, artist, album, art, position and length. Its buttons go to that session's controls.
+- **Navigation:** the notification in the *navigation* category, or an ongoing one from a known
+  navigation app (Google Maps, Waze, HERE, Sygic, OsmAnd, MapQuest, Organic Maps). Its words go to the
+  page as they are (title, text, sub text), and the page reads the distance, the maneuver and the street
+  from them, along with the maneuver's picture (Google Maps draws it as the large icon). So the reading
+  can be fixed by updating openpilot, without reinstalling the app.
+
+Notification access is turned on at start through the root shell (`cmd notification allow_listener`,
+for the Android user the app runs as). Without root, turn it on once by hand:
+
+```
+adb shell cmd notification allow_listener ai.sunnypilot.webhud/ai.sunnypilot.webhud.HudListener 10
+```
+
+(`10` is the user on Android Automotive; `0` on a phone.) The page asks for everything when it loads
+(`window.WebHudApp.infotainment()`), then gets each change as a `webhud:media` or `webhud:nav` event;
+album art and the turn's picture go along only when they change. Not tested on the car's head unit yet:
+which app gives the turns there (the built-in navigation, or Android Auto / CarPlay from the phone) is
+unknown. `adb logcat -s WebHud` lists every notification's app and category (not its words), and the
+navigation ones in full at debug level, so it shows which app to add if none of these is it.
+
 ## Build and install
 
 Needs JDK 17+ and the Android SDK (`ANDROID_HOME`, or `sdk.dir` in `local.properties`).
@@ -83,5 +112,6 @@ as a system app on the rooted head unit (e.g. under `/system/priv-app`).
 
 ## Debugging
 
-`adb logcat -s WebHud` shows how the comma was found, sweeps (debug level), losses and reloads. The
+`adb logcat -s WebHud` shows how the comma was found, sweeps (debug level), losses and reloads, and
+the media session and navigation notification the HUD is showing. The
 WebView can be inspected from `chrome://inspect` on a computer with adb access to the head unit.

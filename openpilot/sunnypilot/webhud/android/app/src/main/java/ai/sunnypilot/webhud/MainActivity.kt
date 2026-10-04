@@ -37,9 +37,10 @@ import android.window.OnBackInvokedDispatcher
 /**
  * The HUD, full screen. The page comes from the comma through [LocalProxy] and runs on its own; this
  * activity only decides when to load it, nudges its WebSocket when the device comes back, reloads it
- * if part of it failed to load, and replaces the WebView if its renderer dies. Back opens a small menu.
+ * if part of it failed to load, and replaces the WebView if its renderer dies. It also hands the page
+ * what the head unit is playing and its next turn ([Infotainment]). Back opens a small menu.
  */
-class MainActivity : Activity(), Link.Listener {
+class MainActivity : Activity(), Link.Listener, Infotainment.Listener {
 
     private enum class Page { NONE, LOADING, LOADED, FAILED }
 
@@ -102,6 +103,14 @@ class MainActivity : Activity(), Link.Listener {
             // prefers-color-scheme would stay pinned to that until a restart, so restart now
             if (theme == "auto") ui.post { if (forcedNight.let { it != null && it != carIsNight() }) recreate() }
         }
+
+        /** What's playing and the next turn, pictures included, as JSON: the page asks when it starts. */
+        @JavascriptInterface
+        fun infotainment(): String = Infotainment.snapshot()
+
+        /** A button on the music card: toggle, next or prev. */
+        @JavascriptInterface
+        fun media(action: String) = Infotainment.command(action)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -125,6 +134,7 @@ class MainActivity : Activity(), Link.Listener {
         WebView.setWebContentsDebuggingEnabled(true)   // chrome://inspect over adb, for work on the HUD itself
 
         link = Link.get(this)
+        HudListener.grantInBackground(this, link.root)
         createWebView()
         hideSystemBars()
     }
@@ -135,9 +145,12 @@ class MainActivity : Activity(), Link.Listener {
         web?.onResume()
         link.resume()
         link.attach(this)
+        Infotainment.addListener(this)
+        if (page == Page.LOADED) reloadInfotainment()   // what changed while the HUD was away
     }
 
     override fun onStop() {
+        Infotainment.removeListener(this)
         link.detach(this)
         link.pause()
         web?.onPause()
@@ -187,10 +200,22 @@ class MainActivity : Activity(), Link.Listener {
         updateCard()
     }
 
+    // ---- Infotainment.Listener ----------------------------------------------------------------------
+
+    override fun onInfotainment(kind: String, json: String) {
+        if (page != Page.LOADED) return   // the page asks for it all when it starts
+        web?.evaluateJavascript("window.dispatchEvent(new CustomEvent('webhud:$kind',{detail:$json}))", null)
+    }
+
+    private fun reloadInfotainment() {
+        web?.evaluateJavascript("window.dispatchEvent(new Event('webhud:infotainment'))", null)
+    }
+
     // ---- page ---------------------------------------------------------------------------------------
 
     private fun load() {
         ui.removeCallbacks(retryLoad)
+        Infotainment.pageReset()
         staleAssets = false
         loadedAt = SystemClock.elapsedRealtime()
         page = Page.LOADING
@@ -258,6 +283,7 @@ class MainActivity : Activity(), Link.Listener {
             if (page != Page.LOADING) return
             page = Page.LOADED
             if (staleAssets) scheduleReload() else reloads = 0
+            reloadInfotainment()   // anything that changed since the page first asked
             updateCard()
         }
 

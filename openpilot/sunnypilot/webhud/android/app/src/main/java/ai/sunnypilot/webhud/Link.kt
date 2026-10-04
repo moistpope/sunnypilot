@@ -37,7 +37,7 @@ class Link private constructor(context: Context) {
     private val main = Handler(Looper.getMainLooper())
     private val loop = Executors.newSingleThreadScheduledExecutor { Thread(it, "webhud-link").apply { isDaemon = true } }
     private val probes = Executors.newFixedThreadPool(8) { Thread(it, "webhud-probe").apply { isDaemon = true } }
-    private val root = RootShell()
+    val root = RootShell()   // also turns on the notification listener (HudListener.grant)
     private val neighbors = Neighbors(root)
     val proxy = LocalProxy(onDeviceUnreachable = { checkNow() })
 

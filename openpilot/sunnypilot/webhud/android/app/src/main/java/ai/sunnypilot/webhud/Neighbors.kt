@@ -82,6 +82,20 @@ class RootShell {
         }
     }
 
+    /**
+     * Runs [cmd] once root is up, waiting up to [waitMs] for su to start (and for the grant prompt to be
+     * answered); its output, or null without root. Blocks: not on the main thread.
+     */
+    fun run(cmd: String, waitMs: Long = GRANT_TIMEOUT_MS + 5000): String? {
+        val deadline = nowMs() + waitMs
+        while (nowMs() < deadline) {
+            runIfReady(cmd)?.let { return it }
+            if (state == State.UNAVAILABLE) return null
+            Thread.sleep(250)
+        }
+        return null
+    }
+
     fun close() {
         shell?.process?.destroy()
         shell = null

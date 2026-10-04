@@ -150,6 +150,18 @@ m/s and degrees. The ADAS list has no speeds; its tags show this view's tracking
 openpilot lead merged into an ADAS car is listed on that car's tag. Tags stack instead of overlapping,
 so an object two sources report shows both.
 
+Music and navigation (`static/js/infotainment.js`, *Display*, on): on the car's screen, the Android
+app passes on what the head unit is playing and its navigation's next turn (see
+[`android/`](android/README.md#music-and-navigation)). What's playing shows in a card at the bottom
+with its art, progress and previous / play-pause / next, which control the head unit's player. The
+next turn shows in a card at the top: the maneuver, its distance, the street and the trip (time,
+distance, arrival). Within 160 m an arrow lies on the ego lane at the turn, bending the way it goes
+(`static/js/navarrow.js`). The navigation app rounds its distances (0.3 mi is anywhere from 0.25 to
+0.35), so the turn is pinned to the road when it's first given and carried along with the car, and
+each later distance only nudges it back inside what that distance allows. In a plain browser, without
+the app, neither card shows. *Display → Debug → Demo music & navigation* plays a made-up playlist and
+route (the turns come nearer as the car drives), for trying them without the car.
+
 Frame rate (`static/js/perf.js`, *Display → Debug*, on for now): a counter under the status card,
 over the car controls' panel. Tap it for the slowest frame of the last second, the HUD's own script
 time per frame, draw calls, triangles and the render resolution. *Render resolution* is *Auto* by

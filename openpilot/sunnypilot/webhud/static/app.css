@@ -137,7 +137,7 @@ html.lowfx .card, html.lowfx .viewdock > button.icon, html.lowfx .viewmenu { bac
 .assist-text b { color: var(--accent); font-weight: 600; }
 
 /* ---------- alerts / chips / road info ---------- */
-.alerts { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); width: min(560px, 46vw); z-index: 6; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.alerts { position: absolute; top: calc(16px + var(--navcard-h, 0px)); left: 50%; transform: translateX(-50%); width: min(560px, 46vw); z-index: 6; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
 .alert { padding: 12px 18px; border-radius: 14px; background: var(--panel); box-shadow: var(--shadow); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); text-align: center; animation: drop .25s ease-out; }
 .alert b { display: block; font-size: 18px; font-weight: 600; }
 .alert span { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
@@ -281,6 +281,43 @@ p.desc { margin: 0 0 10px; font-size: 13px; color: var(--muted); line-height: 1.
 .kv span:nth-child(odd) { color: var(--muted); }
 a { color: var(--accent); }
 
+/* ---------- music and navigation from the head unit (infotainment.js) ---------- */
+/* what's playing: bottom left, clear of the view dock, over the replay bar when it shows */
+.musiccard { position: absolute; left: 16px; bottom: var(--music-bottom, 16px); z-index: 6; width: min(460px, calc(100vw - var(--viewbar-w, 140px) - 60px));
+  display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 6px 14px; align-items: center; padding: 12px 12px 12px 12px; pointer-events: auto; }
+.mc-art { grid-row: span 2; width: 64px; height: 64px; border-radius: 10px; background: var(--bg2) center / cover no-repeat; }
+.musiccard:not(.timed) .mc-art { grid-row: auto; }
+.mc-meta { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.mc-meta b, .mc-meta span, .mc-meta small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mc-meta b { font-size: 15px; font-weight: 700; }
+.mc-meta span { font-size: 13px; color: var(--muted); }
+.mc-meta small { font-size: 11px; color: var(--muted); opacity: .8; }
+.mc-ctl { display: flex; gap: 2px; }
+.mc-btn { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text); }
+.mc-btn svg { width: 22px; height: 22px; }
+.mc-btn:disabled { opacity: .3; }
+.mc-time { grid-column: 2 / 4; display: none; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.musiccard.timed .mc-time { display: flex; }
+.mc-bar { flex: 1; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.mc-bar i { display: block; width: 0; height: 100%; background: var(--accent); }
+/* the next turn: top middle (the alerts go under it) */
+.navcard { position: absolute; top: 16px; left: 50%; z-index: 6; transform: translateX(-50%); width: min(540px, calc(100vw - 700px)); min-width: 280px;
+  display: flex; align-items: center; gap: 14px; padding: 10px 18px 10px 10px; pointer-events: none; }
+.nc-icon { flex: none; display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 14px; background: var(--accent); color: #fff; }
+.nc-icon svg { width: 36px; height: 36px; }
+.nc-icon img { width: 44px; height: 44px; object-fit: contain; }
+.nc-dist { flex: none; display: flex; align-items: baseline; gap: 3px; }
+.nc-dist b { font-size: 30px; font-weight: 700; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+.nc-dist small { font-size: 14px; font-weight: 600; color: var(--muted); }
+.nc-text { min-width: 0; line-height: 1.3; }
+.nc-what, .nc-trip { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.nc-what { font-size: 17px; font-weight: 650; }
+.nc-trip { font-size: 12.5px; color: var(--muted); }
+html.carmode .musiccard, html.carmode .navcard { display: none; }
+@media (max-width: 1020px) and (min-aspect-ratio: 1/1) {
+  .navcard { left: 332px; right: 16px; width: auto; min-width: 0; transform: none; }
+}
+
 /* ---------- portrait (Ocean screen rotated, phones) ---------- */
 /* the status card shrinks to a floating square in the top-left corner; everything else keeps to
    the edges so the car view gets the screen */
@@ -313,6 +350,8 @@ a { color: var(--accent); }
   .chips { top: calc(10px + env(safe-area-inset-top)); right: 10px; }
   .roadinfo { top: calc(44px + env(safe-area-inset-top)); right: 10px; }
   .alerts { top: calc(var(--drive-h, 200px) + 10px); left: 10px; right: 10px; width: auto; transform: none; }
+  .navcard { top: calc(10px + env(safe-area-inset-top)); width: min(560px, calc(100vw - 392px)); min-width: 0; }
+  .musiccard { left: 10px; right: calc(var(--viewbar-w, 140px) + 20px); bottom: var(--music-bottom, calc(10px + env(safe-area-inset-bottom))); width: auto; }
   .viewdock { right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); }
   .replaybar { left: 10px; right: 10px; bottom: calc(76px + env(safe-area-inset-bottom)); width: auto; min-width: 0; transform: none; flex-wrap: wrap; }
   .replaybar .rp-track { order: -1; flex-basis: 100%; }
@@ -510,4 +549,16 @@ html.carmode #replaybar { display: none; }
   .callout.pair { padding: 0 3px; }
   .callout .cbtn { width: 28px; height: 28px; }
   .callout .cbtn svg { width: 16px; height: 16px; }
+}
+/* a phone: the nav card goes under the status card, and the alerts and frame rate under it */
+@media (max-aspect-ratio: 1/1) and (max-width: 640px) {
+  .navcard { top: calc(var(--drive-h, 200px) + 10px); left: 10px; right: 10px; width: auto; transform: none; }
+  .alerts { top: calc(var(--drive-h, 200px) + 10px + var(--navcard-h, 0px)); }
+  .fps { top: calc(var(--drive-h, 200px) + 10px + var(--navcard-h, 0px)); }
+  .nc-dist b { font-size: 24px; }
+  .nc-icon { width: 46px; height: 46px; }
+  /* the music card over the view dock, the width of the screen */
+  .musiccard { right: 10px; bottom: var(--music-bottom, calc(74px + env(safe-area-inset-bottom))); grid-template-columns: 48px minmax(0, 1fr) auto; gap: 4px 10px; padding: 10px; }
+  .mc-art { width: 48px; height: 48px; }
+  .mc-btn { width: 38px; height: 38px; }
 }
