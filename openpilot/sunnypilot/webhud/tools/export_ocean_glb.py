@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build the web HUD's Ocean model with its roof, seats, windows, vents, screens and console as meshes of their own.
+Build the web HUD's Ocean model with its roof, sunroof, seats, windows, vents, screens and console as meshes of their own.
 
   blender -b Pulse-Ocean-Master.blend --python openpilot/sunnypilot/webhud/tools/export_ocean_glb.py -- \\
     --glb Pulse-Ocean-ADAS.glb --out openpilot/third_party/webhud/models/pulse_ocean_v0.10_parts.glb
@@ -8,12 +8,14 @@ Build the web HUD's Ocean model with its roof, seats, windows, vents, screens an
 Both inputs come from the Pulse Ocean v0.10 package. Its app asset, Pulse-Ocean-ADAS.glb, merges the
 master's parts into one mesh per material and rig node: Body__PBR_glass_dark is the SolarSky glass, the
 windshield and the rear quarter windows together. The car controls mockup (static/js/cutaway.js) fades
-the roof away, lights up single parts and lowers the windows, so it needs them apart. The master .blend
-keeps every part as its own object, so this finds the part each of the glb's triangles came from (the
-master triangle on the same rig node and material whose centroid it shares, as modeled or as subdivided)
-and moves the triangles of each group below into a node of its own beside the meshes it came from (Roof
-under Body, Window_Front_L under Door_Front_L), one primitive per material. Everything else (rig,
-materials, textures, animations) is copied unchanged, and unused buffer data is dropped.
+the roof away, lights up single parts, winds the windows and the sunroof open, moves the front seats and
+turns the center screen, so it needs them apart. The master .blend keeps every part as its own object, so
+this finds the part each of the glb's triangles came from (the master triangle on the same rig node and
+material whose centroid it shares, as modeled or as subdivided; for the parts that are several pieces,
+which piece) and moves the triangles of each group below into a node of its own beside the meshes it came
+from (Roof under Body, Window_Front_L under Door_Front_L), one primitive per material. A group that turns
+(a seat back, the screen) has its node at its pivot. Everything else (rig, materials, textures,
+animations) is copied unchanged, and unused buffer data is dropped.
 Run with Blender 4.3 or later; it needs only Blender's own Python (numpy, mathutils).
 """
 import argparse
@@ -32,40 +34,70 @@ from mathutils.kdtree import KDTree
 ROOF = {
   'glassDark_roof', 'tex_roof', 'carpaintBlack_roof', 'plastic_roof01', 'plastic_seals_roof',   # SolarSky glass, panel, frame
   'glassDark_window_f', 'black_window_f',                                                       # windshield and its frit
-  'plasticInt_roof', 'fabricA_sunvisors', 'plasticGlossy_top_panel', 'texInt_top',              # headliner trim, visors, console
+  'fabricA_sunvisors', 'plasticGlossy_top_panel', 'texInt_top',                                 # visors, overhead console
   'plastic_mirror_int', 'plastic_mirror_int.001', 'reflect_mirror_int',                         # rear-view mirror
 }
 HEADLINER = 'fabricA_top'
 HEADLINER_UP, HEADLINER_HALF_W = 0.76, 0.57   # m
 SIMPLE = {
+  'Sunshade': {'plasticInt_roof'},   # the trim panel under the sunroof's glass
   'Seat_Rear': {'Seats_Rear_Closed', 'Rear_Seat_Base'},
   'Dash_Vents': {'plastic_dash_vent', 'plastic_dash_vents', 'plasticD_dash_vents'},
-  'Center_Screen': {'plastic_display_main', 'texIntD_display_main_noMS'},
+  'Center_Screen': {'plastic_display_main#screen', 'texIntD_display_main_noMS'},
   'Driver_Display': {'plastic_display_driver', 'texIntD_display_driver_noMS'},
   'Console': {'plastic_interior_center', 'interiorC_center', 'fabricA_armrest', 'leatherB_armrest'},
 }
-FRONT_SEATS = {'Seats_Front_Closed': None, 'Front_Seat_Base_L': 'Seat_FL', 'Front_Seat_Base_R': 'Seat_FR'}   # None: by side
+SUNROOF = {'glassDark_roof#front', 'tex_roof#front', 'plastic_seals_roof#front'}   # the roof's front panel opens
 WINDOWS = {   # the glass that winds down (the rear window is the tailgate's own mesh already)
   'glassDark_windows_side': 'Window_Front_L', 'glassDark_windows_side.002': 'Window_Front_R',
   'glassDark_windows_side001': 'Window_Rear_L', 'glassDark_windows_side001.001': 'Window_Rear_R',
   'glassDark_windows_side02': 'Window_Quarter_L', 'glassDark_windows_side02.001': 'Window_Quarter_R',
 }
-GROUPS = ['Roof', 'Seat_FL', 'Seat_FR', 'Seat_Rear', 'Dash_Vents', 'Center_Screen', 'Driver_Display', 'Console', *WINDOWS.values()]
+GROUPS = ['Roof', 'Sunroof', 'Sunshade', 'Seat_FL', 'Seat_FL_Back', 'Seat_FR', 'Seat_FR_Back', 'Seat_Rear', 'Dash_Vents',
+          'Center_Screen', 'Driver_Display', 'Console', *WINDOWS.values()]
+# Groups that move about a point: the node sits there (glTF, the car's frame) with its vertices relative to
+# it. A seat's cushion tilts and slides about its middle; its back hangs from it and reclines at the hip;
+# the screen turns about its middle.
+PIVOTS = {
+  'Seat_FL': (0.13, -0.15, -0.398), 'Seat_FR': (0.13, -0.15, 0.398),
+  'Seat_FL_Back': (-0.17, -0.13, -0.398), 'Seat_FR_Back': (-0.17, -0.13, 0.398),
+  'Center_Screen': (0.549, 0.308, 0.0),
+}
+PARENTS = {'Seat_FL_Back': 'Seat_FL', 'Seat_FR_Back': 'Seat_FR'}
+
+
+def island_tag(part, lo, hi):
+  """Which piece of a part one of its islands (connected pieces, extent lo..hi, glTF axes) is, or ''."""
+  if part in ('glassDark_roof', 'tex_roof', 'plastic_seals_roof'):
+    return 'front' if hi[0] > -0.9 else ''          # the front panel; the rear one is fixed
+  if part == 'Seats_Front_Closed':
+    return 'back' if hi[0] < 0 and hi[1] > 0.4 else ''   # backrest, headrest and their trim, behind the hip
+  if part == 'plastic_display_main':
+    return 'screen' if lo[1] > 0.19 else ''          # the screen's housing, not its stand
+  return ''
+
+
+ISLAND_PARTS = {'glassDark_roof', 'tex_roof', 'plastic_seals_roof', 'Seats_Front_Closed', 'plastic_display_main'}
 RIG = ('Body', 'Door_Front_L', 'Door_Front_R', 'Door_Rear_L', 'Door_Rear_R', 'Tailgate')   # nodes whose meshes are split
 MATCH_TOL = 0.003   # m: a glb triangle farther than this from every master triangle is reported
 
 
 def groups_of(part, c):
-  """The group of each of a master part's triangles in the glb (centroids c, glTF axes); '' stays put."""
+  """The group of each of a master part's triangles in the glb (centroids c, glTF axes); '' stays put.
+  part is the master object's name, with '#piece' for the parts told apart by island_tag."""
   g = np.full(len(c), '', dtype=object)
+  name = part.split('#')[0]
   if part in WINDOWS:
     g[:] = WINDOWS[part]
-  elif part in ROOF:
+  elif part in SUNROOF:
+    g[:] = 'Sunroof'
+  elif name in ROOF:
     g[:] = 'Roof'
   elif part == HEADLINER:
     g[(c[:, 1] > HEADLINER_UP) & (np.abs(c[:, 2]) < HEADLINER_HALF_W)] = 'Roof'
-  elif part in FRONT_SEATS:
-    g[:] = FRONT_SEATS[part] or np.where(c[:, 2] < 0, 'Seat_FL', 'Seat_FR')   # -z is the car's left
+  elif name == 'Seats_Front_Closed':
+    back = '_Back' if part.endswith('#back') else ''
+    g[:] = np.where(c[:, 2] < 0, 'Seat_FL' + back, 'Seat_FR' + back)   # -z is the car's left
   else:
     for name, parts in SIMPLE.items():
       if part in parts:
@@ -82,23 +114,50 @@ def rig_node(o):
   return o and o.name
 
 
+def islands(tris, n):
+  """The island (connected piece) of each triangle (rows of vertex indices) of a mesh with n vertices."""
+  root = list(range(n))
+  def find(a):
+    while root[a] != a:
+      root[a] = root[root[a]]
+      a = root[a]
+    return a
+  for a, b, c in tris.tolist():
+    ra, rb, rc = find(a), find(b), find(c)
+    root[rb] = ra
+    root[rc] = ra
+  return np.array([find(t[0]) for t in tris.tolist()])
+
+
 def triangle_centroids(o, mesh):
-  """Centroids (glTF axes) and material names of a mesh's triangles, placed by the object."""
+  """Centroids (glTF axes), material names and owner labels (the part, '#piece' for the parts made of
+  several) of a mesh's triangles, placed by the object."""
   mesh.calc_loop_triangles()
   n = len(mesh.loop_triangles)
   if n == 0:
-    return np.zeros((0, 3)), []
+    return np.zeros((0, 3)), [], []
   vi = np.empty(n * 3, np.int32)
   mesh.loop_triangles.foreach_get('vertices', vi)
+  vi = vi.reshape(-1, 3)
   mi = np.empty(n, np.int32)
   mesh.loop_triangles.foreach_get('material_index', mi)
   co = np.empty(len(mesh.vertices) * 3, np.float32)
   mesh.vertices.foreach_get('co', co)
   co = co.reshape(-1, 3).astype(np.float64)
   w = co @ np.array(o.matrix_world)[:3, :3].T + np.array(o.matrix_world)[:3, 3]
-  c = w[vi.reshape(-1, 3)].mean(1)
+  w = np.c_[w[:, 0], w[:, 2], -w[:, 1]]   # Blender Z-up -> glTF Y-up
+  c = w[vi].mean(1)
   slots = [s.material.name if s.material else '' for s in o.material_slots] or ['']
-  return np.c_[c[:, 0], c[:, 2], -c[:, 1]], [slots[min(i, len(slots) - 1)] for i in mi]   # Blender Z-up -> glTF Y-up
+  owners = [o.name] * n
+  if o.name in ISLAND_PARTS:
+    isl = islands(vi, len(co))
+    for k in np.unique(isl):
+      sel = isl == k
+      pts = w[np.unique(vi[sel])]
+      tag = island_tag(o.name, pts.min(0), pts.max(0))
+      for t in np.nonzero(sel)[0]:
+        owners[t] = f'{o.name}#{tag}' if tag else o.name
+  return c, [slots[min(i, len(slots) - 1)] for i in mi], owners
 
 
 def master_index():
@@ -114,11 +173,11 @@ def master_index():
     if o.modifiers:   # the glb has some parts subdivided and some as modeled: index both
       meshes.append((o, ev.to_mesh()))
     for obj, mesh in meshes:
-      c, mats = triangle_centroids(obj, mesh)
-      for p, m in zip(c, mats, strict=True):
+      c, mats, owners = triangle_centroids(obj, mesh)
+      for p, m, owner in zip(c, mats, owners, strict=True):
         a = pts.setdefault((rig, m), ([], []))
         a[0].append(p)
-        a[1].append(o.name)
+        a[1].append(owner)
     if o.modifiers:
       ev.to_mesh_clear()
   index = {}
@@ -173,13 +232,17 @@ class Glb:
     self.j['accessors'].append(a)
     return len(self.j['accessors']) - 1
 
-  def subset(self, prim, tris):
-    """A copy of primitive `prim` with only triangles `tris` (rows of vertex indices) and their vertices."""
+  def subset(self, prim, tris, shift=None):
+    """A copy of primitive `prim` with only triangles `tris` (rows of vertex indices) and their vertices,
+    moved by `shift`."""
     used, remap = np.unique(tris, return_inverse=True)
     out = {k: v for k, v in prim.items() if k not in ('attributes', 'indices', 'targets')}
     out['attributes'] = {}
     for name, acc in prim['attributes'].items():
-      out['attributes'][name] = self.add_accessor(self.array(acc)[used], self.j['accessors'][acc], 34962)
+      data = self.array(acc)[used]
+      if name == 'POSITION' and shift is not None:
+        data = (data + np.asarray(shift, np.float32)).astype(np.float32)
+      out['attributes'][name] = self.add_accessor(data, self.j['accessors'][acc], 34962)
     idx = remap.reshape(-1).astype(np.uint16 if len(used) < 65536 else np.uint32)
     out['indices'] = self.add_accessor(idx, {'componentType': 5123 if idx.dtype == np.uint16 else 5125, 'type': 'SCALAR'}, 34963)
     return out
@@ -306,7 +369,11 @@ def split(glb, index):
           if sel.any():
             piece = pieces.setdefault((rig_i, g), {'prims': [], 'parts': set(), 'translation': local})
             assert piece['translation'] == local, f"{g}: its parts sit at different offsets under {rig['name']}"
-            piece['prims'].append(glb.subset(prim, tris[sel]))
+            shift = None
+            if g in PIVOTS:   # vertices relative to the pivot (only Body's meshes, which sit at the origin, turn)
+              assert not any(local), g
+              shift = -np.array(PIVOTS[g])
+            piece['prims'].append(glb.subset(prim, tris[sel], shift))
             piece['parts'] |= set(owner[sel])
         if (group == '').any():
           keep.append(glb.subset(prim, tris[group == '']))
@@ -315,13 +382,19 @@ def split(glb, index):
         del node['mesh']
         if not node.get('children'):
           rig['children'].remove(ci)
+  made = {}   # group -> node index
   for (rig_i, g), piece in sorted(pieces.items(), key=lambda kv: GROUPS.index(kv[0][1])):
     j['meshes'].append({'name': g, 'primitives': piece['prims']})
     node = {'name': g, 'mesh': len(j['meshes']) - 1, 'extras': {'part_group': g, 'source_parts': sorted(piece['parts'])}}
-    if any(piece['translation']):
-      node['translation'] = piece['translation']
+    translation = PIVOTS[g] if g in PIVOTS else piece['translation']
+    if g in PARENTS:   # hangs from its parent group, relative to the parent's pivot
+      translation = list(np.array(translation) - np.array(PIVOTS.get(PARENTS[g], (0, 0, 0))))
+    if any(translation):
+      node['translation'] = [float(v) for v in translation]
     j['nodes'].append(node)
-    j['nodes'][rig_i]['children'].append(len(j['nodes']) - 1)
+    made[g] = len(j['nodes']) - 1
+    parent = j['nodes'][made[PARENTS[g]]] if g in PARENTS else j['nodes'][rig_i]
+    parent.setdefault('children', []).append(made[g])
     tris = sum(j['accessors'][p['indices']]['count'] // 3 for p in piece['prims'])
     mats = [j['materials'][p['material']]['name'] for p in piece['prims']]
     print(f"{j['nodes'][rig_i]['name']}/{g}: {tris} triangles, {len(mats)} materials ({', '.join(mats)}); parts: {', '.join(sorted(piece['parts']))}")
