@@ -1,6 +1,7 @@
 // sunnypilot web HUD entry point: connects to the device, renders the car view and wires the controls.
 import { $, $$, el, api, fmtTime, iconSvg, setClass, setText, store, save } from './util.js';
 import { CarScene } from './scene.js';
+import { CarControls } from './carcontrols.js';
 import { OCEAN_PAINT_DEFAULT, OCEAN_WHEELS_DEFAULT } from './models.js';
 import { LANE_CONF_THRESHOLD } from './road.js';
 import { Hud } from './hud.js';
@@ -9,6 +10,7 @@ import { VehicleState } from './vehicle.js';
 
 const SETTINGS_VERSION = 3;
 const AUTO_VIEW_HOLD_MS = 10000;   // a parking maneuver starting this soon after the user picked a view keeps it
+const TAP_PX = 8, TAP_MS = 300;    // a tap moves less and is shorter than this; two within TAP_MS are a double tap
 const STALE_MS = 6000;             // the server streams at 20 Hz: this long without a message means the link is dead
 const DEFAULTS = {
   theme: 'auto', units: 'auto', laneSource: 'blend', egoPaint: OCEAN_PAINT_DEFAULT, egoWheels: OCEAN_WHEELS_DEFAULT, view: 'chase',
@@ -54,6 +56,7 @@ class App {
     this.hud = new Hud();
     this.vehicle = new VehicleState();
     this.ui = new Settings(this);
+    this.car = new CarControls(this);   // the car controls mockup (tap the car)
     this.applyTheme();
     this.scene.setEgoLook(this.settings.egoPaint, this.settings.egoWheels);
     this.setView(this.settings.view, true);
@@ -80,6 +83,7 @@ class App {
       last = now;
       try { this.vehicle.update(this.state, now - this.lastStateAt, dt); } catch (e) { this.reportError(e); }
       try { this.scene.frame(dt, this.vehicle); } catch (e) { this.reportError(e); }
+      try { this.car.frame(dt); } catch (e) { this.reportError(e); }
       try { if (this.state) this.hud.update(this.state, this.settings, this.vehicle); } catch (e) { this.reportError(e); }
     };
     requestAnimationFrame(loop);
@@ -122,6 +126,7 @@ class App {
     this.scene.setLayoutOffset(shift);
     // portrait overlays stack below the status header
     document.documentElement.style.setProperty('--drive-h', `${Math.round(card.getBoundingClientRect().bottom)}px`);
+    if (this.car) this.car.layout(true);   // car controls: refit the car to what's left of the screen
   }
 
   // ---- connection -----------------------------------------------------------------------------------
@@ -237,7 +242,7 @@ class App {
   // so a level check would flip back to top forever), and a maneuver that starts right after they
   // picked a view doesn't switch at all.
   autoView(state) {
-    if (this.settings.autoView === false) return;
+    if (this.settings.autoView === false || this.car.isOpen) return;
     const op = state.op || {};
     const f = state.fisker;
     const v = op.carState ? op.carState.vEgo : (f && f.vehicle && f.vehicle.speedKph != null ? f.vehicle.speedKph / 3.6 : null);
@@ -281,9 +286,11 @@ class App {
       this.setSetting('view', b.dataset.view);
       this.setView(b.dataset.view);
     }));
-    // double-tap the scene to recenter on the car; only taps count, not the end of a drag or pinch
+    // Taps on the scene (not the end of a drag or pinch): one on the car opens the car controls, a double
+    // tap recenters on the car. A tap on the car waits out the double tap before it opens them. With the
+    // car controls open, every tap goes to them.
     const scene = $('#scene'), down = new Map();
-    let tap = null, lastTap = 0;
+    let tap = null, lastTap = 0, pending = 0;
     scene.addEventListener('pointerdown', (e) => {
       down.set(e.pointerId, true);
       tap = down.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
@@ -291,11 +298,18 @@ class App {
     const up = (e) => {
       down.delete(e.pointerId);
       const now = performance.now();
-      const isTap = tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8 && now - tap.t < 350;
+      const isTap = tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < TAP_PX && now - tap.t < TAP_MS;
       tap = null;
       if (!isTap) return;
-      if (now - lastTap < 300) this.setView(this.scene.view || this.settings.view);
+      if (this.car.isOpen) { this.car.tap(e.clientX, e.clientY); return; }
+      clearTimeout(pending);
+      if (now - lastTap < TAP_MS) {
+        this.setView(this.scene.view || this.settings.view);
+        lastTap = 0;
+        return;
+      }
       lastTap = now;
+      if (this.scene.pickEgo(e.clientX, e.clientY)) pending = setTimeout(() => this.car.enter(), TAP_MS);
     };
     scene.addEventListener('pointerup', up);
     scene.addEventListener('pointercancel', up);

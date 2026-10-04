@@ -331,7 +331,7 @@ a { color: var(--accent); }
 html.carmode .carribbon { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
 .carribbon .cats { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; overscroll-behavior: contain; scroll-behavior: smooth; }
 .carribbon .cats::-webkit-scrollbar { display: none; }
-.carribbon .cat { flex: none; width: 76px; height: 64px; border: 0; border-radius: 15px; background: transparent; color: var(--muted);
+.carribbon .cat { flex: none; min-width: 76px; height: 64px; padding: 0 8px; border: 0; border-radius: 15px; background: transparent; color: var(--muted);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
 .carribbon .cat svg { width: 25px; height: 25px; }
 .carribbon .cat.on { background: var(--accent-soft); color: var(--accent); }
@@ -404,7 +404,7 @@ html.carmode .carribbon { transform: translate(-50%, 0); opacity: 1; pointer-eve
   font-size: 13.5px; font-weight: 650; white-space: nowrap; pointer-events: auto; will-change: transform; animation: fadein .3s ease-out; }
 .callout .tt { width: 20px; height: 20px; color: var(--accent); }
 .callout.iconly { padding: 0; width: 40px; justify-content: center; }
-.callout.iconly span { display: none; }
+.callout.iconly > span:not(.tt) { display: none; }
 @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
 .ccard { position: absolute; left: 0; top: 0; width: 290px; padding: 10px 12px 10px; border-radius: 18px; background: var(--panel); box-shadow: var(--shadow);
   -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2); pointer-events: auto; will-change: transform; animation: fadein .3s ease-out; }
@@ -418,12 +418,39 @@ html.carmode .carribbon { transform: translate(-50%, 0); opacity: 1; pointer-eve
 .carback { position: absolute; left: 50%; top: calc(16px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 5; height: 40px; padding: 0 16px 0 10px; border: 0;
   border-radius: 99px; background: var(--panel); color: var(--text); box-shadow: var(--shadow); font-weight: 650; font-size: 14px; display: flex; align-items: center; gap: 6px; pointer-events: auto; }
 .carback svg { width: 18px; height: 18px; }
+.callout.on { background: var(--accent); color: #fff; }
+.callout.on .tt { color: #fff; }
+html.carmode #replaybar { display: none; }
+
+/* rows whose control is too wide to sit beside the label */
+.row.stack { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 12px 12px; }
+.row.stack .seg { display: flex; }
+.row.stack .seg button { flex: 1 1 auto; padding: 0 8px; }
+.ccard .crow .lbl { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.ccard .crow .lbl em { font-style: normal; font-weight: 650; color: var(--accent); font-variant-numeric: tabular-nums; }
+.ccard .crow.stack .seg button { flex: 1 1 auto; }
+.ccard .dots { gap: 6px; }
+.ccard .dots button { width: 28px; height: 28px; }
+.carpanel .kv.info { padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; }
+.carpanel .btns { margin: 10px 0 0; }
+.carpanel .rows + .rows, .carpanel .btns + .rows, .carpanel .rows.plist + .btns { margin-top: 10px; }
+.carpanel p.desc { margin: 0 0 10px; }
+/* climate: the two set temperatures */
+.temps { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 6px 14px; padding: 12px 14px; border-radius: 16px; background: var(--bg2); border: 1px solid var(--line); }
+.temp { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.temp small { font-size: 12px; font-weight: 600; color: var(--muted); }
+.temps .sync { grid-column: 1 / -1; justify-self: center; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.temps .sync input { width: 18px; height: 18px; accent-color: var(--accent); }
+.hero .bar { position: relative; }
+.hero .bar em { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text); opacity: .45; }
+.hero.lock .tt { width: 38px; height: 38px; color: var(--accent); }
+.hero.lock .meta { font-size: 13px; }
 
 @media (max-aspect-ratio: 1/1) {
   .carribbon { left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); max-width: none; transform: translateY(calc(100% + 40px)); }
   html.carmode .carribbon { transform: none; }
   .carribbon .cats { flex: 1; }
-  .carribbon .cat { width: 70px; }
+  .carribbon .cat { min-width: 70px; padding: 0 6px; }
   .carpanel { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 50%; border-radius: 26px 26px 0 0; transform: translateY(100%); }
   .carpanel .pbody { padding-bottom: calc(var(--ribbon-h, 76px) + 24px); }
   .carpanel .pfoot { display: none; }
@@ -432,4 +459,9 @@ html.carmode .carribbon { transform: translate(-50%, 0); opacity: 1; pointer-eve
 @media (max-width: 760px) and (min-aspect-ratio: 1/1) {
   .carpanel { width: 50vw; top: 8px; right: 8px; }
   .ccard { width: 250px; }
+}
+@media (max-height: 520px), (max-width: 520px) {
+  .callout.iconly { width: 32px; height: 32px; }
+  .callout { height: 34px; font-size: 12.5px; padding: 0 12px 0 8px; }
+  .callout .tt { width: 17px; height: 17px; }
 }
