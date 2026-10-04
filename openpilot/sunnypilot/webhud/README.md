@@ -162,6 +162,16 @@ each later distance only nudges it back inside what that distance allows. In a p
 the app, neither card shows. *Display → Debug → Demo music & navigation* plays a made-up playlist and
 route (the turns come nearer as the car drives), for trying them without the car.
 
+Live car state (`static/js/carstate.js`, shown in the car-control menus): on Pulse — the add-on board
+the app runs on — the two CAN controllers are wired to the car's IBUS1 and IBUS2. The app reads the
+status the gateway broadcasts (locks, doors, windows, sunroof, lights, climate, seats, gear, drive
+mode, regen, battery) and forwards it to the page, which decodes it (`carsignals.js`, generated from
+the vendor matrices and validated against opendbc's CANParser) and shows a "From the car" block at the
+top of each menu with a live dot. Receive only: the app reads these buses, it never writes to them, so
+this shows what the car is doing but does not change it. In a plain browser, or until a frame arrives,
+the block is absent and the controls stay a mockup. *Display → Debug → Demo live car state* fills it
+with made-up values for working without the car. See [`android/`](android/README.md#live-car-state).
+
 Frame rate (`static/js/perf.js`, *Display → Debug*, on for now): a counter under the status card,
 over the car controls' panel. Tap it for the slowest frame of the last second, the HUD's own script
 time per frame, draw calls, triangles and the render resolution. *Render resolution* is *Auto* by

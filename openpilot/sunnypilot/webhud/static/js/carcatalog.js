@@ -46,7 +46,8 @@ export const DRIVE_MODES = [   // Ocean drive modes, with the color the car show
 
 export const CATEGORIES = [
   {
-    id: 'lighting', label: 'Lighting', icon: 'beam', zone: 'lamps', roof: false,
+    id: 'lighting',
+ label: 'Lighting', icon: 'beam', zone: 'lamps', roof: false,
     focus: { at: [0, 0.78, 0.2], az: 0, el: 9, fit: [4.8, 1.7] },
     cards: [
       {
@@ -70,7 +71,8 @@ export const CATEGORIES = [
     ],
   },
   {
-    id: 'climate', label: 'Climate', icon: 'fan', zone: 'vents', roof: true,
+    id: 'climate',
+ label: 'Climate', icon: 'fan', zone: 'vents', roof: true,
     focus: { at: [0, 0.95, 2.05], az: 180, el: 62, fit: [2.1, 2.3] },
     sections: [
       { controls: [{ id: 'climate.temps', type: 'temps' }] },
@@ -106,7 +108,8 @@ export const CATEGORIES = [
     ],
   },
   {
-    id: 'seats', label: 'Seats', icon: 'seat', zone: 'seats', roof: true, ghost: ['Seat_FL', 'Seat_FR', 'Seat_Rear', 'Console'],
+    id: 'seats',
+ label: 'Seats', icon: 'seat', zone: 'seats', roof: true, ghost: ['Seat_FL', 'Seat_FR', 'Seat_Rear', 'Console'],
     focus: { at: [0, 0.82, 2.6], az: -38, el: 38, fit: [3.2, 2.4], fitP: [3.6, 2.8] },
     cards: [
       { title: 'Driver', anchor: 'seatFL', seat: 'FL', controls: seatControls('FL', true) },
@@ -118,7 +121,8 @@ export const CATEGORIES = [
     ],
   },
   {
-    id: 'driving', label: 'Driving', icon: 'gauge', zone: 'drive', roof: false, ghost: ['Seat_FL', 'Seat_FR', 'Seat_Rear'],
+    id: 'driving',
+ label: 'Driving', icon: 'gauge', zone: 'drive', roof: false, ghost: ['Seat_FL', 'Seat_FR', 'Seat_Rear'],
     focus: { at: [0, 0.62, 2.4], az: -90, el: 10, fit: [5.4, 1.9] },
     sections: [
       { title: 'Drive mode', controls: [{ id: 'drive.mode', type: 'modes', options: DRIVE_MODES, def: 'earth' }] },
@@ -216,7 +220,8 @@ export const CATEGORIES = [
     ],
   },
   {
-    id: 'energy', label: 'Energy', icon: 'bolt', zone: 'port', roof: false,
+    id: 'energy',
+ label: 'Energy', icon: 'bolt', zone: 'port', roof: false,
     focus: { at: [-0.6, 0.62, 1.6], az: -52, el: 22, fit: [3.2, 1.9] },
     chips: [{ anchor: 'port', id: 'energy.port', kind: 'port', label: 'Charge port', toward: [-0.6, -0.8] }],
     sections: [
@@ -273,7 +278,8 @@ export const CATEGORIES = [
     ],
   },
   {
-    id: 'doors', label: 'Doors & Windows', icon: 'door', zone: 'doors', roof: false,
+    id: 'doors',
+ label: 'Doors & Windows', icon: 'door', zone: 'doors', roof: false,
     focus: { at: [0, 0.95, 2.9], az: -142, el: 30, fit: [4.6, 2.6] },
     // a door's chip opens the door and winds its window, and rides on the door; a quarter window's winds it
     chips: [
@@ -506,6 +512,69 @@ function seatControls(seat, driver) {
 }
 
 // the default of every control by id
+
+// ---- live read-out from the car (carstate.js over the Android app's CAN link) --------------------------
+// Each category's live(cs) returns [label, value] rows for the signals arriving right now; a missing
+// signal is skipped, so an empty array means nothing is live for it. Read-only: this only displays.
+const onoff = (v) => v === undefined ? undefined : v ? 'On' : 'Off';
+const openClosed = (l) => l === undefined ? undefined : l;
+const row = (label, v) => v === undefined || v === '' ? null : [label, String(v)];
+const rows = (...r) => r.filter(Boolean);
+export const LIVE = {
+  lighting: (cs) => rows(
+    row('Headlights', cs.label('BCM_ExtLampSwtSts')),
+    row('High beam', onoff(cs.rawOf('BCM_HiBeamOutpCmd'))),
+    row('Front fog', cs.label('BCM_FrntFogLampSwtSts')),
+    row('Ambient brightness', cs.rawOf('BCM_VehAmbBri') === undefined ? undefined :
+      (cs.rawOf('BCM_VehAmbBri') >= 0xFE ? '—' : Math.round(cs.rawOf('BCM_VehAmbBri') / 254 * 100) + '%')),
+  ),
+  climate: (cs) => rows(
+    row('A/C', cs.label('ECC_ACSts')),
+    row('Auto', cs.label('ECC_AUTOSts')),
+    row('Fan', cs.rawOf('ECC_WindSpdSts')),
+    row('Driver set', cs.value('ECC_DrvrTSetSts') ? cs.value('ECC_DrvrTSetSts').toFixed(1) + ' °C' : undefined),
+    row('Passenger set', cs.value('ECC_PassTSetSts') ? cs.value('ECC_PassTSetSts').toFixed(1) + ' °C' : undefined),
+    row('Recirculation', cs.label('ECC_CircSts')),
+    row('Outside', cs.rawOf('ECC_OutdT') === undefined || cs.rawOf('ECC_OutdT') === 0xFF ? undefined : cs.value('ECC_OutdT').toFixed(1) + ' °C'),
+  ),
+  seats: (cs) => rows(
+    row('Driver heat', cs.label('DSMC_DrvrSeatHeatgSts')),
+    row('Passenger heat', cs.label('PSM_PassSeatHeatgSts')),
+    row('Rear left heat', cs.label('DSMC_RearLeSeatHeatgSts')),
+    row('Rear right heat', cs.label('DSMC_RearRiSeatHeatgSts')),
+  ),
+  driving: (cs) => rows(
+    row('Gear', (cs.label('VCU_GearSig') || '').replace('gear ', '').replace(' gear', '') || undefined),
+    row('Ready', cs.label('VCU_RdyLamp')),
+    row('Drive mode', cs.label('VCU_DrvModSigFb')),
+    row('Regen', cs.label('VCU_RegenLvlFb')),
+    row('One-pedal', cs.label('VCU_EPedlStsFb')),
+    row('Acceleration', cs.label('VCU_AccelModFb')),
+  ),
+  energy: (cs) => rows(
+    row('Battery', cs.rawOf('BMS_Bat_SoC_usable') === undefined ? undefined : cs.rawOf('BMS_Bat_SoC_usable') + '%'),
+    row('Charge gun', cs.label('VCU_ACChrgDchaGunCnctnSts')),
+  ),
+  doors: (cs) => {
+    const win = (pos, sts) => {
+      const p = cs.rawOf(pos);
+      if (p !== undefined) return Math.min(100, Math.round(p * 0.5)) + '% open';
+      return cs.label(sts);
+    };
+    return rows(
+      row('Central lock', cs.label('BCM_CenLockSwtSts') === 'Inactive' ? (cs.label('BCM_FrntDrDoorLockSts') === 'Lock' ? 'Locked' : 'Unlocked') : cs.label('BCM_CenLockSwtSts')),
+      row('Driver door', cs.label('BCM_DrFrntDoorSts')),
+      row('Passenger door', cs.label('BCM_PasFrntDoorSts')),
+      row('Rear left door', cs.label('BCM_LeReDoorSts')),
+      row('Rear right door', cs.label('BCM_RiReDoorSts')),
+      row('Front left window', win('BCM_AP_FL_LeFrntWinPosnInfo', 'BCM_LeFrntWinSts')),
+      row('Front right window', win('BCM_AP_FL_RiFrntWinPosnInfo', 'BCM_RiFrntWinSts')),
+      row('Sunroof', cs.label('BCM_SunroofSts')),
+      row('Frunk', cs.label('BCM_FrntHoodLidSts')),
+    );
+  },
+};
+
 export function defaults() {
   const out = {};
   const add = (c) => {

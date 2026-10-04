@@ -5,7 +5,7 @@
 // nothing is sent anywhere -- this file makes no requests, to the car, the comma or the server.
 import * as THREE from '../vendor/three.module.min.js';
 import { $, $$, el, iconSvg, setClass, setText } from './util.js';
-import { CATEGORIES, DRIVE_MODES, SEAT_LIMITS, SEAT_MEMORY, defaults } from './carcatalog.js';
+import { CATEGORIES, DRIVE_MODES, SEAT_LIMITS, SEAT_MEMORY, LIVE, defaults } from './carcatalog.js';
 import { ZONES, ANCHORS } from './cutaway.js';
 import { ApaMock, APA_SIGNALS } from './apamock.js';
 
@@ -188,6 +188,8 @@ export class CarControls {
     const close = el('button.back.icon', { 'aria-label': 'Close', title: 'Close', onclick: () => this.exit() });
     close.innerHTML = iconSvg('close');
     const body = el('div.pbody');
+    const liveBlock = this._liveSection(c);
+    if (liveBlock) body.append(liveBlock);
     if (c.render) body.append(...c.render());
     for (const sec of c.render ? [] : c.sections || c.cards.map(card => ({ title: card.title, controls: card.controls }))) {
       const s = el('div.section');
@@ -212,6 +214,26 @@ export class CarControls {
     this.panelCat = c.id;
     this.panel.classList.add('open');
     this.panel.setAttribute('aria-hidden', 'false');
+  }
+
+  // A "From the car" block at the top of a panel: the real state the car is broadcasting on CAN
+  // (carstate.js), when the Android app's read-only link is up. Refreshes every panel frame.
+  _liveSection(c) {
+    const cs = this.app.carState, spec = LIVE[c.id];
+    if (!cs || !spec) return null;
+    const sec = el('div.section.live');
+    const head = el('h3', el('span.livedot'), 'From the car');
+    const grid = el('div.livegrid');
+    sec.append(head, grid);
+    const paint = () => {
+      const data = spec(cs);
+      setClass(sec, 'off', data.length === 0);
+      if (!data.length) { grid.replaceChildren(el('div.livenone', cs.demo ? 'Demo' : 'No live data from the car')); return; }
+      grid.replaceChildren(...data.flatMap(([k, v]) => [el('span.livek', k), el('span.livev', v)]));
+    };
+    this.watch(paint, true);
+    paint();
+    return sec;
   }
 
   // ---- pins: badges, cards and chips on the car --------------------------------------------------------
@@ -324,6 +346,11 @@ export class CarControls {
   frame(dt) {
     if (!this.isOpen) return;
     this._tick(dt);
+    // refresh the panel's live "From the car" read-out as CAN data arrives (~5 Hz)
+    if (this.app.carState && this.panel.classList.contains('open')) {
+      this._liveT = (this._liveT || 0) + dt;
+      if (this._liveT > 0.2) { this._liveT = 0; for (const w of this.watchers) if (w.panel) w.fn(); }
+    }
     if (!this.pins.length) return;
     const cam = this.scene.camera, W = window.innerWidth, H = window.innerHeight;
     const r = this.rect || { left: 0, right: W, top: 0, bottom: H };

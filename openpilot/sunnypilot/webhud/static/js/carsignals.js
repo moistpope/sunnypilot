@@ -1,0 +1,85 @@
+// Generated from FM29 IBUS1/IBUS2 CAN matrices (V390.1). Status messages the gateway broadcasts, for
+// the car-state read-out (carstate.js). Receive-only: the HUD decodes and displays these, never sends them.
+// Each signal: Motorola/big-endian, `start` = matrix start-bit + length - 1 (validated against opendbc).
+export const CAN_MESSAGES = [
+  { bus: 'IBUS1', addr: 0x234, name: '0x234', signals: [
+    { name: 'VCU_RdyLamp', start: 12, len: 1, res: 1, off: 0, enum: {0: "Not ready", 1: "Ready"} },
+    { name: 'VCU_StgyGearSig', start: 19, len: 4, res: 1, off: 0, enum: {0: "Undefined initial value", 1: "gear P", 2: "gear N", 3: "R gear", 4: "gear D", 5: "Reserved", 6: "gear E", 7: "gear S"} },
+    { name: 'VCU_GearSig', start: 27, len: 4, res: 1, off: 0, enum: {0: "Undefined initial value", 1: "gear P", 2: "gear N", 3: "R gear", 4: "D gear", 5: "Reserved", 6: "gear E", 7: "gear S"} },
+    { name: 'VCU_DrvModSigFb', start: 61, len: 3, res: 1, off: 0, enum: {0: "Eco", 1: "Normal", 2: "Sport", 3: "Custom", 4: "Snow", 5: "Offroad", 6: "Valet", 7: "Invalid"} },
+  ]},
+  { bus: 'IBUS1', addr: 0x2F5, name: '0x2f5', signals: [
+    { name: 'BMS_Bat_SoC_usable', start: 7, len: 8, res: 1, off: 0 },
+    { name: 'BMS_Bat_SOC_Real', start: 55, len: 8, res: 1, off: 0 },
+  ]},
+  { bus: 'IBUS1', addr: 0x335, name: '0x335', signals: [
+    { name: 'BCM_ExtLampSwtSts', start: 23, len: 3, res: 1, off: 0, enum: {0: "Off", 1: "Auto", 2: "Position", 3: "Low Beam"} },
+    { name: 'BCM_FrntFogLampSwtSts', start: 28, len: 1, res: 1, off: 0, enum: {0: "Inactive", 1: "Active"} },
+    { name: 'BCM_RainClsSunroofSetSts', start: 31, len: 1, res: 1, off: 0, enum: {0: "Inactive", 1: "Active"} },
+    { name: 'BCM_MirrLockAutoSetSts', start: 32, len: 1, res: 1, off: 0, enum: {0: "Off", 1: "On"} },
+    { name: 'BCM_HiBeamOutpCmd', start: 43, len: 1, res: 1, off: 0, enum: {0: "Off", 1: "On"} },
+    { name: 'BCM_LoBeamOutpCmd', start: 44, len: 1, res: 1, off: 0, enum: {0: "Off", 1: "On"} },
+    { name: 'BCM_PosnLampOutpCmd', start: 46, len: 2, res: 1, off: 0, enum: {0: "Off", 1: "Left Park On", 2: "Right Park On", 3: "All On"} },
+    { name: 'BCM_VehAmbBri', start: 63, len: 8, res: 100, off: 0, enum: {254: "Maximum value", 255: "Init.value/fault value"} },
+  ]},
+  { bus: 'IBUS1', addr: 0x343, name: '0x343', signals: [
+    { name: 'BCM_FrntHoodLidSts', start: 16, len: 1, res: 1, off: 0, enum: {0: "Closed", 1: "Open"} },
+    { name: 'BCM_FrntDrDoorLockSts', start: 18, len: 1, res: 1, off: 0, enum: {0: "Lock", 1: "Unlock"} },
+    { name: 'BCM_TrRelsSwtSts', start: 19, len: 1, res: 1, off: 0, enum: {0: "Inactive", 1: "Active"} },
+    { name: 'BCM_DrFrntDoorSts', start: 21, len: 1, res: 1, off: 0, enum: {0: "Closed", 1: "Open"} },
+    { name: 'BCM_PasFrntDoorSts', start: 22, len: 1, res: 1, off: 0, enum: {0: "Closed", 1: "Open"} },
+    { name: 'BCM_CenLockSwtSts', start: 27, len: 2, res: 1, off: 0, enum: {0: "Inactive", 1: "Unlock", 2: "Lock", 3: "Reserved"} },
+    { name: 'BCM_RiReDoorSts', start: 29, len: 1, res: 1, off: 0, enum: {0: "Closed", 1: "Open"} },
+    { name: 'BCM_LeReDoorSts', start: 30, len: 1, res: 1, off: 0, enum: {0: "Closed", 1: "Open"} },
+    { name: 'BCM_LeFrntWinSts', start: 31, len: 1, res: 1, off: 0, enum: {0: "Closed", 1: "Open"} },
+    { name: 'BCM_RiFrntWinSts', start: 32, len: 1, res: 1, off: 0, enum: {0: "Closed", 1: "Open"} },
+    { name: 'BCM_LeReWinSts', start: 33, len: 1, res: 1, off: 0, enum: {0: "Closed", 1: "Open"} },
+    { name: 'BCM_RiReWinSt', start: 34, len: 1, res: 1, off: 0, enum: {0: "Closed", 1: "Open"} },
+    { name: 'BCM_SunroofSts', start: 35, len: 1, res: 1, off: 0, enum: {0: "Closed", 1: "Open"} },
+    { name: 'BCM_SunroofPosnInfo', start: 55, len: 7, res: 1, off: 0 },
+    { name: 'BCM_SunroofRunngSts', start: 61, len: 3, res: 1, off: 0, enum: {0: "Stopped", 1: "Opening Tilt", 2: "Closing Tilt", 3: "Opening Slide", 4: "Closing Slide", 5: "Reversing (AP/Stall)", 6: "Moving Uninitialized", 7: "Reserved"} },
+  ]},
+  { bus: 'IBUS1', addr: 0x358, name: '0x358', signals: [
+    { name: 'VCU_RegenLvlFb', start: 19, len: 2, res: 1, off: 0, enum: {0: "Off", 1: "Normal", 2: "High", 3: "Invalid"} },
+    { name: 'VCU_AccelModFb', start: 21, len: 2, res: 1, off: 0, enum: {0: "Low", 1: "Medium", 2: "High", 3: "Invalid"} },
+    { name: 'VCU_EPedlStsFb', start: 23, len: 2, res: 1, off: 0, enum: {0: "OnePedalDrive", 1: "Roll", 2: "Creep", 3: "Invalid"} },
+  ]},
+  { bus: 'IBUS1', addr: 0x373, name: '0x373', signals: [
+    { name: 'ECC_ACSts', start: 7, len: 1, res: 1, off: 0, enum: {0: "Off state", 1: "ON state"} },
+    { name: 'ECC_WindSpdSts', start: 12, len: 4, res: 1, off: 0, enum: {0: "Windless gear", 1: "First gear of wind speed", 2: "Wind speed second gear", 3: "third gear of wind speed", 4: "wind speed fourth gear", 5: "Wind speed fifth gear", 6: "Wind speed six", 7: "Wind speed se"} },
+    { name: 'ECC_DrvrTSetSts', start: 23, len: 8, res: 0.5, off: 0, enum: {0: "Inactive", 36: "18\u2103", 37: "18.5\u2103", 38: "19\u2103", 39: "19.5\u2103", 40: "20\u2103", 41: "20.5\u2103", 42: "21\u2103", 43: "21.5\u2103", 44: "22\u2103", 45: "22.5\u2103", 46: "23\u2103", 47: "23.5\u2103", 48: "24\u2103", 49: "24.5\u2103", 50: "25\u2103", 51: "25"} },
+    { name: 'ECC_PassTSetSts', start: 31, len: 8, res: 0.5, off: 0, enum: {0: "Inactive", 36: "18\u2103", 37: "18.5\u2103", 38: "19\u2103", 39: "19.5\u2103", 40: "20\u2103", 41: "20.5\u2103", 42: "21\u2103", 43: "21.5\u2103", 44: "22\u2103", 45: "22.5\u2103", 46: "23\u2103", 47: "23.5\u2103", 48: "24\u2103", 49: "24.5\u2103", 50: "25\u2103", 51: "25"} },
+    { name: 'ECC_AUTOSts', start: 33, len: 1, res: 1, off: 0, enum: {0: "Off", 1: "On"} },
+    { name: 'ECC_SYNCSts', start: 34, len: 1, res: 1, off: 0, enum: {0: "Off", 1: "On"} },
+    { name: 'ECC_CircSts', start: 37, len: 1, res: 1, off: 0, enum: {0: "Inner circulation state", 1: "outer circulation state"} },
+    { name: 'ECC_OutdT', start: 47, len: 8, res: 0.5, off: -48, enum: {255: "Invalid"} },
+    { name: 'ECC_MaxFrntDefrst', start: 50, len: 1, res: 1, off: 0, enum: {0: "Not opened", 1: "Open"} },
+  ]},
+  { bus: 'IBUS1', addr: 0x512, name: '0x512', signals: [
+    { name: 'PSM_PassSeatHeatgSts', start: 4, len: 3, res: 1, off: 0, enum: {0: "Reserved", 1: "High", 2: "Med", 3: "Low", 4: "Off"} },
+    { name: 'PSM_PassSeatVentnSts', start: 7, len: 3, res: 1, off: 0, enum: {0: "Not Change", 1: "High", 2: "Med", 3: "Low", 4: "Off"} },
+  ]},
+  { bus: 'IBUS1', addr: 0x518, name: '0x518', signals: [
+    { name: 'DSMC_DrvrSeatHeatgSts', start: 2, len: 3, res: 1, off: 0, enum: {0: "Reserved", 1: "High", 2: "Med", 3: "Low", 4: "Off"} },
+    { name: 'DSMC_RearLeSeatHeatgSts', start: 26, len: 3, res: 1, off: 0, enum: {0: "Reserved", 1: "High", 2: "Med", 3: "Low", 4: "Off"} },
+    { name: 'DSMC_RearRiSeatHeatgSts', start: 29, len: 3, res: 1, off: 0, enum: {0: "Reserved", 1: "High", 2: "Med", 3: "Low", 4: "Off"} },
+  ]},
+  { bus: 'IBUS2', addr: 0x236, name: '0x236', signals: [
+    { name: 'VCU_DCChrgDchaGunCnctnSts', start: 13, len: 2, res: 1, off: 0, enum: {0: "Initial value", 1: "Not connected", 2: "DCCharging/discharging gun fully connected", 3: "Invalid"} },
+    { name: 'VCU_ACChrgDchaGunCnctnSts', start: 20, len: 3, res: 1, off: 0, enum: {0: "Initial value", 1: "Not connected", 2: "ACCharging/discharging gun fully connected", 3: "V2V adapter plugged", 4: "V2L adapter plugged", 7: "Invalid"} },
+  ]},
+  { bus: 'IBUS2', addr: 0x321, name: '0x321', signals: [
+    { name: 'BCM_AP_FL_LeFrntWinPosnInfo', start: 23, len: 8, res: 0.5, off: 0 },
+    { name: 'BCM_AP_FL_RiFrntWinPosnInfo', start: 31, len: 8, res: 0.5, off: 0 },
+    { name: 'BCM_AP_FL_LeReWinPosnInfo', start: 39, len: 8, res: 0.5, off: 0 },
+    { name: 'BCM_AP_FL_RiReWinPosnInfo', start: 47, len: 8, res: 0.5, off: 0 },
+  ]},
+  { bus: 'IBUS2', addr: 0x369, name: '0x369', signals: [
+    { name: 'BCM_AP_TL_LeReWinPosnInfo', start: 23, len: 8, res: 0.5, off: 0 },
+    { name: 'BCM_AP_TL_RiReWinPosnInfo', start: 31, len: 8, res: 0.5, off: 0 },
+    { name: 'BCM_AP_RW_WinPosnInfo', start: 39, len: 8, res: 0.5, off: 0 },
+    { name: 'BCM_AP_TL_LeReWinSts', start: 40, len: 1, res: 1, off: 0, enum: {0: "Closed", 1: "Open"} },
+    { name: 'BCM_AP_TL_RiReWinSts', start: 41, len: 1, res: 1, off: 0, enum: {0: "Closed", 1: "Open"} },
+    { name: 'BCM_AP_RW_WinSts', start: 42, len: 1, res: 1, off: 0, enum: {0: "Closed", 1: "Open"} },
+  ]},
+];

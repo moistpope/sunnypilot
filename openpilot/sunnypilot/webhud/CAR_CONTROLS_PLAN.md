@@ -123,6 +123,17 @@ rewritten every frame. Changes:
 - `select()` scrolled the ribbon's button into view with `scrollIntoView`, which also scrolled `#app` (to
   a ribbon still sliding in) and shifted the whole HUD up 94 px. It scrolls the ribbon only now.
 
+Live car state (2026-10-05, receive only). Pulse — the add-on SBC the HUD app runs on, not the ICC — has
+two MCP251x CAN controllers on IBUS1 (can1) and IBUS2 (can2). The gateway broadcasts the body, climate,
+powertrain and battery status there. The app reads the ~10 status IDs per bus the menus show and forwards
+changed frames to the page (`android/CanBridge.kt` + the `canbridge` helper, which only reads — no transmit
+path); the page decodes them (`static/js/carstate.js`, table in `carsignals.js` from the vendor matrices,
+validated against opendbc's CANParser) and shows a "From the car" block at the top of each menu. This is
+read-only: it shows what the car is doing, it does not change it; the controls below stay a mockup. Verified
+end to end on the car (helper reads both buses under the app, stable, page connected) and the decode in the
+browser against real captured frames. Commands (writing settings to the bus) are a separate, riskier step,
+not included.
+
 Open:
 - Head-unit performance: check the counter on the HMI, in the overview and the close-up views, with
   *Render resolution* on Full and on 50% (fill rate) and the counter's draws and JS time (CPU). The
