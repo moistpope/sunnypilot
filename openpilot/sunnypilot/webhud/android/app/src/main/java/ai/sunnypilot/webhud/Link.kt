@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
  * every local subnet, the hotspot's first, is swept for port 8088, less often the longer nothing
  * answers (a new network is swept at once).
  *
- * Connected: while the device streams to the page through the [LocalProxy] that's all the proof
+ * Connected: while the device streams to the page through the [LocalServer] that's all the proof
  * needed; when it goes quiet /api/status is polled, and [MAX_MISSES] misses in a row mean it's gone.
  */
 class Link private constructor(context: Context) {
@@ -39,7 +39,7 @@ class Link private constructor(context: Context) {
     private val probes = Executors.newFixedThreadPool(8) { Thread(it, "webhud-probe").apply { isDaemon = true } }
     val root = RootShell()   // also turns on the notification listener (HudListener.grant)
     private val neighbors = Neighbors(root)
-    val proxy = LocalProxy(onDeviceUnreachable = { checkNow() })
+    val server = LocalServer(context.assets, assetVersion(context), onDeviceUnreachable = { checkNow() })
 
     // UI thread only
     private var listener: Listener? = null
@@ -63,7 +63,7 @@ class Link private constructor(context: Context) {
     private val upHosts = LinkedHashMap<String, Long>()   // hosts that refused port 8088 → when, on the nowMs clock
 
     init {
-        proxy.start()
+        server.start()
     }
 
     /** Called with the current state at once, then on every change, on the UI thread. */
@@ -76,18 +76,28 @@ class Link private constructor(context: Context) {
         if (listener === l) listener = null
     }
 
+    // activities showing the HUD: while an activity is recreated (a day/night switch) the new one starts
+    // before the old one stops, so a plain flag would end up paused with the HUD on screen
+    private var shown = 0
+
     /** The HUD is on screen: search or watch. */
+    @Synchronized
     fun resume() {
-        proxy.paused = false
+        shown++
+        server.paused = false
         loop.execute {
             running = true
             schedule(0)
         }
     }
 
-    /** The HUD is hidden: stop, and let go of the device so it stops reading the bus for us. */
+    /** The HUD is hidden (screen off, another app in front): stop, and let go of the device so it stops
+     *  reading the bus for us. The CAN reader and the local server carry on in [HudService]. */
+    @Synchronized
     fun pause() {
-        proxy.paused = true
+        if (--shown > 0) return
+        shown = 0
+        server.paused = true
         loop.execute {
             running = false
             task?.cancel(false)
@@ -122,7 +132,7 @@ class Link private constructor(context: Context) {
 
     private fun tick() {
         val next = try {
-            proxy.closeIdle(IDLE_PIPE_MS)
+            server.closeIdle(IDLE_PIPE_MS)
             if (device != null) watch() else search()
         } catch (e: Exception) {
             Log.e(TAG, "link tick failed", e)
@@ -135,7 +145,7 @@ class Link private constructor(context: Context) {
 
     private fun watch(): Long {
         val d = device ?: return 0
-        if (nowMs() - proxy.lastDeviceData < QUIET_MS) {
+        if (nowMs() - server.lastDeviceData < QUIET_MS) {
             misses = 0   // streaming to the page right now
             return WATCH_INTERVAL_MS
         }
@@ -152,7 +162,7 @@ class Link private constructor(context: Context) {
         device = d
         misses = 0
         prefs.edit().putString(KEY_LAST, d.address).apply()
-        proxy.setDevice(InetSocketAddress(d.host, d.port))
+        server.setDevice(InetSocketAddress(d.host, d.port))
         Log.i(TAG, "connected to ${d.hostname} at ${d.address} (webhud ${d.version}), found by $how")
         main.post { listener?.onConnected(d) }
         return WATCH_INTERVAL_MS
@@ -162,7 +172,7 @@ class Link private constructor(context: Context) {
         Log.w(TAG, "lost the device: $why")
         device = null
         misses = 0
-        proxy.setDevice(null)
+        server.setDevice(null)
         report(Net.subnets(), null, force = true)
     }
 
@@ -257,6 +267,13 @@ class Link private constructor(context: Context) {
         private const val IDLE_PIPE_MS = 15_000L
 
         @Volatile private var instance: Link? = null
+
+        /** Changes with every install, so the page's files are re-fetched then and cached (ETag) in between. */
+        private fun assetVersion(context: Context): String = try {
+            context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime.toString(36)
+        } catch (e: Exception) {
+            "0"
+        }
 
         fun get(context: Context): Link =
             instance ?: synchronized(this) { instance ?: Link(context.applicationContext).also { instance = it } }

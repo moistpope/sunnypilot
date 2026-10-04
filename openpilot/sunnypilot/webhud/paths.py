@@ -21,5 +21,10 @@ RADAR_DBC_PATH = os.path.join(OPENDBC_DBC_PATH, "fisker_ocean_mrr.dbc")   # reve
 STATIC_ROOTS = {
   "vendor/": os.path.join(THIRD_PARTY_DIR, "three"),
   "models/": os.path.join(THIRD_PARTY_DIR, "models"),
+  "dbc/": os.path.join(THIRD_PARTY_DIR, "dbc"),
   "": STATIC_DIR,
+}
+# single files served at a URL of their own: the page decodes the radar with the DBC kept in opendbc
+STATIC_FILES = {
+  "dbc/fisker_ocean_mrr.dbc": RADAR_DBC_PATH,
 }

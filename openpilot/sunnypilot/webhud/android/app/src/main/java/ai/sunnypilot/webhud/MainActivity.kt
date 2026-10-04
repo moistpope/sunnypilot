@@ -35,10 +35,11 @@ import android.widget.TextView
 import android.window.OnBackInvokedDispatcher
 
 /**
- * The HUD, full screen. The page comes from the comma through [LocalProxy] and runs on its own; this
- * activity only decides when to load it, nudges its WebSocket when the device comes back, reloads it
- * if part of it failed to load, and replaces the WebView if its renderer dies. It also hands the page
- * what the head unit is playing and its next turn ([Infotainment]). Back opens a small menu.
+ * The HUD, full screen. The page comes from the app's own [LocalServer] (its files are in the APK) and
+ * runs on its own, with or without the comma: this activity loads it, nudges its WebSocket when the
+ * device comes back, reloads it if it failed to load, and replaces the WebView if its renderer dies.
+ * It also hands the page what the head unit is playing and its next turn ([Infotainment]) and the
+ * car's CAN state ([CanBridge]). Back opens a small menu. [HudService] keeps the process alive.
  */
 class MainActivity : Activity(), Link.Listener, Infotainment.Listener, CanBridge.Listener {
 
@@ -66,7 +67,7 @@ class MainActivity : Activity(), Link.Listener, Infotainment.Listener, CanBridge
         pillPending = false
         if (connected == null && page == Page.LOADED) pill.visibility = View.VISIBLE
     }
-    private val retryLoad = Runnable { if (connected != null) load() }
+    private val retryLoad = Runnable { load() }
 
     /**
      * Start in the page's last theme setting when it's Day or Night rather than Auto, so the window,
@@ -139,9 +140,10 @@ class MainActivity : Activity(), Link.Listener, Infotainment.Listener, CanBridge
 
         link = Link.get(this)
         HudListener.grantInBackground(this, link.root)
-        CanBridge.start(this)
+        HudService.start(this)   // also starts the CAN reader
         createWebView()
         hideSystemBars()
+        load()                   // the page is local: up at once, connected or not
     }
 
     override fun onStart() {
@@ -190,7 +192,7 @@ class MainActivity : Activity(), Link.Listener, Infotainment.Listener, CanBridge
         pill.visibility = View.GONE
         when (page) {
             Page.NONE, Page.FAILED -> load()
-            Page.LOADED -> if (staleAssets) load() else reconnectPage()
+            Page.LOADED -> reconnectPage()
             Page.LOADING -> {}
         }
         updateCard()
@@ -235,7 +237,7 @@ class MainActivity : Activity(), Link.Listener, Infotainment.Listener, CanBridge
         staleAssets = false
         loadedAt = SystemClock.elapsedRealtime()
         page = Page.LOADING
-        web?.loadUrl("http://$LOOPBACK:${link.proxy.port}/")
+        web?.loadUrl("http://$LOOPBACK:${link.server.port}/")
         updateCard()
     }
 
@@ -252,7 +254,11 @@ class MainActivity : Activity(), Link.Listener, Infotainment.Listener, CanBridge
     private fun updateCard() {
         val d = connected
         card.visibility = if (page == Page.LOADED) View.GONE else View.VISIBLE
-        cardTitle.text = if (d != null) getString(R.string.connecting_to, d.hostname) else getString(R.string.looking)
+        cardTitle.text = when {
+            page == Page.LOADING -> getString(R.string.starting)
+            d != null -> getString(R.string.connecting_to, d.hostname)
+            else -> getString(R.string.looking)
+        }
         if (d != null) cardDetail.text = d.address
     }
 
@@ -311,7 +317,7 @@ class MainActivity : Activity(), Link.Listener, Infotainment.Listener, CanBridge
                 // a script, style or model is missing: the HUD may be half drawn
                 Log.w(TAG, "${request.url.path} failed to load: ${error.description}")
                 staleAssets = true
-                if (page == Page.LOADED && connected != null) scheduleReload()
+                if (page == Page.LOADED) scheduleReload()
             }
         }
 
@@ -324,7 +330,7 @@ class MainActivity : Activity(), Link.Listener, Infotainment.Listener, CanBridge
             destroyWebView()
             createWebView()
             page = Page.NONE
-            if (connected != null) load() else updateCard()
+            load()
             return true
         }
 
@@ -339,7 +345,7 @@ class MainActivity : Activity(), Link.Listener, Infotainment.Listener, CanBridge
         private fun failed() {
             page = Page.FAILED
             link.checkNow()
-            if (connected != null) scheduleReload()
+            scheduleReload()
             updateCard()
         }
     }
@@ -386,7 +392,7 @@ class MainActivity : Activity(), Link.Listener, Infotainment.Listener, CanBridge
             when (which) {
                 0 -> {
                     reloads = 0
-                    if (connected != null) load() else link.searchAgain()
+                    load()
                 }
                 1 -> link.searchAgain()
                 2 -> showAddressDialog()

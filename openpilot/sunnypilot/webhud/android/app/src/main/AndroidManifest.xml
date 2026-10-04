@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:allowBackup="false"
@@ -32,6 +34,17 @@
                 android:name="distractionOptimized"
                 android:value="true" />
         </activity>
+
+        <!-- keeps the process (CAN reader, comma link, local server) alive while the HUD isn't on screen -->
+        <service
+            android:name=".HudService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:stopWithTask="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="in-car display: the car's HUD, its CAN reader and its link to the driving computer" />
+        </service>
 
         <!-- the head unit's media sessions and turn-by-turn notification, for the HUD's music and
              navigation cards; the app grants itself access through root (HudListener.grant) -->

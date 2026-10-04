@@ -1,9 +1,17 @@
 # sunnypilot HUD for the car's screen
 
-An Android app that shows the [web HUD](../README.md) full screen on the car's own head unit. The
-head unit runs the Wi-Fi hotspot the comma joins. The app finds the comma there by itself (a browser
-on the head unit can't resolve `sunnypilot.local`), keeps the HUD up through dropouts, and needs no
-changes on the device beyond *Web HUD* being on (*Settings → Developer*).
+An Android app that shows the [web HUD](../README.md) full screen on the car's own screen (Pulse,
+the add-on board). Pulse runs the Wi-Fi hotspot the comma joins. The page and everything it needs
+(its scripts, three.js, the car model, the DBCs) ship inside the APK and are served by the app
+itself, so the HUD is up the moment the app starts and runs with or without the comma: the decoding
+of the ADAS bus and the world model happen in the page. The app finds the comma on the hotspot by
+itself (a browser there can't resolve `sunnypilot.local`), relays its API and its 20 Hz stream to
+the page, keeps the HUD up through dropouts, and needs no changes on the comma beyond *Web HUD*
+being on (*Settings → Developer*). Without the comma the page shows the car, the car controls (with
+the live read-out from IBUS1/IBUS2), the music and the navigation, and keeps the driving data off
+the screen (*offline*); the CAN settings, driving settings, playback and signal browser say they need
+the comma. A foreground service (`HudService`) keeps the process -- the CAN reader, the link and the
+local server -- alive while the HUD isn't on screen.
 
 ## How it finds the comma
 
@@ -25,8 +33,9 @@ a new hotspot subnet each time the hotspot starts).
 
 ## Staying connected
 
-The page comes through a relay inside the app at `http://127.0.0.1:18088`, which passes HTTP and the
-WebSocket to the comma byte for byte. So:
+The page is served by the app at `http://127.0.0.1:18088` (`LocalServer`): its files from the APK's
+assets (`assets/www/`, copied in from the repo at build time), and `/api/...` and the `/ws` stream
+relayed to the comma byte for byte (HTTP and the WebSocket alike). So:
 
 - the page's origin never changes, and its settings (kept in `localStorage`, per origin) survive the
   comma getting a new address;
@@ -37,10 +46,9 @@ WebSocket to the comma byte for byte. So:
 - the page drops a socket that has been silent for 6 s (a Wi-Fi drop can leave it half open) and
   reconnects. When the app finds the device again it tells the page (`webhud:reconnect`) to skip its
   retry backoff;
-- a part of the page that failed to load (script, model) triggers a reload with backoff, and a
-  crashed WebView renderer is replaced;
-- in the background the app lets go of the comma, so `webhud` stops reading the bus, and reconnects
-  when it's shown again.
+- a page that failed to load is reloaded with backoff, and a crashed WebView renderer is replaced;
+- with the screen off or another app in front the app lets go of the comma, so `webhud` stops reading
+  the bus, and reconnects when the HUD is shown again (the CAN reader and the server carry on).
 
 A *Reconnecting…* pill shows at the top while the page is up but the comma isn't. The page's own
 chip says *offline*. Back opens a menu: reload, search again, set the address, close.
@@ -50,13 +58,12 @@ follows the car's day/night mode.
 
 ## Loading fast
 
-The page keeps its files on the head unit in a service worker cache (`static/sw.js`): the ~25 MB car
-model, three.js and its own scripts. The WebView's HTTP cache is too small to hold the model, so
-before this it was downloaded on every start. The first start still downloads everything. After
-that, each start only checks every file with the comma, which answers with an empty `304` while
-nothing has changed, so an update shows up on the next start. If the comma doesn't answer within
-2.5 s, the cached copy is used. Service workers need a secure context, and the relay's
-`http://127.0.0.1` origin is one.
+Nothing crosses Wi-Fi to start: the page, its scripts, three.js, the ~25 MB car model and the DBCs
+are in the APK (`build.gradle.kts` copies them from `webhud/static`, `openpilot/third_party/webhud`
+and opendbc into the assets at build time, stored uncompressed so the server streams them from a file
+descriptor). Each file carries an `ETag` that changes with every install, and the WebView's cache
+checks it with a `304` in between. The service worker a plain browser uses (`static/sw.js`) is not
+registered in the app, and one left by an earlier version is unregistered.
 
 The page also tells the app its theme setting (`window.WebHudApp.setTheme`). With *Day* or *Night*
 picked in the HUD, the app starts in that mode next time: its window, the WebView behind the page
@@ -126,12 +133,15 @@ Needs JDK 17+ and the Android SDK (`ANDROID_HOME`, or `sdk.dir` in `local.proper
 
 ```
 cd openpilot/sunnypilot/webhud/android
-./gradlew assembleRelease        # app/build/outputs/apk/release/app-release.apk, ~50 KB
+./gradlew assembleRelease        # app/build/outputs/apk/release/app-release.apk, ~28 MB (the page and the car model are in it)
 ./gradlew testDebugUnitTest      # JVM tests: subnet math, ARP parsing, status probe, sweep, relay
 adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
 Release builds are signed with the debug key, since the app is sideloaded, not published.
+
+The APK must be rebuilt for a change to the page (its files are copied in at build time); the comma
+serves the same files to a plain browser, so the two come from one checkout.
 
 On Android Automotive, an app that isn't *distraction optimized* is blocked while driving. The
 activity declares `distractionOptimized`, but on user builds the car service only honors that for

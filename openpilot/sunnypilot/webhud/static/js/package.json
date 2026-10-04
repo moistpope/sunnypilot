@@ -1,0 +1,6 @@
+{
+  "name": "webhud-page",
+  "private": true,
+  "type": "module",
+  "description": "Marks the HUD's scripts as ES modules for Node (tests and tools); the browser loads them as modules anyway."
+}

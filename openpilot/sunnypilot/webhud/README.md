@@ -85,7 +85,7 @@ swings round in the frame and the camera catches up as it straightens out; on th
 is a degree or two.
 
 *Radar objects* (*Display*, off by default): the tracks of the car's mid-range radar, read from its
-private CAN-FD link on panda bus 1 (`fisker_radar.py`), drawn as see-through teal cars with a ring on
+private CAN-FD link on panda bus 1 (`static/js/world/fisker_radar.js`), drawn as see-through teal cars with a ring on
 the ground at the point each track reports. It's there to check the radar decoding against the
 camera's cars before the radar feeds openpilot. The radar's messages aren't in the FM29 matrix:
 `opendbc/dbc/fisker_ocean_mrr.dbc` is reverse-engineered from a drive, and its comments
@@ -95,7 +95,7 @@ shows up as an offset from the camera's car; like those cars, a car ahead sits w
 reported point. A chip at the top right shows the radar's track count, or *no bus 1 data* when the log (or harness)
 has no radar frames.
 
-*Objects* (*Display*): the default *World model* (`world_model.py`) fuses the radar, the ADAS camera list
+*Objects* (*Display*): the default *World model* (`static/js/world/world_model.js`) fuses the radar, the ADAS camera list
 and openpilot's leads into one object set in a ground-fixed frame: each measurement is placed at the
 time it was taken (radar MeasTime from the bus's time sync; the others by typical latency) using an
 ego pose dead-reckoned from ESP wheel speed and the YRS yaw-rate gyro, and weighted by its source's
@@ -107,7 +107,7 @@ center half a car length beyond the reported point along the car's own axis (hal
 side-on), since every source reports the face nearest us.
 
 Before fusing, each source is corrected by the *measured sensor calibration* (`MEASURED_CALIBRATION` in
-`world_model.py`, *Display → Geometry calibration*, on by default). Its values come from replaying
+`world_model.js`, *Display → Geometry calibration*, on by default). Its values come from replaying
 `000000b5--bfe13ac451` and `000000b4--d0f733ebb2` against GPS, openpilot's leads and lane lines:
 - The ADAS object list's range is 0.8× the radar's plus ~3 m (~0.25 m/bit from about the rear axle), so
   it's read as `x / 0.80 − 3.7`.
@@ -118,8 +118,8 @@ Before fusing, each source is corrected by the *measured sensor calibration* (`M
 - openpilot's leads read 0.2 m short (the camera is ~1.72 m behind the radar).
 
 Uncorrected, a car the ADAS list and the radar both see splits in two at range and the copies cross at
-~10–15 m. The switch applies to every viewer until the HUD restarts (`PUT /api/calibration`). The radar
-sometimes sends a cycle twice, and `fisker_radar.py` hands each cycle out once. openpilot's `leadTwo`
+~10–15 m. The switch is a setting of this screen (*Display → Debug*). The radar
+sometimes sends a cycle twice, and `fisker_radar.js` hands each cycle out once. openpilot's `leadTwo`
 (its lead 2 s from now) only counts when it's clearly another car than `leadOne`. Two tracks one radar or
 ADAS id fed within a second are merged.
 
@@ -180,12 +180,25 @@ drops the blur behind the HUD's cards, then lowers the 3D view's resolution in s
 them back a step at a time once frames have kept up for 8 s (a step that slows things straight down
 again waits a minute). *Full*, *75%* and *50%* fix it, for comparing on the car.
 
+Where the work is done: the comma's process is a *bridge*. It reads the buses and openpilot's
+services and streams them to the page as they are -- the ADASBUS and radar frames the HUD decodes
+(raw, allowlisted by message), and openpilot's services in compact form (`extract.py`) -- in ticks at
+20 Hz over the WebSocket. The page decodes them and runs the world model itself, in a worker off its
+main thread (`static/js/world/`: `dbc.js`, `fisker_world.js`, `fisker_radar.js`, `world_model.js`,
+`state.js`, `worker.js`), and hands the view the same state snapshots the comma used to build. So
+the car's own screen carries the HUD, the comma stays light, and the Android app runs the whole
+page from its own package: without the comma it still shows the car, the car controls, the music
+and the navigation, with the driving data off the screen until the link is back (*offline*). The
+DBCs come down as files (`/dbc/`). `tools/replay_ticks.mjs` runs the same pipeline in Node over a
+recorded tick stream, for working on the decoding and fusion without a browser; the tests are in
+`static/js/world/tests/` (`node --test static/js/world/tests/*.test.js`).
+
 Loading: static files carry an `ETag`/`Last-Modified`, and the server answers a current copy with
-`304`. The page's service worker (`static/sw.js`) keeps the car model, three.js and the app's files
-in Cache Storage and checks them on each load, so the ~25 MB model crosses the network once. It
-needs a secure context, such as the Android app's `http://127.0.0.1` or `localhost`. A plain
-`http://sunnypilot.local` browser tab uses the HTTP cache instead. The day/night theme is applied
-from the saved setting before the first paint.
+`304`. In a browser the page's service worker (`static/sw.js`) keeps the car model, three.js and the
+app's files in Cache Storage and checks them on each load, so the ~25 MB model crosses the network
+once. It needs a secure context, such as `localhost`; a plain `http://sunnypilot.local` tab uses the
+HTTP cache instead. The Android app serves everything from its own APK and doesn't use it. The
+day/night theme is applied from the saved setting before the first paint.
 
 **Open:** `http://sunnypilot.local:8088` (or `http://<device-ip>:8088`; port 80 is also served when
 the process is allowed to bind it). Toggle: *Settings → Developer → Web HUD* (`EnableWebHud`, on by
@@ -234,7 +247,7 @@ panel), the ADAS confirms it, and *Start parking* backs it in (or drives it in n
 (`ADAS_APASlot1..6`), state (`ADAS_APASts`), confirmed slot (`ADAS_APASlotSel*`), gear and standstill
 requests (`ADAS_0x117`) and chime. The panel shows every signal's value and a log of each change. The
 DBC doesn't say in what order these come, so the sequence is our reading of it, not a recorded drive.
-While it runs, its simulated drive replaces the live data in the HUD, decoded as `fisker_world.py` would,
+While it runs, its simulated drive replaces the live data in the HUD, decoded as `fisker_world.js` would,
 so the HUD's own parking drawing (slot outlines, parking-sensor arcs, closest distance per bumper) and
 the status card show it.
 
@@ -259,19 +272,20 @@ blender -b Pulse-Ocean-Master.blend --python openpilot/sunnypilot/webhud/tools/e
 
 | File | Role |
 |------|------|
-| `server.py` | Process entry point (`webhud` in process_config). stdlib `http.server` + WebSocket, 20 Hz state stream, REST API, static files. Niced; reads nothing while no browser is connected. |
+| `server.py` | Process entry point (`webhud` in process_config): the bridge. stdlib `http.server` + WebSocket, 20 Hz tick stream (raw frames + service extracts), REST API, static files. Niced; reads nothing while no browser is connected. |
 | `mdns.py` | Publishes `sunnypilot.local` as an alias + `_http._tcp` service through avahi's D-Bus API (jeepney); falls back to a built-in A-record responder. Doesn't change the device hostname. |
-| `fisker_world.py` | Realtime world model from ADASBUS (see below). |
-| `fisker_radar.py` | Mid-range radar tracks from its private CAN (bus 1), decoded with the reverse-engineered `fisker_ocean_mrr.dbc`. Kept apart from ADASBUS: the radar reuses its IDs. |
-| `world_model.py` | Ego odometry and the multi-source object tracker behind the *World model* view. |
-| `extract.py`, `state.py` | openpilot/sunnypilot services → compact JSON, merged with the Fisker world into one snapshot. |
+| `static/js/world/fisker_world.js` | Realtime world model from ADASBUS (see below), in the page's worker. |
+| `static/js/world/fisker_radar.js` | Mid-range radar tracks from its private CAN (bus 1), decoded with the reverse-engineered `fisker_ocean_mrr.dbc`. Kept apart from ADASBUS: the radar reuses its IDs. |
+| `static/js/world/world_model.js` | Ego odometry and the multi-source object tracker behind the *World model* view. |
+| `static/js/world/state.js`, `worker.js` | Fold the bridge's ticks into the one snapshot the view renders; the worker hosts it all off the main thread. |
+| `extract.py`, `state.py` | openpilot/sunnypilot services → compact JSON; the frames and extracts gathered since the last tick, and the latest of each for a viewer that just connected. |
 | `sources.py` | Live (cereal `can` + services) and rlog/qlog replay (zst/bz2, multi-segment, seek, speed). |
 | `demo.py` | Synthetic drive that encodes real ADASBUS frames — `server.py --demo` or *Playback → Play demo drive*. |
-| `dbc.py` | Small DBC reader/decoder that keeps value tables, comments and cycle times. |
+| `dbc.py` | Small DBC reader/decoder (the demo encodes with it; the overrides page shows the ICC's live values through it). `static/js/world/dbc.js` is its twin in the page. |
 | `../selfdrive/car/can_overrides.py` | Validates/applies `FiskerCanOverrides`; card polls it at 10 Hz and updates the dicts carcontroller reads, in place. |
 | `static/` | The app (plain ES modules, no build step). three.js, the Ocean model and the DBC subset live in `openpilot/third_party/webhud/`. |
 | `tools/export_ocean_glb.py` | Rebuilds the Ocean model with its roof, sunroof, seats, windows and dash parts split out, for the car controls mockup (run in Blender). |
-| `android/` | Head-unit app: finds the comma on the hotspot and shows the HUD full screen through a local relay. Not shipped to the device. |
+| `android/` | The app for the car's screen (Pulse): carries the page in its APK, finds the comma on the hotspot and relays its API and stream, reads IBUS1/IBUS2. Not shipped to the comma. |
 
 ## ADASBUS signals used
 
@@ -293,10 +307,14 @@ Verify them on a drive with good lane confidence against the openpilot lanes (*L
 ## API
 
 `GET /api/status`, `GET /api/routes`, `POST /api/replay {action: load|play|pause|toggle|seek|step|speed|live|demo, ...}`,
-`PUT /api/upload?name=<file>` (raw rlog/qlog body), `GET /api/dbc`, `GET|PUT /api/params` (personality,
-experimental mode, units), `GET|PUT|DELETE /api/overrides`, `GET|PUT /api/calibration {on}` (the world
-model's sensor calibration). WebSocket `/ws`: server sends
-`{type: hello|state|raw}`; client sends `{type: raw, addrs}`, `{type: replay, ...}`.
+`PUT /api/upload?name=<file>` (raw rlog/qlog body), `GET|PUT /api/params` (personality, experimental
+mode, units), `GET|PUT|DELETE /api/overrides`. Static: the page, `/vendor/`, `/models/` and `/dbc/`
+(the ADASBUS subset and the radar DBC, which the page decodes with). WebSocket `/ws`: the server sends
+`{type: hello}` then `{type: tick, data: {now, reset?, brand, can: [[t, [[addr, bus, hex], ...]], ...],
+op: [[service, t, extract], ...], mode, replay, server}}` at 20 Hz (the first tick for a new viewer is a
+snapshot of the latest frame of every message, with `reset`); the client sends `{type: replay, ...}`.
+A viewer that falls behind gets its missed ticks merged into one, never dropped. The world model's
+sensor calibration is a page setting now (*Display → Debug*).
 
 Writes are accepted from private addresses only, never cross-origin, and CAN override changes and
 replay are refused while the car is moving (replay also stops itself if the car starts moving).
@@ -307,7 +325,9 @@ replay are refused while the car is moving (replay also stops itself if the car 
 python -m openpilot.sunnypilot.webhud.server --demo            # synthetic drive
 python -m openpilot.sunnypilot.webhud.server --replay <rlog.zst | segment dir | route dir>
 python -m openpilot.sunnypilot.webhud.tools.gen_world_dbc FM29_ADASBUS_Matrix_CANFD_V390.8_20230524.dbc
-pytest openpilot/sunnypilot/webhud/tests
+pytest openpilot/sunnypilot/webhud/tests                        # the bridge
+node --test openpilot/sunnypilot/webhud/static/js/world/tests/*.test.js   # the page's decoding and world model
+node openpilot/sunnypilot/webhud/tools/replay_ticks.mjs ticks.jsonl      # the same pipeline over a recorded tick stream
 ```
 
 On a PC without the native params library, settings are kept in `~/.comma/webhud_dev_params.json`.

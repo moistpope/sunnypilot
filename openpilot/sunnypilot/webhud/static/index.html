@@ -16,8 +16,12 @@
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     document.querySelector('meta[name=theme-color]').setAttribute('content', dark ? '#101216' : '#eceef1');
   } catch (e) { /* no storage: light until main.js */ }
-  // keep the car model and scripts on this device between loads (see sw.js)
-  if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('/sw.js').catch(function () {});
+  // keep the car model and scripts on this device between loads (see sw.js). The Android app has them
+  // in its own package and serves them from there, so it doesn't need the cache.
+  if ('serviceWorker' in navigator && window.isSecureContext) {
+    if (!window.WebHudApp) navigator.serviceWorker.register('/sw.js').catch(function () {});
+    else navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { r.unregister(); }); }).catch(function () {});
+  }
 </script>
 <link rel="stylesheet" href="/app.css">
 </head>

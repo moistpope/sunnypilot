@@ -5,18 +5,19 @@ This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 
 Synthetic drive for previewing the web HUD without a car (server --demo). It encodes real ADASBUS
-frames through the DBC, so the Fisker parser is exercised end to end, and fills in the openpilot
-services the HUD reads. A 60 s loop: highway cruising with ACC + steering engaged (a climb at 4-10 s and
+frames through the DBC, so the page's Fisker decoding is exercised end to end, and fills in the
+openpilot services the HUD reads. A 60 s loop: highway cruising with ACC + steering engaged (a climb at 4-10 s and
 a full-power pass at 26-30 s), a motorcycle passing through the left blind spot, a red light, then a
 parking maneuver in reverse.
 """
 import math
 
-from openpilot.sunnypilot.webhud.fisker_world import BUS_CAM, BUS_PT, DRIVE_RATIO, TIRE_RADIUS
-from openpilot.sunnypilot.webhud.state import StateBuilder
+from openpilot.sunnypilot.webhud.state import BUS_CAM, BUS_PT, StreamBuilder
 
 LOOP_S = 60.0
 LANE_W = 3.6
+DRIVE_RATIO = 11.5    # wheel torque / motor torque, as the page's fisker_world.js reads the motors
+TIRE_RADIUS = 0.39    # m
 
 
 def _bump(t: float, start: float, end: float) -> float:
@@ -25,9 +26,9 @@ def _bump(t: float, start: float, end: float) -> float:
 
 
 class DemoSource:
-  def __init__(self, builder: StateBuilder):
+  def __init__(self, builder: StreamBuilder):
     self.builder = builder
-    self.dbc = builder.world.dbc
+    self.dbc = builder.dbc
     self.t = 0.0
     self.playing = True
     self.speed = 1.0
@@ -202,5 +203,4 @@ class DemoSource:
     return frames
 
   def _svc(self, which: str, data: dict) -> None:
-    self.builder.services[which] = data
-    self.builder.service_t[which] = self.clock
+    self.builder.feed_extract(which, data, self.clock)

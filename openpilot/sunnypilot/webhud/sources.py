@@ -5,7 +5,7 @@ This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 
 Data sources for the web HUD: the live cereal bus, or a recorded route replayed from rlog/qlog files.
-Both feed a StateBuilder through the same calls, so everything downstream is identical.
+Both feed a StreamBuilder through the same calls, so everything downstream is identical.
 """
 import bisect
 import bz2
@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 from openpilot.common.swaglog import cloudlog
 from openpilot.sunnypilot.webhud.extract import SERVICES
-from openpilot.sunnypilot.webhud.state import StateBuilder
+from openpilot.sunnypilot.webhud.state import StreamBuilder
 
 SEGMENT_S = 60.0
 SEGMENT_DIR_RE = re.compile(r"^(?P<route>.+)--(?P<seg>\d+)$")
@@ -124,7 +124,7 @@ class ReplaySource:
   PREFETCH_S = 15.0
   CACHE_SEGMENTS = 3
 
-  def __init__(self, builder: StateBuilder, name: str, segments: list[dict]):
+  def __init__(self, builder: StreamBuilder, name: str, segments: list[dict]):
     if not segments:
       raise ValueError("route has no segments")
     self.builder = builder
@@ -263,7 +263,7 @@ class ReplaySource:
 
   @property
   def now(self) -> float:
-    """Current position on the log's monotonic clock (what StateBuilder timestamps use)."""
+    """Current position on the log's monotonic clock (what StreamBuilder timestamps use)."""
     seg = self.cache.get(self.cur) if self.cur is not None else None
     if seg is None:
       return self.builder.t
@@ -280,7 +280,7 @@ class ReplaySource:
 # ---- live ---------------------------------------------------------------------------------------
 
 class LiveSource:
-  def __init__(self, builder: StateBuilder):
+  def __init__(self, builder: StreamBuilder):
     self.builder = builder
     self.sm = None
     self.can_sock = None

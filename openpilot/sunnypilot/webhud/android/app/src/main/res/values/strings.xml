@@ -5,6 +5,9 @@
     <string name="connecting_to">Connecting to %1$s</string>
     <string name="looking_hint">The comma joins the car\'s hotspot a minute or so after it starts. Web HUD must be on (Settings → Developer).</string>
     <string name="reconnecting">Reconnecting…</string>
+    <string name="starting">Starting the HUD</string>
+    <string name="service_channel">Keeps the HUD running on the car\'s screen</string>
+    <string name="service_text">Running</string>
     <string name="search_now">Search now</string>
     <string name="set_address">Set address</string>
 

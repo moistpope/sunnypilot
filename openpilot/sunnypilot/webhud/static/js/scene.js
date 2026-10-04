@@ -554,6 +554,25 @@ export class CarScene {
     this.stateSeq = (this.stateSeq || 0) + 1;
   }
 
+  // Nothing to draw any more (the comma is gone): drop the road and every object, so what was last
+  // reported doesn't stay on the ground as if it were still true. The car, the ground and the car
+  // controls carry on.
+  clearWorld() {
+    this.road.reset();
+    for (const e of this.objects.values()) if (e.pivot) this.scene.remove(e.pivot);
+    this.objects.clear();
+    for (const g of this.radarObjs.values()) {
+      this.scene.remove(g.pivot, g.dot);
+      for (const m of [...g.group.userData.paint, g.dot.material]) m.dispose();
+    }
+    this.radarObjs.clear();
+    for (const e of this.worldObjs.values()) if (e.pivot) this.world.remove(e.pivot);
+    this.worldObjs.clear();
+    this.tracks.clear();
+    this.furniture.clear();
+    if (this.labels.items.size) this.labels.clear();
+  }
+
   _laneGeometry() {
     const st = this.state || {};
     const op = st.op || {};

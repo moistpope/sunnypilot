@@ -215,7 +215,10 @@ export class LaneConfidence {
 }
 
 export class RoadModel {
-  constructor() {
+  constructor() { this.reset(); }
+
+  /** Forget the road: back to the start, as if nothing had been seen yet. */
+  reset() {
     this.lines = new Map();
     this.center = { y0: 0, t: 0, k: 0 };   // ego-lane center
     this.width = LANE_W;

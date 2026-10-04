@@ -13,9 +13,9 @@ import zstandard
 from openpilot.cereal import log
 from openpilot.common.test import OpenpilotTestCase
 from openpilot.sunnypilot.webhud.dbc import DBC
-from openpilot.sunnypilot.webhud.fisker_world import DBC_PATH
+from openpilot.sunnypilot.webhud.paths import DBC_PATH
 from openpilot.sunnypilot.webhud.sources import ReplaySource, list_routes
-from openpilot.sunnypilot.webhud.state import StateBuilder
+from openpilot.sunnypilot.webhud.state import StreamBuilder
 
 SEG_S = 3.0   # short synthetic segments; the replay timeline still spaces them 60 s apart
 
@@ -74,23 +74,34 @@ class TestReplay(OpenpilotTestCase):
 
   def test_seek_and_play_across_segments(self):
     route = list_routes([self.root])[0]
-    builder = StateBuilder()
+    builder = StreamBuilder()
+    acc = builder.dbc.by_name["ADAS_0x31C"]
+
+    def set_speed(tick):
+      """The ACC set speed in the newest 0x31C frame of a tick (what the page decodes)."""
+      frames = [f for _, batch in tick["can"] for f in batch if f[0] == acc.address]
+      return acc.decode(bytes.fromhex(frames[-1][2]))["ADAS_AccTrgSpdDisp"]
+
     replay = ReplaySource(builder, route["name"], route["segments"])
     replay.seek(1.5)
     assert wait_for(lambda: (replay.tick(0.0), replay.pending_seek is None)[1])
     assert builder.brand == "fisker"
-    snap = builder.snapshot(replay.now)
-    assert abs(snap["op"]["carState"]["vEgo"] - 1.5) < 0.02
-    assert snap["fisker"]["acc"]["setSpeed"] == 40
+    tick = builder.take_tick(replay.now)
+    assert tick["reset"] and tick["brand"] == "fisker"
+    assert abs(builder.services["carState"]["vEgo"] - 1.5) < 0.02
+    assert set_speed(tick) == 40
+    # a viewer that connects now gets the same state, from the latest frames
+    snap = builder.snapshot_tick(replay.now)
+    assert snap["reset"] and set_speed(snap) == 40 and "carState" in [w for w, _, _ in snap["op"]]
 
     # play past the end of segment 0: the next segment is prefetched and playback continues there
     replay.playing = True
     replay.speed = 4.0
     assert wait_for(lambda: (replay.tick(0.1), replay.cur == 1)[1])
     assert wait_for(lambda: (replay.tick(0.1), replay.t > 60.5)[1])
-    snap = builder.snapshot(replay.now)
-    assert snap["op"]["carState"]["vEgo"] >= 10
-    assert snap["fisker"]["acc"]["setSpeed"] == 41
+    tick = builder.take_tick(replay.now)
+    assert builder.services["carState"]["vEgo"] >= 10
+    assert set_speed(tick) == 41
 
     # runs to the end and stops
     assert wait_for(lambda: (replay.tick(0.5), not replay.playing)[1])
@@ -99,4 +110,4 @@ class TestReplay(OpenpilotTestCase):
     # seeking back rebuilds state from that point
     replay.seek(0.2)
     assert wait_for(lambda: (replay.tick(0.0), replay.pending_seek is None)[1])
-    assert builder.snapshot(replay.now)["op"]["carState"]["vEgo"] < 0.3
+    assert builder.take_tick(replay.now)["reset"] and builder.services["carState"]["vEgo"] < 0.3

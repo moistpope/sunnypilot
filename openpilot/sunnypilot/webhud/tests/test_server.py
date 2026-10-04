@@ -30,7 +30,7 @@ class TestServer(OpenpilotTestCase):
     self.saved = (dict(values.ICC_SETTINGS_OVERRIDES), dict(values.ICC_0x35B_OVERRIDES))
     self.params = _DevParams(os.path.join(self.tmp.name, "params.json"))
     self.engine = Engine(self.params)
-    api = OverridesApi(self.params, self.engine.world, self.engine.monitor)
+    api = OverridesApi(self.params, self.engine.builder, self.engine.monitor)
     self.server = make_server("127.0.0.1", 0, self.engine, self.params, api, "sunnypilot-test")
     self.port = self.server.server_address[1]
     threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -74,8 +74,12 @@ class TestServer(OpenpilotTestCase):
     status, body, _ = self.request("GET", "/api/status")
     st = json.loads(body)
     assert status == 200 and st["hostname"] == "sunnypilot-test.local" and st["overrides"]
-    status, body, _ = self.request("GET", "/api/dbc")
-    assert status == 200 and len(json.loads(body)["messages"]) > 80
+    # the page decodes the buses itself, with the DBCs served as files (the radar's lives in opendbc)
+    status, body, _ = self.request("GET", "/dbc/fisker_ocean_adas_world.dbc")
+    assert status == 200 and body.count(b"\nBO_ ") > 80
+    status, body, _ = self.request("GET", "/dbc/fisker_ocean_mrr.dbc")
+    assert status == 200 and b"MRR_" in body
+    assert self.request("GET", "/api/dbc")[0] == 200 and b"sunnypilot HUD" in self.request("GET", "/api/dbc")[1]   # gone: the app shell
 
   def test_static_validators(self):
     # the car model and every other file can be checked with a 304 instead of sent again
@@ -118,7 +122,7 @@ class TestServer(OpenpilotTestCase):
     assert self.request("PUT", "/api/params", {"LongitudinalPersonality": 7})[0] == 400
     assert self.request("PUT", "/api/params", {"DisableUpdates": True})[0] == 400
 
-  def test_websocket_streams_demo_state(self):
+  def test_websocket_streams_demo_ticks(self):
     sock = socket.create_connection(("127.0.0.1", self.port), timeout=10)
     key = base64.b64encode(os.urandom(16)).decode()
     headers = ["GET /ws HTTP/1.1", f"Host: 127.0.0.1:{self.port}", "Upgrade: websocket", "Connection: Upgrade",
@@ -129,17 +133,26 @@ class TestServer(OpenpilotTestCase):
     while reader.readline() not in (b"\r\n", b""):
       pass
     sock.sendall(encode_frame(json.dumps({"type": "replay", "action": "demo"}).encode(), OP_TEXT, mask=b"abcd"))
-    sock.sendall(encode_frame(json.dumps({"type": "raw", "addrs": ["0x31C"]}).encode(), OP_TEXT, mask=b"abcd"))
 
-    seen = {}
+    # the first tick is a snapshot (reset) of the current state; then the demo's frames and services flow
+    seen, ticks = {}, []
+    acc = self.engine.builder.dbc.by_name["ADAS_0x31C"]
     end = time.monotonic() + 10
-    while time.monotonic() < end and not ("raw" in seen and seen.get("state", {}).get("fisker", {}).get("objects")):
+
+    def acc_frames(tick):
+      return [f for _, batch in tick["can"] for f in batch if f[0] == acc.address]
+    while time.monotonic() < end and not any(acc_frames(t) and t["mode"] == "replay" for t in ticks):
       _, op, payload = read_frame(reader)
       msg = json.loads(payload)
       seen[msg["type"]] = msg["data"]
+      if msg["type"] == "tick":
+        ticks.append(msg["data"])
     sock.close()
     assert seen["hello"]["version"]
-    state = seen["state"]
-    assert state["mode"] == "replay" and state["replay"]["route"] == "demo"
-    assert state["fisker"]["acc"]["setSpeed"] == 60 and state["op"]["carState"]["vEgo"] > 0
-    assert "0x31C" in seen["raw"]
+    assert ticks[0]["reset"]
+    tick = next(t for t in ticks if acc_frames(t) and t["mode"] == "replay")
+    assert tick["replay"]["route"] == "demo" and tick["brand"] == "fisker"
+    frame = acc_frames(tick)[-1]
+    assert frame[1] == 2 and acc.decode(bytes.fromhex(frame[2]))["ADAS_AccTrgSpdDisp"] == 60
+    cs = next(d for w, _, d in tick["op"] if w == "carState")
+    assert cs["vEgo"] > 0

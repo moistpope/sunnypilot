@@ -8,7 +8,7 @@ import random
 
 from openpilot.common.test import OpenpilotTestCase
 from openpilot.sunnypilot.webhud.dbc import DBC
-from openpilot.sunnypilot.webhud.fisker_world import DBC_PATH
+from openpilot.sunnypilot.webhud.paths import DBC_PATH
 
 TEXT = '''
 BO_ 291 TEST_0x123: 8 ADAS

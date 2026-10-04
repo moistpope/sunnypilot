@@ -9,9 +9,12 @@ sunnypilot web HUD: a Tesla-style car view + settings page for an in-car browser
 
   http://sunnypilot.local:8088   (also :80 when the process may bind it)
 
-Serves a static single-page app, streams state over a WebSocket at 20 Hz, replays recorded routes,
-and exposes the editable CAN overrides. Stdlib only (http.server), like webrtcd: the AGNOS venv
-has no aiohttp.
+The comma's half of the HUD, a bridge: it serves the single-page app, streams what it reads over a
+WebSocket at 20 Hz -- the ADASBUS and radar frames the page decodes and the openpilot services, in
+compact form -- replays recorded routes, and exposes the editable CAN overrides and params. The
+decoding and the world model run in the page (static/js/world/), so the car's own screen (the
+Android app in android/) carries the HUD on its own and this process stays light. Stdlib only
+(http.server), like webrtcd: the AGNOS venv has no aiohttp.
 
 Dev on a PC:  python -m openpilot.sunnypilot.webhud.server --replay /path/to/rlog.zst
 """
@@ -34,18 +37,16 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from openpilot.common.swaglog import cloudlog
 from openpilot.sunnypilot.webhud.demo import DemoSource
-from openpilot.sunnypilot.webhud.fisker_world import FiskerWorld
 from openpilot.sunnypilot.webhud.mdns import MdnsPublisher, ipv4_interfaces
-from openpilot.sunnypilot.webhud.paths import STATIC_DIR, STATIC_ROOTS
+from openpilot.sunnypilot.webhud.paths import STATIC_DIR, STATIC_FILES, STATIC_ROOTS
 from openpilot.sunnypilot.webhud.sources import LiveSource, ReplaySource, list_routes
-from openpilot.sunnypilot.webhud.state import StateBuilder
+from openpilot.sunnypilot.webhud.state import StreamBuilder, merge_ticks
 from openpilot.sunnypilot.webhud.websocket import WebSocket, accept_key
 
 VERSION = "1.0"
 DEFAULT_PORT = int(os.getenv("WEBHUD_PORT", "8088"))
 DEFAULT_HOSTNAME = os.getenv("WEBHUD_HOSTNAME", "sunnypilot")
 RATE_HZ = 20
-RAW_RATE_HZ = 5
 IDLE_STOP_S = 15.0          # stop reading the bus this long after the last client leaves
 MOVING_SPEED = 1.0          # m/s: above this, settings writes are refused and replay yields to live
 MAX_UPLOAD = 256 * 1024 * 1024
@@ -122,22 +123,21 @@ def data_roots() -> tuple[list[str], str]:
 # ---- clients & engine -----------------------------------------------------------------------------
 
 class Client:
-  """One WebSocket viewer. A sender thread delivers only the newest frame, so a slow tablet never
-  stalls the engine or other viewers."""
+  """One WebSocket viewer. A sender thread delivers the ticks, merging the ones a slow tablet hasn't
+  taken yet into one, so it never stalls the engine or other viewers and loses nothing."""
 
   def __init__(self, ws: WebSocket, peer: str):
     self.ws = ws
     self.peer = peer
-    self.raw_addrs: list[int] = []
-    self._pending: str | None = None
+    self._pending: dict | None = None
     self._extra: queue.SimpleQueue[str] = queue.SimpleQueue()
     self._cv = threading.Condition()
     self.alive = True
     threading.Thread(target=self._sender, name="webhud-send", daemon=True).start()
 
-  def push_state(self, text: str) -> None:
+  def push_tick(self, tick: dict) -> None:
     with self._cv:
-      self._pending = text
+      self._pending = tick if self._pending is None else merge_ticks(self._pending, tick)
       self._cv.notify()
 
   def push(self, text: str) -> None:
@@ -151,12 +151,13 @@ class Client:
       with self._cv:
         while self.alive and self._pending is None and self._extra.empty():
           self._cv.wait(1.0)
-        text, self._pending = self._pending, None
+        tick, self._pending = self._pending, None
       try:
         while not self._extra.empty():
           self.ws.send_text(self._extra.get_nowait())
-        if text is not None:
-          self.ws.send_text(text)
+        if tick is not None:
+          tick.pop("_ticks", None)
+          self.ws.send_text(json.dumps({"type": "tick", "data": tick}, separators=(",", ":")))
       except Exception:
         self.close()
 
@@ -170,8 +171,7 @@ class Client:
 class Engine:
   def __init__(self, params, replay_path: str | None = None, demo: bool = False):
     self.params = params
-    self.world = FiskerWorld()
-    self.builder = StateBuilder(self.world)
+    self.builder = StreamBuilder()
     self.live = LiveSource(self.builder)
     self.live_error: str | None = None
     self.replay: ReplaySource | DemoSource | None = None
@@ -231,8 +231,11 @@ class Engine:
       self.replay = None
       self.mode = "live"
       self.builder.reset()
-    elif kind == "calibration":
-      self.builder.set_calibration(cmd[1])
+    elif kind == "snapshot":
+      # a viewer that just connected starts from the current state (on the engine thread: the builder's)
+      tick = self.builder.snapshot_tick(self._clock())
+      self._decorate(tick, 1)
+      cmd[1].push(json.dumps({"type": "tick", "data": tick}, separators=(",", ":")))
     elif self.replay is not None:
       if kind == "play":
         self.replay.playing = True
@@ -248,11 +251,22 @@ class Engine:
       elif kind == "speed":
         self.replay.set_speed(float(cmd[1]))
 
+  def _clock(self) -> float:
+    """The data clock the ticks are stamped with: the log's while replaying, else the device's monotonic."""
+    if self.mode == "replay" and self.replay is not None:
+      return self.replay.now
+    return self.live.now
+
+  def _decorate(self, tick: dict, clients: int) -> None:
+    tick["mode"] = self.mode
+    tick["replay"] = self.replay.status() if self.replay is not None else None
+    tick["server"] = {"liveError": self.live_error, "notice": self.notice, "moving": self.monitor.moving,
+                      "onroad": self.monitor.onroad, "clients": clients}
+
   # main loop ----------------------------------------------------------------
   def run(self) -> None:
     period = 1.0 / RATE_HZ
     last = time.monotonic()
-    raw_next = 0.0
     while not self.stop_event.is_set():
       now_wall = time.monotonic()
       dt = min(now_wall - last, 0.5)
@@ -292,25 +306,15 @@ class Engine:
           if self.live.running:
             self.live.tick()
           now = self.live.now
-        snap = self.builder.snapshot(now)
+        tick = self.builder.take_tick(now)
       except Exception:
         cloudlog.exception("webhud: engine tick failed")
         time.sleep(0.5)
         continue
 
-      snap["mode"] = self.mode
-      snap["replay"] = self.replay.status() if self.replay is not None else None
-      snap["server"] = {"liveError": self.live_error, "notice": self.notice, "moving": self.monitor.moving,
-                        "onroad": self.monitor.onroad, "clients": len(clients)}
-      text = json.dumps({"type": "state", "data": snap}, separators=(",", ":"))
+      self._decorate(tick, len(clients))
       for c in clients:
-        c.push_state(text)
-
-      if now_wall >= raw_next:
-        raw_next = now_wall + 1.0 / RAW_RATE_HZ
-        for c in clients:
-          if c.raw_addrs:
-            c.push(json.dumps({"type": "raw", "data": self.world.raw_messages(c.raw_addrs, now)}, separators=(",", ":")))
+        c.push_tick(tick)
 
       time.sleep(max(0.0, period - (time.monotonic() - now_wall)))
 
@@ -456,7 +460,9 @@ class HudHandler(BaseHTTPRequestHandler):
     prefix = next(p for p in STATIC_ROOTS if rel.startswith(p))
     root = os.path.realpath(STATIC_ROOTS[prefix])
     full = os.path.realpath(os.path.join(root, rel[len(prefix):]))
-    if not full.startswith(root + os.sep) or not os.path.isfile(full):
+    if rel in STATIC_FILES:
+      full = STATIC_FILES[rel]
+    elif not full.startswith(root + os.sep) or not os.path.isfile(full):
       # unknown paths fall back to the app shell so deep links work
       full, prefix = os.path.join(STATIC_DIR, "index.html"), ""
     ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
@@ -512,6 +518,7 @@ class HudHandler(BaseHTTPRequestHandler):
     engine = self.server.engine
     engine.add_client(client)
     client.push(json.dumps({"type": "hello", "data": status_payload(self.server)}))
+    engine.command("snapshot", client)
     try:
       while True:
         msg = ws.recv()
@@ -528,10 +535,7 @@ class HudHandler(BaseHTTPRequestHandler):
     except ValueError:
       return
     kind = data.get("type")
-    if kind == "raw":
-      addrs = data.get("addrs") or []
-      client.raw_addrs = [int(a, 16) if isinstance(a, str) else int(a) for a in addrs][:200]
-    elif kind == "replay":
+    if kind == "replay":
       replay_command(self.server.engine, data)
     elif kind == "ping":
       client.push(json.dumps({"type": "pong", "t": data.get("t")}))
@@ -628,25 +632,6 @@ def api_upload(h: HudHandler, q) -> None:
   h._json({"ok": True, "route": route})
 
 
-def api_calibration_get(h: HudHandler, q) -> None:
-  h._json(h.server.engine.builder.model.calib.to_json())
-
-
-def api_calibration_put(h: HudHandler, q) -> None:
-  """{on: bool}: the world model's measured sensor calibration (world_model.MEASURED_CALIBRATION), or none, for
-  every viewer until the process restarts. Only the display changes, so it's allowed while driving."""
-  on = h._json_body().get("on")
-  if not isinstance(on, bool):
-    return h._error(400, "on must be true or false")
-  h.server.engine.command("calibration", on)
-  h._json({"on": on})
-
-
-def api_dbc(h: HudHandler, q) -> None:
-  dbc = h.server.engine.world.dbc
-  h._json({"messages": [m.to_json() for m in sorted(dbc.messages.values(), key=lambda m: m.address)]})
-
-
 def api_params_get(h: HudHandler, q) -> None:
   out = {}
   for key, (typ, _) in PARAM_ALLOWLIST.items():
@@ -674,10 +659,10 @@ def api_params_put(h: HudHandler, q) -> None:
 
 
 class OverridesApi:
-  def __init__(self, params, world: FiskerWorld, monitor: _VehicleMonitor):
+  def __init__(self, params, builder: StreamBuilder, monitor: _VehicleMonitor):
     from openpilot.sunnypilot.selfdrive.car.can_overrides import CanOverrides
     self.params = params
-    self.world = world
+    self.builder = builder
     self.monitor = monitor
     try:
       self.ov = CanOverrides.for_brand("fisker")
@@ -702,7 +687,7 @@ class OverridesApi:
     tables = []
     for t in self.ov.tables:
       msg = self.ov.dbc.by_name[t.message]
-      live = self.world.decoded(msg.address) or {}
+      live = self.builder.decoded(msg.address) or {}
       blocked = self.ov.passthrough(t)
       sigs = []
       for name, sig in msg.signals.items():
@@ -772,9 +757,6 @@ ROUTES = {
   ("GET", "/api/routes"): api_routes,
   ("POST", "/api/replay"): api_replay,
   ("PUT", "/api/upload"): api_upload,
-  ("GET", "/api/dbc"): api_dbc,
-  ("GET", "/api/calibration"): api_calibration_get,
-  ("PUT", "/api/calibration"): api_calibration_put,
   ("GET", "/api/params"): api_params_get,
   ("PUT", "/api/params"): api_params_put,
   ("GET", "/api/overrides"): api_overrides_get,
@@ -814,7 +796,7 @@ def main(argv: list[str] | None = None) -> None:
 
   params = open_params()
   engine = Engine(params, args.replay, args.demo)
-  overrides_api = OverridesApi(params, engine.world, engine.monitor)
+  overrides_api = OverridesApi(params, engine.builder, engine.monitor)
 
   servers = [make_server(args.host, args.port, engine, params, overrides_api, args.hostname)]
   if not args.no_port80 and args.port != 80:

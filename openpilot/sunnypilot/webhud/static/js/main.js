@@ -15,12 +15,14 @@ const SETTINGS_VERSION = 3;
 const AUTO_VIEW_HOLD_MS = 10000;   // a parking maneuver starting this soon after the user picked a view keeps it
 const TAP_PX = 8, TAP_MS = 300;    // a tap moves less and is shorter than this; two within TAP_MS are a double tap
 const STALE_MS = 6000;             // the server streams at 20 Hz: this long without a message means the link is dead
+const OFFLINE_MS = 3000;           // without the comma this long, the driving data comes off the screen
 const DEFAULTS = {
   theme: 'auto', units: 'auto', laneSource: 'blend', egoPaint: OCEAN_PAINT_DEFAULT, egoWheels: OCEAN_WHEELS_DEFAULT, view: 'chase',
   showPath: true, showUss: true, showOpLeads: true, autoView: true, showGround: true, showRoad: true, showSigns: true,
   showTracks: true, showRadar: false, radarAllTracks: false, showLowConf: false, showObjectStats: false, objectMode: 'world',
   laneHeadingSign: 1, laneCurvatureSign: 1, objectHeadingSign: 1, laneConfThreshold: LANE_CONF_THRESHOLD,
   showFps: true, renderScale: 'auto', showMusic: true, showNav: true, demoInfotainment: false, demoCarState: false,
+  calibration: true,
 };
 
 function loadSettings() {
@@ -47,11 +49,13 @@ class App {
     this.state = null;
     this.ws = null;
     this.connected = false;
+    this.offline = false;          // no comma for a while: driving data hidden (see setOffline)
     this.retry = 0;
     this.retryTimer = 0;
     this.rawAddrs = [];
     this.lastStateAt = 0;
     this.lastMsgAt = 0;
+    this.dbc = null;               // the ADASBUS DBC, from the worker once it has loaded it (Signals tab)
     this.autoViewActive = false;   // the view is auto view's top view (returns to the setting after)
     this.parkingStop = false;      // inside a parking stop auto view has already acted on
     this.manualViewAt = -1e9;
@@ -77,6 +81,7 @@ class App {
     window.addEventListener('online', () => this.reconnectNow());
     window.addEventListener('webhud:reconnect', () => this.reconnectNow());
     document.addEventListener('visibilitychange', () => { if (!document.hidden && !this.connected) this.reconnectNow(); });
+    this.startWorker();
     this.connect();
     api('/api/params').then(p => { this.hud.isMetric = !!p.IsMetric; }).catch(() => {});
 
@@ -122,6 +127,7 @@ class App {
     if (key === 'showFps' || key === 'renderScale') this.meter.apply();
     if (key === 'showMusic' || key === 'showNav' || key === 'demoInfotainment') this.info.apply();
     if (key === 'demoCarState') this.carState.apply();
+    if (key === 'calibration') this.worker.postMessage({ type: 'calibration', on: value });
     if (!this.car.apa) this.scene.update(this.state, this.settings);
     if (this.ui.isOpen && this.ui.tab === 'display') this.ui.show('display', true);
   }
@@ -149,6 +155,30 @@ class App {
     if (this.info) this.info.layout();
   }
 
+  // ---- world model worker --------------------------------------------------------------------------------
+  // The comma's bridge streams what it reads: raw ADASBUS and radar frames and openpilot's services. The
+  // decoding and the world model (js/world/) run in a worker, off this thread, and hand back the state
+  // snapshots the view draws. The DBCs come from the same origin as the page.
+  startWorker() {
+    const w = new Worker('/js/world/worker.js', { type: 'module' });
+    this.worker = w;
+    w.onmessage = (ev) => {
+      const msg = ev.data;
+      if (msg.type === 'state') this.onState(msg.data);
+      else if (msg.type === 'raw') this.ui.onRaw(msg.data);
+      else if (msg.type === 'ready') { this.dbc = msg.dbc; if (this.ui.isOpen && this.ui.tab === 'signals') this.ui.show('signals', true); }
+      else if (msg.type === 'error') this.reportError(new Error('world model: ' + msg.message));
+    };
+    w.onerror = (e) => this.reportError(new Error('world model worker: ' + (e.message || e)));
+    w.postMessage({ type: 'calibration', on: this.settings.calibration !== false });
+    const text = (path, required) => fetch(path, { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error(`${path}: ${r.status}`); return r.text(); })
+      .catch(e => { if (required) throw e; return null; });
+    const load = () => Promise.all([text('/dbc/fisker_ocean_adas_world.dbc', true), text('/dbc/fisker_ocean_mrr.dbc', false)])
+      .then(([worldDbc, radarDbc]) => w.postMessage({ type: 'init', worldDbc, radarDbc }))
+      .catch(e => { this.reportError(e); setTimeout(load, 3000); });   // the comma isn't there yet: try again
+    load();
+  }
+
   // ---- connection -----------------------------------------------------------------------------------
   connect() {
     clearTimeout(this.retryTimer);
@@ -169,8 +199,7 @@ class App {
       this.lastMsgAt = performance.now();
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
-      if (msg.type === 'state') this.onState(msg.data);
-      else if (msg.type === 'raw') this.ui.onRaw(msg.data);
+      if (msg.type === 'tick') this.worker.postMessage({ type: 'tick', data: msg.data });
       else if (msg.type === 'hello') this.hello = msg.data;
     };
     ws.onclose = () => {
@@ -204,7 +233,22 @@ class App {
 
   subscribeRaw(addrs) {
     this.rawAddrs = addrs;
-    this.send({ type: 'raw', addrs });
+    this.worker.postMessage({ type: 'raw', addrs });
+  }
+
+  // Alone on the car's screen (the Android app without the comma): once the link has been gone a while the
+  // driving data comes off, since what was last shown is no longer true; the car controls, music and
+  // navigation carry on. Back on, the bridge's first tick restores everything.
+  setOffline(on) {
+    if (on === this.offline) return;
+    this.offline = on;
+    document.documentElement.classList.toggle('offline', on);
+    if (on) {
+      this.state = null;
+      if (!this.car.apa) { this.scene.update(null, this.settings); this.scene.clearWorld(); }
+      this.updateRadarChip();
+      if (this.ui.isOpen) this.ui.show(this.ui.tab, true);
+    }
   }
 
   setConn(cls, text) {
@@ -226,6 +270,7 @@ class App {
   }
 
   watchdog() {
+    this.setOffline(performance.now() - this.lastStateAt > OFFLINE_MS);
     if (!this.connected) return;
     if (performance.now() - this.lastMsgAt > STALE_MS) {
       this.setConn('bad', 'reconnecting');
@@ -243,6 +288,7 @@ class App {
     const prevMode = this.state && this.state.mode;
     this.state = state;
     this.lastStateAt = performance.now();
+    this.setOffline(false);
     if (!this.car.apa) this.scene.update(state, this.settings);
     const replay = state.mode === 'replay' && state.replay;
     const chip = $('#chip-mode');

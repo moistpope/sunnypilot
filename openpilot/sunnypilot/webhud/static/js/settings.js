@@ -3,6 +3,14 @@
 import { $, $$, el, api, fmtBytes, fmtTime, prettyLabel, prettySignal, iconSvg } from './util.js';
 import { OCEAN_PAINTS, OCEAN_WHEELS, oceanPaint } from './models.js';
 
+// tab -> what it needs the comma for
+const OFFLINE_TABS = new Map([
+  ['overrides', 'The CAN settings are kept on it and applied by it; they stay as they were.'],
+  ['driving', 'The driving settings are openpilot\'s, on the comma.'],
+  ['playback', 'The recorded drives are on the comma.'],
+  ['signals', 'The ADAS bus comes down the comma\'s link.'],
+]);
+
 export class Settings {
   constructor(app) {
     this.app = app;
@@ -36,6 +44,14 @@ export class Settings {
     this.app.subscribeRaw([]);
   }
 
+  /** Without the comma these tabs have nothing to show or change: the overrides and params live there,
+   *  so do the logs, and the signals come down its link. */
+  needsComma(tab) {
+    if (!this.app.offline || !OFFLINE_TABS.has(tab)) return false;
+    this.body.append(el('div.banner.bad', 'Not connected to the comma. ' + OFFLINE_TABS.get(tab)));
+    return true;
+  }
+
   // keep: re-render the open tab after a change without moving it -- the new content is built off-screen
   // and swapped in at the same scroll position, so the page neither jumps to the top nor flashes empty
   async show(tab, keep = false) {
@@ -51,12 +67,12 @@ export class Settings {
     if (!keep) {
       live.innerHTML = '';
       live.scrollTop = 0;
-      render && render();
+      if (!this.needsComma(tab)) render && render();
       return;
     }
     const scroll = live.scrollTop, offscreen = document.createElement('div');
     this.body = offscreen;
-    const done = render && render();   // every renderer takes this.body before its first await
+    const done = this.needsComma(tab) ? null : render && render();   // every renderer takes this.body before its first await
     this.body = live;
     await done;
     if (this.tab !== tab) return;      // switched tabs meanwhile
@@ -334,7 +350,6 @@ export class Settings {
         'first drops the blur behind the HUD\'s cards, then steps the resolution down (to 60%), and brings them back once frames keep up. ' +
         'The counter shows the resolution when it\'s below 100%.'),
       this.app.segmented([['auto', 'Auto'], ['1', 'Full'], ['0.75', '75%'], ['0.5', '50%']], s.renderScale, v => set('renderScale', v))));
-    const calib = this.app.state && this.app.state.calibration;
     body.append(el('div.section', el('h3', 'Geometry calibration'),
       el('p.desc', 'The ADAS lane heading direction is verified on the car; lane curvature and object heading signs aren\'t documented. ' +
         'Flip these if lines bend or cars point the wrong way compared to the openpilot lanes.'),
@@ -342,10 +357,8 @@ export class Settings {
         el('div.row', el('div.lbl', el('b', 'Measured sensor calibration'),
           el('small', 'World model: correct each source by what replaying drives against GPS, openpilot\'s leads and lanes measured: ' +
             'the ADAS camera\'s object range (0.8x the radar\'s, from about the rear axle) and lateral scale and latency, the radar\'s ' +
-            'Doppler scale and a 0.6 deg yaw, and the wheel speed (3% low). Off takes every source as it decodes, for comparison. ' +
-            'Applies to every viewer until the HUD restarts.')),
-          this.app.switch(!calib || calib.on !== false, v => api('/api/calibration', { method: 'PUT', body: { on: v } })
-            .then(() => this.app.toast(v ? 'Measured calibration on' : 'Calibration off')).catch(e => this.app.toast(e.message)))),
+            'Doppler scale and a 0.6 deg yaw, and the wheel speed (3% low). Off takes every source as it decodes, for comparison.')),
+          this.app.switch(s.calibration !== false, v => { set('calibration', v); this.app.toast(v ? 'Measured calibration on' : 'Calibration off'); })),
         el('div.row', el('div.lbl', el('b', 'Invert lane heading')), this.app.switch(s.laneHeadingSign === -1, v => set('laneHeadingSign', v ? -1 : 1))),
         el('div.row', el('div.lbl', el('b', 'Invert lane curvature')), this.app.switch(s.laneCurvatureSign === -1, v => set('laneCurvatureSign', v ? -1 : 1))),
         el('div.row', el('div.lbl', el('b', 'Invert object heading')), this.app.switch(s.objectHeadingSign === -1, v => set('objectHeadingSign', v ? -1 : 1))),
@@ -410,15 +423,14 @@ export class Settings {
 
   async renderSignals() {
     const body = this.body;
+    this.dbc = this.app.dbc;   // the worker hands it over once it has loaded the DBC (main.js shows this tab again then)
     if (!this.dbc) {
       body.append(el('p.desc', 'Loading DBC…'));
-      try { this.dbc = await api('/api/dbc'); } catch (e) { body.innerHTML = ''; body.append(el('div.banner.bad', e.message)); return; }
-      if (this.tab !== 'signals') return;
-      body.innerHTML = '';
+      return;
     }
     const filter = el('input.sig-filter', { type: 'search', placeholder: 'Filter messages or signals (e.g. Obj1, USS, 0x31C)', value: this.sigFilter || '' });
     const list = el('div');
-    body.append(el('p.desc', 'Live decoded ADASBUS messages (Fisker FM29 matrix). Tap a message to watch its signals.'), filter, list);
+    body.append(el('p.desc', 'Live decoded ADASBUS messages (Fisker FM29 matrix), decoded on this screen from the frames the comma streams. Tap a message to watch its signals.'), filter, list);
     const draw = () => {
       const q = (this.sigFilter || '').toLowerCase();
       list.innerHTML = '';

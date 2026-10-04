@@ -287,6 +287,16 @@ export class RoadFurniture {
     this.signs = this.signs.filter(s => s !== sign);
   }
 
+  /** Everything off the road at once (the data source is gone). */
+  clear() {
+    for (const sign of [...this.signs]) this._remove(sign);
+    this.marking = null;
+    this.prev = {};
+    this.light.group.visible = false;
+    this.light.alpha = 0;
+    this.light.d = null;
+  }
+
   // place an anchored sign on the road as it is now: facing back down the road, toed in toward it
   _place(sign, road, toScene) {
     const a = sign.userData.anchor;

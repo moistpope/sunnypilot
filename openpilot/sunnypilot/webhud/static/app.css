@@ -572,3 +572,8 @@ html.carmode #replaybar { display: none; }
   .mc-art { width: 48px; height: 48px; }
   .mc-btn { width: 38px; height: 38px; }
 }
+
+/* Without the comma (the Android app on the car, alone): no driving data to show. The car controls, music
+   and navigation stay; what the ADAS bus and openpilot feed is hidden until the link is back. */
+.offline #drive, .offline .alerts, .offline #roadinfo, .offline #replaybar, .offline #chip-mode, .offline #chip-radar { display: none !important; }
+.offline .fps { top: calc(16px + env(safe-area-inset-top)); }
