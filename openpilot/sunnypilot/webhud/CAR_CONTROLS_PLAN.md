@@ -101,9 +101,29 @@ the zone every point of the car picks from the overview's top view (seats, rear 
 amplifier each their own, Doors & Windows only at the sides and the liftgate); and picks at the doors,
 windows, rear window, liftgate and sunroof from the Doors & Windows and Audio views.
 
+Performance (2026-10-04, after the HMI was seen dropping frames in car mode). Measured in the Browser pane
+(1024×768 at pixel ratio 1.75, Apple GPU), median of 40 frames timed to a GPU sync: the HUD 4.3 ms (236
+draw calls, 815k triangles); car mode 3.1–5.2 ms, with the overview the heaviest (356 calls, 1.2M
+triangles: every zone's glow drew all the time, at 5% between pulses, and the Doors & Windows glow
+covered the doors' trim inside as well as their paint). Resolution was a small part of it on this GPU
+(Energy: 4.2 ms at 1.75, 3.2 at 1.0, 3.0 at 0.5). What car mode added that this can't time is
+compositing: the ribbon, every badge and chip and the cards had a backdrop blur over a 3D view that
+redraws every frame, so each was blurred again every frame, and the leader-line SVG (screen-sized) was
+rewritten every frame. Changes:
+- No backdrop blur in car mode; the ribbon, callouts and cards are opaque.
+- The overview's glows draw only while their pulse passes, and a door's glow covers its paint only:
+  the overview went to 262 calls and 0.92M triangles, Doors & Windows from 310 calls to 250.
+- Pins and leader lines are written only when they move.
+- A frame-rate counter and an auto render resolution (`static/js/perf.js`, see the README).
+- `select()` scrolled the ribbon's button into view with `scrollIntoView`, which also scrolled `#app` (to
+  a ribbon still sliding in) and shifted the whole HUD up 94 px. It scrolls the ribbon only now.
+
 Open:
-- Head-unit performance. The glows double the draw calls of the parts they cover, but only while car
-  mode is open. The airflow (1,400 points) and pulse (6,000 points) run only in their views.
+- Head-unit performance: check the counter on the HMI, in the overview and the close-up views, with
+  *Render resolution* on Full and on 50% (fill rate) and the counter's draws and JS time (CPU). The
+  model is the bulk of every frame (815k triangles, ~230 calls); the interior seen through the glass
+  (door cards 95k, seats 55k) could go in the HUD's own views if the HMI is geometry-bound. The airflow
+  (1,400 points) and pulse (6,000 points) run only in their views.
 - On a phone in landscape the free area beside the panel is small; the HMI sizes are what it's laid out for.
 - The Pulse package states no license (`models/LICENSE.md`).
 

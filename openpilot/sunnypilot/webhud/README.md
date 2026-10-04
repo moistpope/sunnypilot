@@ -150,6 +150,14 @@ m/s and degrees. The ADAS list has no speeds; its tags show this view's tracking
 openpilot lead merged into an ADAS car is listed on that car's tag. Tags stack instead of overlapping,
 so an object two sources report shows both.
 
+Frame rate (`static/js/perf.js`, *Display → Debug*, on for now): a counter under the status card,
+over the car controls' panel. Tap it for the slowest frame of the last second, the HUD's own script
+time per frame, draw calls, triangles and the render resolution. *Render resolution* is *Auto* by
+default: while frames come slower than the screen refreshes (88% of it, two seconds running), it first
+drops the blur behind the HUD's cards, then lowers the 3D view's resolution in steps to 60%, and brings
+them back a step at a time once frames have kept up for 8 s (a step that slows things straight down
+again waits a minute). *Full*, *75%* and *50%* fix it, for comparing on the car.
+
 Loading: static files carry an `ETag`/`Last-Modified`, and the server answers a current copy with
 `304`. The page's service worker (`static/sw.js`) keeps the car model, three.js and the app's files
 in Cache Storage and checks them on each load, so the ~25 MB model crosses the network once. It

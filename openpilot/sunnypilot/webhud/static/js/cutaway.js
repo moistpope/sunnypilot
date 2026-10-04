@@ -27,6 +27,7 @@ const WINDOWS = {
   FL: ['x', 'Window_Front_L'], FR: ['x', 'Window_Front_R'], RL: ['x', 'Window_Rear_L'], RR: ['x', 'Window_Rear_R'],
   QL: ['x', 'Window_Quarter_L'], QR: ['x', 'Window_Quarter_R'], rear: ['z', 'Tailgate__PBR_glass_dark', 'Tailgate__black'],
 };
+const DOOR_SKIN = 'PBR_carpaint';   // a door's glow: its paint only
 const WINDOW_RATE = 0.3;    // of the travel per second: ~3.3 s top to bottom, like a power window
 const EDGE_N = 48;          // samples of a window's top edge
 const SUNROOF_LIFT = 0.045; // m the sunroof's panel rises before it slides back over the rear panel...
@@ -381,6 +382,7 @@ export class Cutaway {
       const meshes = [];
       node.traverse((o) => {
         if (!o.isMesh || o.userData.cutaway || (!cut && o.material.userData.cut)) return;   // a door's glow leaves out its window
+        if (DOORS[name] && o.material.name !== DOOR_SKIN) return;   // and its trim inside: three times the triangles
         const m = new THREE.Mesh(o.geometry, material);
         m.userData.cutaway = true;
         m.renderOrder = 6;
@@ -942,14 +944,14 @@ export class Cutaway {
     this._updateGhost(dt);
 
     // glows: the lit zones steady and bright, or on the overview a soft pulse running from part to part
-    // (all at once they'd wash the cabin in color); tints win
+    // (all at once they'd wash the cabin in color, and draw every part twice); tints win
     const want = new Map();
     let i = 0;
     const zones = Object.keys(ZONES).length;
     for (const [id, z] of Object.entries(ZONES)) {
       const on = this.lit.has(id);
       const wave = Math.max(0, Math.sin(clock * 1.4 - (i / zones) * Math.PI * 2));
-      const level = this.overview ? 0.05 + 0.3 * wave ** 6 : on ? 0.3 + 0.08 * Math.sin(clock * 3) : 0;
+      const level = this.overview ? 0.35 * wave ** 6 : on ? 0.3 + 0.08 * Math.sin(clock * 3) : 0;
       i++;
       for (const n of [...(z.nodes || []), ...(z.built || [])]) {
         if (this.glows.has(n) && level > (want.get(n)?.level || 0)) want.set(n, { level, color: this.accent });

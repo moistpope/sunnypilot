@@ -319,7 +319,14 @@ export class Settings {
       ['radarAllTracks', 'All radar tracks', 'Radar objects: also show tracks younger than 1.3 s, most of which flicker in and out (the radar reports every candidate).'],
       ['showObjectStats', 'Object stats', 'Tag every object with its source (ADAS camera, openpilot, radar), track ID, position (x ahead, y left/right), ' +
         'speed over the ground and relative, heading and size, in m, m/s and degrees. The ADAS reports no speeds: those are this view\'s estimate.'],
+      ['showFps', 'Frame rate', 'Frames per second under the status card. Tap it for the slowest frame, the HUD\'s own script time per frame, ' +
+        'draw calls, triangles and the render resolution.'],
     ]));
+    body.append(el('div.section', el('h3', 'Render resolution'),
+      el('p.desc', 'The 3D view\'s resolution, as a share of the screen\'s. While frames come slower than the screen refreshes, Auto ' +
+        'first drops the blur behind the HUD\'s cards, then steps the resolution down (to 60%), and brings them back once frames keep up. ' +
+        'The counter shows the resolution when it\'s below 100%.'),
+      this.app.segmented([['auto', 'Auto'], ['1', 'Full'], ['0.75', '75%'], ['0.5', '50%']], s.renderScale, v => set('renderScale', v))));
     const calib = this.app.state && this.app.state.calibration;
     body.append(el('div.section', el('h3', 'Geometry calibration'),
       el('p.desc', 'The ADAS lane heading direction is verified on the car; lane curvature and object heading signs aren\'t documented. ' +

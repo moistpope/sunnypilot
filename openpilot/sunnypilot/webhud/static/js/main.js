@@ -5,6 +5,7 @@ import { CarControls } from './carcontrols.js';
 import { OCEAN_PAINT_DEFAULT, OCEAN_WHEELS_DEFAULT } from './models.js';
 import { LANE_CONF_THRESHOLD } from './road.js';
 import { Hud } from './hud.js';
+import { FrameMeter } from './perf.js';
 import { Settings } from './settings.js';
 import { VehicleState } from './vehicle.js';
 
@@ -17,6 +18,7 @@ const DEFAULTS = {
   showPath: true, showUss: true, showOpLeads: true, autoView: true, showGround: true, showRoad: true, showSigns: true,
   showTracks: true, showRadar: false, radarAllTracks: false, showLowConf: false, showObjectStats: false, objectMode: 'world',
   laneHeadingSign: 1, laneCurvatureSign: 1, objectHeadingSign: 1, laneConfThreshold: LANE_CONF_THRESHOLD,
+  showFps: true, renderScale: 'auto',
 };
 
 function loadSettings() {
@@ -76,11 +78,13 @@ class App {
     this.connect();
     api('/api/params').then(p => { this.hud.isMetric = !!p.IsMetric; }).catch(() => {});
 
+    this.meter = new FrameMeter(this);
     let last = performance.now();
     const loop = (now) => {
       requestAnimationFrame(loop);   // schedule first: one bad frame must not stop the HUD
       const dt = (now - last) / 1000;
       last = now;
+      const t0 = performance.now();
       // the car controls' mock parking drive stands in for the live data while it runs
       try { this.car.beforeFrame(dt); } catch (e) { this.reportError(e); }
       const mock = this.car.apa;
@@ -90,6 +94,7 @@ class App {
       try { this.scene.frame(dt, this.vehicle); } catch (e) { this.reportError(e); }
       try { this.car.frame(dt); } catch (e) { this.reportError(e); }
       try { if (state) this.hud.update(state, settings, this.vehicle); } catch (e) { this.reportError(e); }
+      this.meter.tick(now, dt * 1000, performance.now() - t0);
     };
     requestAnimationFrame(loop);
     setInterval(() => this.watchdog(), 1000);
@@ -108,6 +113,7 @@ class App {
     if (key === 'theme') this.applyTheme();
     if (key === 'egoPaint' || key === 'egoWheels') this.scene.setEgoLook(this.settings.egoPaint, this.settings.egoWheels);
     if (key === 'showRadar') this.updateRadarChip();
+    if (key === 'showFps' || key === 'renderScale') this.meter.apply();
     if (!this.car.apa) this.scene.update(this.state, this.settings);
     if (this.ui.isOpen && this.ui.tab === 'display') this.ui.show('display', true);
   }

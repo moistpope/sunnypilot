@@ -88,7 +88,13 @@ export class CarControls {
     this.cat = c && c.id;
     $$('.cat', this.ribbon).forEach(b => {
       setClass(b, 'on', b.dataset.cat === this.cat);
-      if (b.dataset.cat === this.cat) b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      // into view along the ribbon only: scrollIntoView would also scroll #app to a ribbon still sliding
+      // in, shifting the whole HUD up
+      if (b.dataset.cat === this.cat) {
+        const cats = b.parentElement, l = b.offsetLeft - cats.offsetLeft, r = l + b.offsetWidth;
+        if (l < cats.scrollLeft) cats.scrollLeft = l;
+        else if (r > cats.scrollLeft + cats.clientWidth) cats.scrollLeft = r - cats.clientWidth;
+      }
     });
     this.v['energy.port'] = !!c && c.id === 'energy';   // the port opens to show it, and closes when you move on
     this.cardsShown = !!(c && c.cards) && this.roomForCards();
@@ -333,8 +339,11 @@ export class CarControls {
       }
       if (!p.w) { p.w = p.el.offsetWidth; p.h = p.el.offsetHeight; }
       const show = !gone && front && sx > -50 && sx < W + 50 && sy > -50 && sy < H + 50;
-      p.el.style.visibility = show ? '' : 'hidden';
-      if (p.line) p.line.style.visibility = p.dot.style.visibility = show ? '' : 'hidden';
+      if (show !== p.shown) {   // the DOM only when something changed: the leader lines are one screen-sized SVG to repaint
+        p.shown = show;
+        p.el.style.visibility = show ? '' : 'hidden';
+        if (p.line) p.line.style.visibility = p.dot.style.visibility = show ? '' : 'hidden';
+      }
       if (!show) continue;
       let x, y;
       if (p.kind === 'badge') {
@@ -373,6 +382,9 @@ export class CarControls {
         }
         placed.push({ x, y, w: p.w, h: p.h });
       }
+      const key = `${x.toFixed(1)} ${y.toFixed(1)} ${sx.toFixed(1)} ${sy.toFixed(1)}`;
+      if (key === p.key) continue;
+      p.key = key;
       p.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
       if (p.line) {   // to the nearest point of the pin, just inside its rounded corners (it's drawn over the line)
         const ex = Math.max(x + 14, Math.min(x + p.w - 14, sx)), ey = Math.max(y + 14, Math.min(y + p.h - 14, sy));

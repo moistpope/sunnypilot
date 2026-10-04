@@ -247,7 +247,8 @@ export class CarScene {
   constructor(canvas) {
     this.canvas = canvas;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+    this.renderScale = 1;   // of the full resolution (perf.js lowers it when frames come slow)
+    this.renderer.setPixelRatio(this._pixelRatio());
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     this.scene = new THREE.Scene();
@@ -521,8 +522,17 @@ export class CarScene {
     return this.cutaway.pick(this._ray(clientX, clientY));
   }
 
+  // the full resolution is the device's pixel ratio, at most 1.75
+  _pixelRatio() { return Math.min(window.devicePixelRatio || 1, 1.75) * this.renderScale; }
+
+  setRenderScale(k) {
+    this.renderScale = k;
+    this.resize();
+  }
+
   resize() {
     const w = this.canvas.clientWidth || window.innerWidth, h = this.canvas.clientHeight || window.innerHeight;
+    if (this.renderer.getPixelRatio() !== this._pixelRatio()) this.renderer.setPixelRatio(this._pixelRatio());
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     // a rotated (portrait) screen needs a wider vertical field of view to keep the lanes in frame
