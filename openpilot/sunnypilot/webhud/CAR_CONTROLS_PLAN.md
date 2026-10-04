@@ -39,7 +39,7 @@ Two changes from review of the first draft:
   headliner, visors) and fade it to transparent, instead of cutting the car with a clipping plane. "The
   roof" means everything between the two side rails above the doors.
 - **Drive mode:** changing the drive mode sends a ring of particles out from the car, styled like the tire
-  trails, in the new mode's colour.
+  trails, in the new mode's color.
 
 Content sources:
 - **The uploaded manual (X297 user guide, 36 pages).** Its screenshots give the head unit's real settings
@@ -138,16 +138,16 @@ the parts glb exists.
 
 | Category | Highlighted part | Camera | Presentation |
 |---|---|---|---|
-| Lighting | headlights, DRLs | close-up from the front | **on-car**: headlight mode, auto high beam and ADB beside the left lamp; follow-me-home, welcome lights, interior delay and ambient colour/brightness beside the right lamp; the model's lamps preview the chosen mode |
+| Lighting | headlights, DRLs | close-up from the front | **on-car**: headlight mode, auto high beam and ADB beside the left lamp; follow-me-home, welcome lights, interior delay and ambient color/brightness beside the right lamp; the model's lamps preview the chosen mode |
 | Climate | dash vents and console | top-down on the front cabin | panel: L/R temperature, sync, auto, A/C, fan, airflow, recirculation, front and rear defrost, heated wheel, preconditioning; tinted airflow particles from the vents |
 | Seats | front seats | 10 o'clock (front-left, high), rest of the car translucent | **on-car**: per seat heat 0–3, vent 0–3, position pad, lumbar, memory 1/2/3 + save, profile, easy entry; rear-seat heater chips; heat/vent glow on the seats |
-| Driving | rear seats, with the powertrain under them shown x-ray | side x-ray | panel: Earth/Fun/Hyper (the motors glow green/blue/orange), regen, creep, steering feel, traction, hill descent, auto hold; **a mode change pulses a particle ring out from the car in the new mode's colour** |
+| Driving | rear seats, with the powertrain under them shown x-ray | side x-ray | panel: Earth/Fun/Hyper (the motors glow green/blue/orange), regen, creep, steering feel, traction, hill descent, auto hold; **a mode change pulses a particle ring out from the car in the new mode's color** |
 | Assist | windshield camera, front radar | high front 3/4 | panel: all `ICC_*` settings with their DBC options; sensor coverage fans drawn on the ground |
 | Energy | charge-port door, front left | front-left 3/4 | panel: SoC/range, charge limit, current, schedule, V2L, SolarSky; the door swings open and the x-ray battery fills to SoC |
 | Audio | amplifier, rear right of the trunk | rear 3/4, high | panel (manual): EQ presets and 5 sliders, Sound Stage, HyperSound, radio announcements; the Sound Stage choice lights those seats with sound rings |
 | Doors | doors and tailgate | rear-left 3/4, roof on | panel: lock/unlock, unlock mode, walk-away lock, auto-unlock, close windows/sunroof, auto-fold mirrors, child and window locks, California Mode; door/tailgate chips **open the real door nodes**, and California Mode lowers the door glass |
 | Service | wheels | top-down | panel (manual): vehicle info, Owner's Manual, Roadside Mode, Reset Tire Pressure; pressure chips at each wheel |
-| Display | centre screen | in the cabin looking at the dash | panel: brightness, auto, appearance, Hollywood Mode, driver display layout |
+| Display | center screen | in the cabin looking at the dash | panel: brightness, auto, appearance, Hollywood Mode, driver display layout |
 | Connectivity, Profiles & Keys, Navigation, General, Software | none | stays on the overview | panel only (Connectivity, Navigation and Software follow the manual) |
 
 The ribbon lists the car-part categories first, a divider, then the system ones. It scrolls sideways when
@@ -195,7 +195,7 @@ narrow.
     materials aren't touched.
 - **One `onBeforeCompile` injection** shared by all ego materials, with a shared cache key:
   - A world-position varying (the ego sits at the scene origin, so world = car frame).
-  - A box-zone glow added to `totalEmissiveRadiance`: up to 10 boxes, each with colour and level uniforms,
+  - A box-zone glow added to `totalEmissiveRadiance`: up to 10 boxes, each with color and level uniforms,
     and a per-material mask so a zone lights only its own materials. For example, the front-seat box tints
     only the seats; the seat mesh gets its own cloned materials so it can be masked separately.
   - A ghost factor: fresnel-rim translucency for the "rest of the car translucent" views, such as Seats.
@@ -203,13 +203,13 @@ narrow.
   - A `THREE.Points` ring that starts on the car's footprint, a rounded rectangle about 2 × 4.8 m, and
     expands about 7 m over about 1.2 s. Its specks thin, twinkle and fade as it goes, and a few rise
     slightly.
-  - Its colour is the new mode's: Earth green, Fun blue, Hyper orange-red. The motors' x-ray glow
-    cross-fades to the same colour.
+  - Its color is the new mode's: Earth green, Fun blue, Hyper orange-red. The motors' x-ray glow
+    cross-fades to the same color.
   - Particles are spawned once per pulse into a small pool of about 6000, and age is computed on the GPU
     from a time uniform.
   - The speck/halo fragment shader and the theme blending (additive at night, ink-like by day) are reused
     from the tire trails. `tracks.js` exports them as `SPECK_FRAGMENT` and `speckBlending(dark)`; its
-    behaviour is unchanged.
+    behavior is unchanged.
 - **Built parts the model lacks:**
   - front and rear drive units, and the battery pack as an x-ray additive material with no depth test;
   - the charge-port door, placed by a raycast against `PBR_carpaint` on the front-left fender, with a
@@ -227,12 +227,12 @@ narrow.
 - Studio camera API: `enterStudio()`, `exitStudio()`, `focus({target, r, phi, theta, fit}, instant)` and
   `setFrame(rect)`.
 - `viewAnim` gains a target and an x offset, so a camera move can go to any point on the car, not only the
-  car's centre.
+  car's center.
 - While in the studio:
-  - the recentre spring uses the focus target;
+  - the recenter spring uses the focus target;
   - camera lag and the chase dolly are suspended;
   - `controls.minDistance` drops to 1.2;
-  - `setViewOffset` centres the focus target in the free rectangle.
+  - `setViewOffset` centers the focus target in the free rectangle.
 - Fit: compute the distance so a given width × length of the car fills about 80% of the free rectangle,
   using the current fov (60 in portrait, 42 in landscape).
 - `pickEgo(x, y)` and `pickZone(x, y)` helpers.
@@ -248,7 +248,7 @@ narrow.
 
 **`main.js`**
 - Bind the camera menu in place of `bindViewbar`.
-- Tap-to-enter on `#scene`, keeping double-tap recentre outside car mode.
+- Tap-to-enter on `#scene`, keeping double-tap recenter outside car mode.
 - `autoView()` returns early while car mode is open.
 - `updateLayout()` measures the cluster for `--viewbar-w` and passes the free rectangle (status card,
   panel, ribbon) to `scene.setFrame` while car mode is open.
@@ -288,7 +288,7 @@ Untouched: the server, the Android app and the CAN override settings.
      Also check the paint and wheel options and the lamps still work on the split model.
   3. Open every category. Screenshot the panel layouts, both on-car layouts (Lighting, Seats) and the
      door/charge-port animations. Switch Earth → Fun → Hyper and capture frames of each pulse ring, in both
-     themes, to confirm it expands and fades in the mode's colour. Confirm the tire trails look the same as
+     themes, to confirm it expands and fades in the mode's color. Confirm the tire trails look the same as
      before.
   4. Check that the background tap and ✕ exit, and the car is restored.
   5. Check there are no console errors.
