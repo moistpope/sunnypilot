@@ -4,14 +4,16 @@
 the v0.10 package). Meters, +X forward, +Y up, -Z to the car's left; ground at y = -0.684. The web HUD
 turns it to face its -Z and puts the front bumper at z = 0 at load time.
 
-Changed from the package's glb only in how its meshes are grouped: the car controls mockup needs the
+Changed from the package's glb in how its meshes are grouped (and one repair, below): the car controls mockup needs the
 roof, sunroof, seats, windows, dash vents, screens and console as meshes of their own, and the glb merges
 every part into one mesh per material and rig node. `sunnypilot/webhud/tools/export_ocean_glb.py` matches
 each triangle to its part in the package's `Pulse-Ocean-Master.blend` and moves those triangles into
 nodes named for them (`Roof`, `Sunroof`, `Seat_FL` with `Seat_FL_Back` hanging from it, `Window_Front_L`,
 ...; each lists its source parts in its extras). The seat backs and the center screen sit on pivots of
-their own (their vertices moved to be relative to them). Otherwise the geometry, materials, textures, rig
-and animations are the package's own, and the file rebuilds the same byte for byte. The package states
+their own (their vertices moved to be relative to them). The package closed the seats' open edges with one
+n-gon per hole; the bent ones (3 cm or more off flat) cut through the cushions and backs, so they are left
+out (2,326 triangles; the flat ones stay). Otherwise the geometry, materials, textures, rig and animations
+are the package's own, and the file rebuilds the same byte for byte. The package states
 no license; check it before redistributing.
 
 The package's integration files are folded into `sunnypilot/webhud/static/js/models.js`:

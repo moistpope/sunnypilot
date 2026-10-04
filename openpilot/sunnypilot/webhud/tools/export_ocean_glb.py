@@ -14,8 +14,9 @@ this finds the part each of the glb's triangles came from (the master triangle o
 material whose centroid it shares, as modeled or as subdivided; for the parts that are several pieces,
 which piece) and moves the triangles of each group below into a node of its own beside the meshes it came
 from (Roof under Body, Window_Front_L under Door_Front_L), one primitive per material. A group that turns
-(a seat back, the screen) has its node at its pivot. Everything else (rig, materials, textures,
-animations) is copied unchanged, and unused buffer data is dropped.
+(a seat back, the screen) has its node at its pivot. The bent caps the package added to close the seats
+are left out (CAPPED). Everything else (rig, materials, textures, animations) is copied unchanged, and
+unused buffer data is dropped.
 Run with Blender 4.3 or later; it needs only Blender's own Python (numpy, mathutils).
 """
 import argparse
@@ -64,6 +65,12 @@ PIVOTS = {
   'Center_Screen': (0.549, 0.308, 0.0),
 }
 PARENTS = {'Seat_FL_Back': 'Seat_FL', 'Seat_FR_Back': 'Seat_FR'}
+# Pulse closed the seats' open edges with one n-gon per hole (interior-closure-validation.json: 36 faces on
+# the front seats, 32 on the rear). The flat ones close a side wall. The bent ones span a bolster's curve,
+# and their triangles cut through the cushions and backs as dark wedges, so they are left out.
+CAPPED = {'Seats_Front_Closed', 'Seats_Rear_Closed'}
+CAP_BEND = 0.02   # m: a cap whose corners lie farther than this from its plane is dropped
+DROP = '-'
 
 
 def island_tag(part, lo, hi):
@@ -83,11 +90,14 @@ MATCH_TOL = 0.003   # m: a glb triangle farther than this from every master tria
 
 
 def groups_of(part, c):
-  """The group of each of a master part's triangles in the glb (centroids c, glTF axes); '' stays put.
-  part is the master object's name, with '#piece' for the parts told apart by island_tag."""
+  """The group of each of a master part's triangles in the glb (centroids c, glTF axes); '' stays put and
+  DROP is left out. part is the master object's name, with '#piece' for the parts told apart by island_tag
+  and '#cap' for the seats' bent caps."""
   g = np.full(len(c), '', dtype=object)
   name = part.split('#')[0]
-  if part in WINDOWS:
+  if part.endswith('#cap'):
+    g[:] = DROP
+  elif part in WINDOWS:
     g[:] = WINDOWS[part]
   elif part in SUNROOF:
     g[:] = 'Sunroof'
@@ -157,6 +167,16 @@ def triangle_centroids(o, mesh):
       tag = island_tag(o.name, pts.min(0), pts.max(0))
       for t in np.nonzero(sel)[0]:
         owners[t] = f'{o.name}#{tag}' if tag else o.name
+  if o.name in CAPPED:
+    poly = np.empty(n, np.int32)
+    mesh.loop_triangles.foreach_get('polygon_index', poly)
+    for p in mesh.polygons:
+      if len(p.vertices) > 4:
+        pts = w[list(p.vertices)]
+        pts = pts - pts.mean(0)
+        if np.abs(pts @ np.linalg.svd(pts)[2][2]).max() > CAP_BEND:
+          for t in np.nonzero(poly == p.index)[0]:
+            owners[t] = f'{o.name}#cap'
   return c, [slots[min(i, len(slots) - 1)] for i in mi], owners
 
 
@@ -330,6 +350,7 @@ class Glb:
 def split(glb, index):
   j = glb.j
   pieces = {}   # (rig node, group) -> {'prims': [primitive], 'parts': {master part}, 'translation': mesh nodes' offset}
+  dropped = {}  # glb node -> triangles left out
   report = []
   for rig_i, rig in enumerate(j['nodes']):
     if rig.get('name') not in RIG:
@@ -364,6 +385,8 @@ def split(glb, index):
         if not (group != '').any():
           keep.append(prim)
           continue
+        if (group == DROP).any():
+          dropped[node['name']] = dropped.get(node['name'], 0) + int((group == DROP).sum())
         for g in GROUPS:
           sel = group == g
           if sel.any():
@@ -398,6 +421,8 @@ def split(glb, index):
     tris = sum(j['accessors'][p['indices']]['count'] // 3 for p in piece['prims'])
     mats = [j['materials'][p['material']]['name'] for p in piece['prims']]
     print(f"{j['nodes'][rig_i]['name']}/{g}: {tris} triangles, {len(mats)} materials ({', '.join(mats)}); parts: {', '.join(sorted(piece['parts']))}")
+  for name, k in dropped.items():
+    print(f'{name}: {k} triangles of bent seat caps left out')
   for line in report:
     print('warning:', line)
 
