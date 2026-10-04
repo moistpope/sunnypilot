@@ -68,7 +68,14 @@ object CanBridge {
             return
         }
         running = true
-        thread(name = "webhud-can", isDaemon = true) { run(bin) }
+        val root = Link.get(context).root
+        thread(name = "webhud-can", isDaemon = true) {
+            // first open the chips' hardware filters so every ID in CanIds.RX can reach the helper
+            val why = HwFilters.apply(root)
+            if (why == null) Log.i(TAG, "CAN hardware filters pass every ID we read")
+            else Log.w(TAG, "CAN hardware filters left as they are ($why): some read-outs stay empty")
+            run(bin)
+        }
     }
 
     @Synchronized

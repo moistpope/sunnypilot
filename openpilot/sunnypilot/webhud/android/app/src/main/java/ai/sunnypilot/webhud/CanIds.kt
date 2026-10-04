@@ -16,4 +16,15 @@ object CanIds {
         "IBUS1" to setOf(0x4E, 0x530, 0x534, 0x90, 0x528, 0x533, 0x52),
         "IBUS2" to emptySet(),
     )
+
+    /** The chips' hardware acceptance filters that let every RX ID through (HwFilters.kt applies them at start). */
+    val HW_FILTERS: Map<String, HwFilter> = mapOf(
+        "IBUS1" to HwFilter(chip = 0, mask0 = 0x600, filters0 = listOf(0x200, 0x400), mask1 = 0x7F8, filters1 = listOf(0x110, 0x150, 0x1B8, 0x1C0)),   // passes 1056 of 2048 IDs
+        "IBUS2" to HwFilter(chip = 1, mask0 = 0x600, filters0 = listOf(0x200, 0x0), mask1 = 0x7C0, filters1 = listOf(0x500, 0x580, 0x600, 0x640)),   // passes 1280 of 2048 IDs
+    )
+}
+
+/** One MCP2515's acceptance filters: receive buffer 0 has a mask and two filters, buffer 1 a mask and four. */
+data class HwFilter(val chip: Int, val mask0: Int, val filters0: List<Int>, val mask1: Int, val filters1: List<Int>) {
+    fun passes(id: Int): Boolean = filters0.any { (id and mask0) == (it and mask0) } || filters1.any { (id and mask1) == (it and mask1) }
 }

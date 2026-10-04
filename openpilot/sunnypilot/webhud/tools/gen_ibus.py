@@ -66,6 +66,47 @@ TX = {
 # the read-out table leaves the ADAS mirror to the world decoder (it has the ADAS DBC for those)
 READOUT_SKIP_PREFIX = "ADAS_"
 
+# Pulse's CAN driver (an out-of-tree mcp251x) programs the chips' hardware acceptance filters from module
+# parameters: per chip (0 = spi0.0 = can1 = IBUS1, 1 = spi0.1 = can2 = IBUS2) a mask and two filters for
+# receive buffer 0, a mask and four for buffer 1; an ID passes a buffer when (id & mask) == (filter & mask)
+# for one of its filters. Its defaults pass only parts of the ID range (IBUS1 ~0x200-0x3FF and 0x500-0x7FF,
+# IBUS2 0x200-0x23F, 0x300-0x37F, 0x500-0x53F, 0x580-0x5BF), which blocks the steering angle, yaw rate,
+# seat and liftgate positions, battery current and charging times. The app sets these instead at start
+# (HwFilters.kt): the tightest masks and filters that let every ID in RX through.
+def hexes(ids) -> str:
+  return ", ".join(f"0x{i:X}" for i in ids)
+
+
+MASKS = [0x400, 0x600, 0x700, 0x780, 0x7C0, 0x7E0, 0x7F0, 0x7F8, 0x7FC, 0x7FE, 0x7FF]
+
+
+def hw_filters(ids: list[int]) -> dict:
+  """{mask0, filters0 (2), mask1, filters1 (4), passes}: the plan letting every id through with the fewest other IDs."""
+  best = None
+  wanted = set(ids)
+  for m0 in MASKS:
+    for m1 in MASKS:
+      # buffer 0 takes the two biggest groups under its mask, buffer 1 must cover the rest in four
+      groups0: dict[int, set[int]] = {}
+      for i in wanted:
+        groups0.setdefault(i & m0, set()).add(i)
+      for f0 in __import__("itertools").combinations(sorted(groups0, key=lambda g: -len(groups0[g]))[:6], min(2, len(groups0))):
+        covered = set().union(*(groups0[g] for g in f0))
+        rest = wanted - covered
+        groups1 = sorted({i & m1 for i in rest})
+        if len(groups1) > 4:
+          continue
+        filters0 = list(f0) + [f0[0]] * (2 - len(f0))
+        filters1 = groups1 + [groups1[0] if groups1 else filters0[0]] * (4 - len(groups1))
+        passes = sum(1 for i in range(0x800) if (i & m0) in {f & m0 for f in filters0} or (i & m1) in {f & m1 for f in filters1})
+        plan = {"mask0": m0, "filters0": filters0, "mask1": m1, "filters1": filters1, "passes": passes}
+        if best is None or passes < best["passes"]:
+          best = plan
+  assert best is not None
+  for i in wanted:   # every wanted ID passes
+    assert (i & best["mask0"]) in {f & best["mask0"] for f in best["filters0"]} or (i & best["mask1"]) in {f & best["mask1"] for f in best["filters1"]}, hex(i)
+  return best
+
 VALUE_RE = re.compile(r"^\s*0x([0-9A-Fa-f]+)\s*:\s*(.+?)\s*$")
 
 
@@ -223,10 +264,17 @@ def write_js(msgs: list[dict], path: str) -> None:
       out.append(f"  {{ bus: '{bus}', addr: 0x{addr:X}, name: '{name}', len: {m['len']}, cyclic: {cyclic}, cycleMs: {m['cycle']}, signals: [")
       out += [js_signal(s) for s in m["signals"]]
       out.append("  ]},")
+  plans = {bus: hw_filters(ids) for bus, ids in RX.items()}
   out += ["];", "",
           "// What the app's CAN helper lets through (receive) and the only IDs it may send, per bus (CanIds.kt has the same).",
           "export const RX_IDS = " + js_ids(RX) + ";",
-          "export const TX_IDS = " + js_ids(TX) + ";", ""]
+          "export const TX_IDS = " + js_ids(TX) + ";", "",
+          "// The chips' hardware acceptance filters the app sets at start so every RX ID gets through (see gen_ibus.py).",
+          "export const HW_FILTERS = {",
+          *[f"  {bus}: {{ mask0: 0x{p['mask0']:X}, filters0: [{hexes(p['filters0'])}], mask1: 0x{p['mask1']:X}, "
+            + f"filters1: [{hexes(p['filters1'])}], passes: {p['passes']} }},"
+            for bus, p in plans.items()],
+          "};", ""]
   with open(path, "w", encoding="utf-8") as f:
     f.write("\n".join(out))
 
@@ -238,6 +286,11 @@ def js_ids(d: dict) -> str:
 def write_kt(path: str) -> None:
   def kt_set(ids):
     return "setOf(" + ", ".join(f"0x{a:X}" for a in ids) + ")" if ids else "emptySet()"
+  plans = {bus: hw_filters(ids) for bus, ids in RX.items()}
+  def kt_plan(bus, chip):
+    p = plans[bus]
+    return (f'HwFilter(chip = {chip}, mask0 = 0x{p["mask0"]:X}, filters0 = listOf({hexes(p["filters0"])}), '
+            + f'mask1 = 0x{p["mask1"]:X}, filters1 = listOf({hexes(p["filters1"])})),   // passes {p["passes"]} of 2048 IDs')
   text = f"""package ai.sunnypilot.webhud
 
 /**
@@ -256,6 +309,17 @@ object CanIds {{
         "IBUS1" to {kt_set(TX["IBUS1"])},
         "IBUS2" to {kt_set(TX["IBUS2"])},
     )
+
+    /** The chips' hardware acceptance filters that let every RX ID through (HwFilters.kt applies them at start). */
+    val HW_FILTERS: Map<String, HwFilter> = mapOf(
+        "IBUS1" to {kt_plan("IBUS1", 0)}
+        "IBUS2" to {kt_plan("IBUS2", 1)}
+    )
+}}
+
+/** One MCP2515's acceptance filters: receive buffer 0 has a mask and two filters, buffer 1 a mask and four. */
+data class HwFilter(val chip: Int, val mask0: Int, val filters0: List<Int>, val mask1: Int, val filters1: List<Int>) {{
+    fun passes(id: Int): Boolean = filters0.any {{ (id and mask0) == (it and mask0) }} || filters1.any {{ (id and mask1) == (it and mask1) }}
 }}
 """
   with open(path, "w", encoding="utf-8") as f:

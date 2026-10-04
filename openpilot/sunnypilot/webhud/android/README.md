@@ -132,13 +132,21 @@ per line, and it answers each on stdout. The page asks for the current state whe
 Rebuild the helper (needs only the Go toolchain) with `canbridge/build.sh`. `adb logcat -s WebHud`
 shows `CAN helper: ready` and `CAN frames flowing` when it's up.
 
-Pulse's CAN driver has hardware acceptance filters (`/sys/module/mcp251x/parameters/rxb_mask_*`,
-`rxb_filter_*`; also in the device tree) that pass only parts of the ID range: on IBUS1 roughly
-0x200–0x3FF, 0x500–0x5FF and 0x600–0x7FF, on IBUS2 0x200–0x23F, 0x300–0x37F, 0x500–0x53F and
-0x580–0x5BF. The seat and mirror positions (0x4F3, 0x4F5), the liftgate (0x471), the steering angle
-and yaw rate (0x1C2, 0x112), the battery current (0xE9), the charging times (0x630, 0x634) and the
-odometer (0x641) are outside them and never arrive. The lists in `CanIds.kt` include them, so they'd
-come at once if the filters were opened, at the cost of more SPI interrupts.
+Pulse's CAN driver (an out-of-tree mcp251x) programs the chips' hardware acceptance filters from
+module parameters: per chip (`_0` = can1 = IBUS1, `_1` = can2 = IBUS2) `rxb_mask_<chip>` holds the
+masks of receive buffers 0 and 1, `rxb_filter_<chip>` their six filters (two for buffer 0, four for
+buffer 1), and a write to `apply_filters` programs them; an ID passes when `(id & mask) == (filter &
+mask)` for some filter of a buffer. Its defaults pass only parts of the ID range (IBUS1 roughly
+0x200–0x3FF and 0x500–0x7FF, IBUS2 0x200–0x23F, 0x300–0x37F, 0x500–0x53F, 0x580–0x5BF), which loses the
+seat and mirror positions (0x4F3, 0x4F5), the liftgate (0x471), the steering angle and yaw rate (0x1C2,
+0x112), the battery current (0xE9), the charging times (0x630, 0x634) and the odometer (0x641). So at
+start `HwFilters` writes the plan in `CanIds.HW_FILTERS` instead: `gen_ibus.py` searches the tightest
+masks and filters that let every ID in `CanIds.RX` through (IBUS1 0x200–0x5FF plus four 8-ID windows
+in 0x100–0x1FF, IBUS2 0x000–0x3FF plus 0x500–0x53F, 0x580–0x5BF, 0x600–0x67F). The files belong to
+root, so it goes through the app's root shell (`Link.root`); without root the driver's own values stay
+and the log says so (`CAN hardware filters left as they are`). The wider filters mean more SPI
+interrupts for IDs we don't read; the kernel-side `CAN_RAW` filters in the helper still keep those from
+the app.
 
 Pulse drops a large share of received frames (about half on IBUS1, two-thirds on IBUS2): both CAN
 controllers share one SPI bus and every interrupt lands on CPU 0. Status messages repeat, so the
