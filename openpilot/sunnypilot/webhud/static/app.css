@@ -429,6 +429,12 @@ html.carmode .carribbon { transform: translate(-50%, 0); opacity: 1; pointer-eve
 .callout.on .tt { color: #fff; }
 html.carmode #replaybar { display: none; }
 .callout.slotpin { padding: 0 12px; font-weight: 800; letter-spacing: .5px; }
+/* a door's chip: the door's and the window's buttons */
+.callout.pair { gap: 4px; padding: 0 4px; }
+.callout .cbtn { flex: none; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 99px;
+  background: var(--bg2); color: var(--accent); cursor: pointer; }
+.callout .cbtn svg { width: 18px; height: 18px; }
+.callout .cbtn.on { background: var(--accent); color: #fff; }
 
 /* mock automated parking */
 .hero.apa .pmark { flex: none; width: 46px; height: 46px; border-radius: 12px; background: var(--accent); color: #fff;
@@ -492,4 +498,7 @@ html.carmode #replaybar { display: none; }
   .callout.iconly { width: 32px; height: 32px; }
   .callout { height: 34px; font-size: 12.5px; padding: 0 12px 0 8px; }
   .callout .tt { width: 17px; height: 17px; }
+  .callout.pair { padding: 0 3px; }
+  .callout .cbtn { width: 28px; height: 28px; }
+  .callout .cbtn svg { width: 16px; height: 16px; }
 }

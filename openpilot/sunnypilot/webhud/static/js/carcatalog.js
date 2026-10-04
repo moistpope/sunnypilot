@@ -273,23 +273,32 @@ export const CATEGORIES = [
     ],
   },
   {
-    id: 'windows', label: 'Windows', icon: 'window', zone: 'windows', roof: false,
+    id: 'doors', label: 'Doors & Windows', icon: 'door', zone: 'doors', roof: false,
     focus: { at: [0, 0.95, 2.9], az: -142, el: 30, fit: [4.6, 2.6] },
+    // a door's chip opens the door and winds its window, and rides on the door; a quarter window's winds it
     chips: [
-      { anchor: 'winFL', id: 'win.FL', kind: 'window', label: 'Front left' },
-      { anchor: 'winFR', id: 'win.FR', kind: 'window', label: 'Front right' },
-      { anchor: 'winRL', id: 'win.RL', kind: 'window', label: 'Rear left' },
-      { anchor: 'winRR', id: 'win.RR', kind: 'window', label: 'Rear right' },
-      { anchor: 'winQL', id: 'win.QL', kind: 'window', label: 'Left quarter' },
-      { anchor: 'winQR', id: 'win.QR', kind: 'window', label: 'Right quarter' },
-      { anchor: 'winRear', id: 'win.rear', kind: 'window', label: 'Rear window' },
+      { anchor: 'winFL', kind: 'pair', label: 'Front left', door: 'Door_Front_L', win: 'win.FL' },
+      { anchor: 'winFR', kind: 'pair', label: 'Front right', door: 'Door_Front_R', win: 'win.FR' },
+      { anchor: 'winRL', kind: 'pair', label: 'Rear left', door: 'Door_Rear_L', win: 'win.RL' },
+      { anchor: 'winRR', kind: 'pair', label: 'Rear right', door: 'Door_Rear_R', win: 'win.RR' },
+      { anchor: 'winQL', kind: 'pair', label: 'Left quarter', win: 'win.QL' },
+      { anchor: 'winQR', kind: 'pair', label: 'Right quarter', win: 'win.QR' },
+      { anchor: 'winRear', kind: 'pair', label: 'Liftgate', door: 'Tailgate', win: 'win.rear' },
       { anchor: 'sunroof', id: 'win.sunroof', kind: 'window', label: 'Sunroof', toward: [0.4, -0.9] },
     ],
     sections: [
+      { controls: [{ id: 'doors.locked', type: 'lock', def: true }] },
       {
         controls: [
           ACT('California Mode', 'california', 'primary', 'Opens all eight: the windows, the rear window and the sunroof'),
           ACT('Close all', 'closeAll'),
+        ],
+      },
+      {
+        title: 'Doors',
+        controls: [
+          { id: 'doors.open', type: 'checks', label: 'Open', sub: 'The liftgate is powered; the doors open on the car view (mockup)',
+            options: [['Door_Front_L', 'Front left'], ['Door_Front_R', 'Front right'], ['Door_Rear_L', 'Rear left'], ['Door_Rear_R', 'Rear right'], ['Tailgate', 'Liftgate']], def: [] },
         ],
       },
       {
@@ -312,9 +321,18 @@ export const CATEGORIES = [
         ],
       },
       {
-        title: 'Settings',
+        title: 'Locking',
         controls: [
+          S('doors.unlock', 'Unlock', [[0, "Driver's door"], [1, 'All doors']], 1),     // BCM_DoorUnlockSetFb
+          T('doors.walkaway', 'Lock when walking away', true),
+          T('doors.offUnlock', 'Unlock when powered off', false),                         // BCM_OffAutoUnlckSetSts
           T('doors.closeWin', 'Close windows when locking', true),                        // BCM_ArmedClsWinSetSts
+          T('doors.fold', 'Fold mirrors when locking', true),                             // BCM_MirrLockAutoSetSts
+        ],
+      },
+      {
+        title: 'Safety',
+        controls: [
           T('doors.rain', 'Close the sunroof in rain', true),                             // BCM_RainClsSunroofSetSts
           T('doors.winLock', 'Lock rear window switches', false),
           T('doors.child', 'Rear child locks', false),
@@ -413,16 +431,6 @@ export const CATEGORIES = [
           { type: 'list', items: [['Phone key', 'Driver 1 · this phone', 'ok'], ['Key card', 'Driver 1'], ['Key fob', 'Driver 2']] },
           B('Add a key', 'Hold the new key to the reader (mockup)'),
           T('profile.valet', 'Valet mode', false, 'Limits speed and locks the glovebox and settings'),
-        ],
-      },
-      {
-        title: 'Locking',
-        controls: [
-          { id: 'doors.locked', type: 'lock', def: true },
-          S('doors.unlock', 'Unlock', [[0, "Driver's door"], [1, 'All doors']], 1),     // BCM_DoorUnlockSetFb
-          T('doors.walkaway', 'Lock when walking away', true),
-          T('doors.offUnlock', 'Unlock when powered off', false),                         // BCM_OffAutoUnlckSetSts
-          T('doors.fold', 'Fold mirrors when locking', true),                             // BCM_MirrLockAutoSetSts
         ],
       },
     ],

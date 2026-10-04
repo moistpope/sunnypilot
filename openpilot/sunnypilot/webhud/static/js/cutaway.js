@@ -2,8 +2,8 @@
 // cabin shows from above, the parts a category is about glow, and what the model lacks is drawn over it:
 // the drive units and battery in x-ray, the charge-port door, the trunk amplifier, air from the vents,
 // sound rings over the seats, the sensors' coverage on the ground, and the ring of particles a drive-mode
-// change sends out. It also moves the model's own parts: the windows and sunroof open, the front seats
-// slide, tilt and recline, and the center screen turns for Hollywood Mode. It only draws: nothing here
+// change sends out. It also moves the model's own parts: the doors and liftgate swing open, the windows
+// and sunroof open, the front seats slide, tilt and recline, and the center screen turns for Hollywood Mode. It only draws: nothing here
 // talks to the car.
 //
 // Car frame = scene frame (the ego car sits still at the origin): X right, Y up, Z back, the front bumper
@@ -14,15 +14,21 @@ import { SPECK_FRAGMENT, speckBlending } from './tracks.js';
 // everything between the rails (with the sunroof and its shade), and the rear window
 const ROOF_NODES = ['Roof', 'Sunroof', 'Sunshade', 'Tailgate__PBR_glass_dark', 'Tailgate__black'];
 const ROOF_MIN = 0.08;      // the faded roof keeps this much opacity: a faint glassy edge
-// The windows that open, by short name, and their glass. Each winds down from the top: a plane that cuts
-// it moves from its top edge to its sill, so the glass seems to sink into the door, full width below its
-// top edge (moving the glass itself would show its narrower top sinking, as if it shrank). The rear
+// The doors that open: hinge axis (glTF, the node's own) and open angle, from the model's controls.json
+const DOORS = {
+  Door_Front_L: ['y', -1.134], Door_Front_R: ['y', 1.134], Door_Rear_L: ['y', -1.134], Door_Rear_R: ['y', 1.134], Tailgate: ['z', -1.396],
+};
+// The windows that open, by short name: their glass, and the axis along them in their parent's frame (glTF:
+// x forward, z right). Each winds down into its door: its top edge, as modeled (curved, slanted), sinks
+// down the opening and the glass under it shows full width to the sill. The model has only the glass in
+// the opening, so moving the glass itself would show its narrower top sinking, as if it shrank. The rear
 // window's glass and its black frit go down together.
 const WINDOWS = {
-  FL: ['Window_Front_L'], FR: ['Window_Front_R'], RL: ['Window_Rear_L'], RR: ['Window_Rear_R'],
-  QL: ['Window_Quarter_L'], QR: ['Window_Quarter_R'], rear: ['Tailgate__PBR_glass_dark', 'Tailgate__black'],
+  FL: ['x', 'Window_Front_L'], FR: ['x', 'Window_Front_R'], RL: ['x', 'Window_Rear_L'], RR: ['x', 'Window_Rear_R'],
+  QL: ['x', 'Window_Quarter_L'], QR: ['x', 'Window_Quarter_R'], rear: ['z', 'Tailgate__PBR_glass_dark', 'Tailgate__black'],
 };
 const WINDOW_RATE = 0.3;    // of the travel per second: ~3.3 s top to bottom, like a power window
+const EDGE_N = 48;          // samples of a window's top edge
 const SUNROOF_LIFT = 0.045; // m the sunroof's panel rises before it slides back over the rear panel...
 const SUNROOF_SLIDE = 0.72; // m ...and how far back it goes
 const SUNROOF_TILT = -0.055;  // rad, tilted: the panel's rear edge raised (about its front edge)
@@ -42,8 +48,8 @@ export const ZONES = {
   sensors: { boxes: [[-0.3, 1.2, 1.0, 0.3, 1.6, 1.75], [-0.3, 0.2, -0.15, 0.3, 0.5, 0.15]], at: [0.12, 0.9, 0.05], built: ['sensors'] },
   port: { boxes: [[-1.1, 0.75, 1.1, -0.75, 1.15, 1.6]], at: [-0.95, 0.98, 1.36], built: ['port'] },
   amp: { boxes: [[0.2, 0.55, 3.85, 0.95, 1.1, 4.65]], at: [0.55, 0.95, 4.2], built: ['amp'] },
-  windows: { boxes: [[-0.86, 1.08, 1.75, -0.6, 1.58, 4.05], [-0.6, 1.55, 2.2, 0.6, 1.72, 3.35], [-0.55, 1.15, 4.1, 0.55, 1.5, 4.7]], mirror: true,
-    at: [-0.86, 1.36, 2.2], nodes: ['Window_Front_L', 'Window_Front_R', 'Window_Rear_L', 'Window_Rear_R', 'Window_Quarter_L', 'Window_Quarter_R', 'Sunroof'] },
+  doors: { boxes: [[-1.05, 0.4, 1.6, -0.6, 1.58, 4.05], [-0.6, 1.55, 2.2, 0.6, 1.72, 3.35], [-0.55, 0.6, 4.1, 0.55, 1.5, 4.75]], mirror: true,
+    at: [-0.86, 1.36, 2.2], nodes: [...Object.keys(DOORS), ...Object.values(WINDOWS).flatMap(([, ...names]) => names), 'Sunroof'] },
   wheels: { boxes: [[0.72, 0, 0.5, 1.05, 0.78, 1.36], [0.72, 0, 3.4, 1.05, 0.78, 4.25]], mirror: true, at: [0.98, 0.8, 0.93], nodes: TIRES },
   screen: { boxes: [[-0.25, 0.7, 1.72, 0.25, 1.15, 2.0]], at: [0, 1.12, 1.86], nodes: ['Center_Screen', 'Driver_Display'] },
 };
@@ -170,6 +176,69 @@ const FAN_FRAG = `
     #include <colorspace_fragment>
   }`;
 
+// A window wound down: what's above its top edge (sampled along it), lowered by uDrop, isn't drawn.
+// vEdge: the point along the window and up, in the window's parent's frame.
+const EDGE_FRAG = `
+  uniform float uDrop;
+  uniform float uEdge[${EDGE_N}];
+  uniform vec2 uEdgeSpan;
+  varying vec2 vEdge;
+  void windowCut() {
+    float t = clamp((vEdge.x - uEdgeSpan.x) / (uEdgeSpan.y - uEdgeSpan.x), 0.0, 1.0) * ${EDGE_N - 1}.0;
+    int i = int(t);
+    float top = mix(uEdge[i], uEdge[min(i + 1, ${EDGE_N - 1})], t - float(i));
+    if (vEdge.y > top - uDrop) discard;
+  }`;
+
+// Have a material (a window's glass, or its glow) wind down with the window: edge = { drop, edge, span }
+// uniforms the window's meshes share, toEdge: the mesh's frame to (along, up) in the window's parent's.
+function windowCut(material, edge, toEdge) {
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, { uDrop: edge.drop, uEdge: edge.edge, uEdgeSpan: edge.span, uToEdge: { value: toEdge } });
+    shader.vertexShader = shader.vertexShader.replace('void main() {',
+      'uniform mat4 uToEdge;\nvarying vec2 vEdge;\nvoid main() {\n  vEdge = (uToEdge * vec4(position, 1.0)).xy;');
+    shader.fragmentShader = shader.fragmentShader.replace('void main() {', `${EDGE_FRAG}\nvoid main() {\n  windowCut();`);
+  };
+  material.customProgramCacheKey = () => 'windowCut';
+  material.userData.cut = true;
+}
+
+// A window's top edge: the highest point of its glass at EDGE_N points along it (and the lowest, for how far
+// it goes down), from its triangles' edges. meshes: [mesh, toEdge].
+function topEdge(meshes) {
+  const segs = [], p = new THREE.Vector3();
+  let lo = Infinity, hi = -Infinity;
+  for (const [mesh, toEdge] of meshes) {
+    const pos = mesh.geometry.attributes.position, idx = mesh.geometry.index;
+    const pts = [];
+    for (let i = 0; i < pos.count; i++) {
+      p.fromBufferAttribute(pos, i).applyMatrix4(toEdge);
+      pts.push([p.x, p.y]);
+      lo = Math.min(lo, p.x); hi = Math.max(hi, p.x);
+    }
+    const n = idx ? idx.count : pos.count, at = (k) => (idx ? idx.getX(k) : k);
+    for (let k = 0; k < n; k += 3) {
+      const a = pts[at(k)], b = pts[at(k + 1)], c = pts[at(k + 2)];
+      segs.push(a, b, b, c, c, a);
+    }
+  }
+  const edge = new Float32Array(EDGE_N);
+  let travel = 0;
+  for (let i = 0; i < EDGE_N; i++) {
+    const x = lo + 0.001 + (hi - lo - 0.002) * i / (EDGE_N - 1);
+    let top = -Infinity, bottom = Infinity;
+    for (let k = 0; k < segs.length; k += 2) {
+      const [ax, ay] = segs[k], [bx, by] = segs[k + 1];
+      if ((ax - x) * (bx - x) > 0 || ax === bx) continue;
+      const y = ay + (by - ay) * (x - ax) / (bx - ax);
+      top = Math.max(top, y); bottom = Math.min(bottom, y);
+    }
+    edge[i] = top + 0.002;
+    if (top > bottom) travel = Math.max(travel, top - bottom);
+  }
+  return { edge: { value: edge }, span: { value: new THREE.Vector2(lo + 0.001, hi - 0.001) }, drop: { value: 0 }, travel: travel + 0.01 };
+}
+
 const UNIFORM = (v) => ({ value: v });
 
 function glowMaterial(color) {
@@ -206,7 +275,8 @@ export class Cutaway {
     this.lit = new Set();        // zones glowing
     this.overview = false;       // all zones pulse softly
     this.tints = new Map();      // node -> { color, level }: steady glows set by a control (seat heat)
-    this.windows = new Map();    // WINDOWS key -> { nodes, plane, top, sill, k, want }: open 0..1
+    this.doors = new Map();      // node name -> { node, axis, angle, k, want }: open 0..1
+    this.windows = new Map();    // WINDOWS key -> { nodes, edge, k, want }: open 0..1
     this.seats = new Map();      // 'FL' | 'FR' -> { node, back, rest, want, k }: slide, front, rear (m), recline (rad)
     this.sunroof = null;         // { hinge, shade, k, want, tilt, wantTilt }
     this.screen = null;          // { node, face, k, want (1 = portrait) }
@@ -222,33 +292,37 @@ export class Cutaway {
     this.ego = ego;
     const model = ego.userData.model;
     if (!model) return;
-    this.scene.renderer.localClippingEnabled = true;
     ego.add(this.groups);
     model.updateMatrixWorld(true);
     const find = (name) => model.getObjectByName(name);
     this.meshes = [];   // the model's own meshes (for the ghost)
     model.traverse((o) => { if (o.isMesh) this.meshes.push(o); });
 
-    // windows: their own glass, cut by their own plane (WINDOWS); the rear window's copy also fades with
-    // the roof (below)
-    const planes = new Map();   // node name -> the plane cutting it
-    for (const [key, names] of Object.entries(WINDOWS)) {
+    // doors (closed: the model's rest pose)
+    for (const [name, [axis, angle]] of Object.entries(DOORS)) {
+      const node = find(name);
+      if (node) this.doors.set(name, { node, axis, angle, k: 0, want: 0 });
+    }
+
+    // windows: their own glass, wound down by its top edge (WINDOWS); the rear window's copy also fades
+    // with the roof (below). Measured in the parent's frame, so a window winds the same with its door open.
+    const cuts = new Map();   // node name -> [edge uniforms, its meshes' frame to the edge's]
+    const across = new THREE.Matrix4().set(0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1);   // (z, y, x): along z
+    for (const [key, [axis, ...names]] of Object.entries(WINDOWS)) {
       const nodes = names.map(find).filter(Boolean);
       if (!nodes.length) continue;
-      const box = new THREE.Box3();
-      for (const n of nodes) box.expandByObject(n);
-      const top = box.max.y + 0.01;
-      const plane = new THREE.Plane(new THREE.Vector3(0, -1, 0), top);   // keeps what's below the glass's top edge
-      for (const n of nodes) {
-        planes.set(n.name, plane);
-        n.traverse((o) => {
-          if (!o.isMesh) return;
-          o.material = o.material.clone();
-          o.material.clippingPlanes = [plane];
-          o.material.userData.own = true;
-        });
+      const toParent = new THREE.Matrix4().copy(nodes[0].parent.matrixWorld).invert();
+      if (axis === 'z') toParent.premultiply(across);
+      const meshes = [];
+      for (const n of nodes) n.traverse((o) => { if (o.isMesh) meshes.push([o, new THREE.Matrix4().multiplyMatrices(toParent, o.matrixWorld)]); });
+      const edge = topEdge(meshes);
+      for (const [o, toEdge] of meshes) {
+        o.material = o.material.clone();
+        o.material.userData.own = true;
+        windowCut(o.material, edge, toEdge);
       }
-      this.windows.set(key, { nodes, plane, top, sill: box.min.y, k: 0, want: 0 });
+      for (const n of nodes) cuts.set(n.name, [edge, meshes.find(([o]) => n.getObjectById(o.id))[1]]);
+      this.windows.set(key, { nodes, edge, k: 0, want: 0 });
     }
 
     // roof: its own copies of the materials it shares with the body, so it can fade alone
@@ -295,11 +369,11 @@ export class Cutaway {
       const node = find(name);
       if (!node) continue;
       const material = glowMaterial(this.accent);
-      const plane = planes.get(name);
-      if (plane) material.clippingPlanes = [plane];   // a window's glow winds down with it
+      const cut = cuts.get(name);
+      if (cut) windowCut(material, ...cut);   // a window's glow winds down with it
       const meshes = [];
       node.traverse((o) => {
-        if (!o.isMesh || o.userData.cutaway || (!plane && o.material.clippingPlanes)) return;
+        if (!o.isMesh || o.userData.cutaway || (!cut && o.material.userData.cut)) return;   // a door's glow leaves out its window
         const m = new THREE.Mesh(o.geometry, material);
         m.userData.cutaway = true;
         m.renderOrder = 6;
@@ -361,6 +435,21 @@ export class Cutaway {
     this.awake = true;
     const s = this.seats.get(side);
     if (s) Object.assign(s.want, pose);
+  }
+
+  // a door (DOORS name) open or shut
+  setDoor(name, open) {
+    this.awake = true;
+    const d = this.doors.get(name);
+    if (d) d.want = open ? 1 : 0;
+  }
+
+  // A point of the car (car frame, the doors shut) on a door, as a function giving where it is now
+  doorPoint(name, at) {
+    const d = this.doors.get(name), p = new THREE.Vector3(...at);
+    if (!d) return () => p;
+    const local = d.node.parent.worldToLocal(p.clone()).sub(d.node.position), out = new THREE.Vector3();   // from the hinge, shut
+    return () => out.copy(local).applyEuler(d.node.rotation).add(d.node.position).applyMatrix4(d.node.parent.matrixWorld);
   }
 
   // a window (WINDOWS key) open 0..1
@@ -870,12 +959,18 @@ export class Cutaway {
       for (const m of g.meshes) m.visible = vis;
     }
 
-    // windows wind at a power window's steady rate; the cutting plane goes from the glass's top to its sill
+    // doors swing, easing in and out; windows wind at a power window's steady rate, their top edge going
+    // down the opening
+    for (const d of this.doors.values()) {
+      if (d.k === d.want) continue;
+      d.k = Math.abs(d.want - d.k) < 0.002 ? d.want : d.k + ease(d.want - d.k, dt, 3.2);
+      d.node.rotation[d.axis] = d.angle * smooth(d.k);
+    }
     const step = (k, want, rate) => (k < want ? Math.min(want, k + rate * dt) : Math.max(want, k - rate * dt));
     for (const w of this.windows.values()) {
       if (w.k === w.want) continue;
       w.k = step(w.k, w.want, WINDOW_RATE);
-      w.plane.constant = w.top - (w.top - w.sill) * w.k;
+      w.edge.drop.value = w.edge.travel * w.k;
     }
     // the sunroof: tilted about its front edge, or raised and slid back; the shade goes first
     const sr = this.sunroof;
@@ -975,7 +1070,7 @@ export class Cutaway {
     const moving = (p) => p && (p.k > 0 || p.want > 0);
     const posed = (st) => ['slide', 'front', 'rear', 'recline'].some(key => Math.abs(st.k[key]) > 1e-4 || st.want[key]);
     this.awake = this.lit.size > 0 || this.overview || this.tints.size > 0 || r.k > 0 || r.want > 0 || this.ghost.k > 0 || this.ghost.want > 0
-      || [...this.glows.values()].some(x => x.level > 0.004) || [...this.windows.values()].some(moving)
+      || [...this.glows.values()].some(x => x.level > 0.004) || [...this.windows.values()].some(moving) || [...this.doors.values()].some(moving)
       || (sr && (moving(sr) || sr.tilt > 0 || sr.wantTilt > 0)) || (sc && sc.k !== sc.want)
       || ['motors', 'battery', 'port', 'amp', 'sensors', 'air'].some(k => moving(B[k])) || Object.values(B.rings || {}).some(moving)
       || (B.pulse && B.pulse.points.visible) || [...this.seats.values()].some(posed);

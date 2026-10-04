@@ -176,8 +176,8 @@ shows, and the part of the car each category is about pulses in turn under a bad
 a ribbon item opens its category; a tap on the background goes back, and from there (or with ✕)
 closes it and restores the car and your view. Auto view and the replay bar wait while it's open.
 
-The car's parts come first: Lighting, Climate, Seats, Driving, Assist, Energy, Audio, Windows, Service and
-Display; then Connectivity, Profiles & Keys, Navigation, General and Software. Lighting and Seats put
+The car's parts come first: Lighting, Climate, Seats, Driving, Assist, Energy, Audio, Doors & Windows,
+Service and Display; then Connectivity, Profiles & Keys, Navigation, General and Software. Lighting and Seats put
 their settings on cards beside the lamps and seats (in a panel when the screen is too narrow for them);
 the rest open a half-screen panel, beside the car in landscape and under it in portrait, with the car
 framed in what's left. Each category moves the camera to its part and shows its settings on the car:
@@ -188,10 +188,13 @@ and Driving turn the rest of the car see-through; Driving shows the drive units 
 mode change sends a ring of particles out from the car in the mode's color (Earth green, Fun blue,
 Hyper orange), styled like the tire trails; Assist draws the sensors' coverage on the ground; Energy
 opens a charge-port door on the left front fender and fills an x-ray battery to the charge level;
-Audio lights the trunk amplifier and rings over the seats of the chosen sound stage; Windows winds each
-of the four door windows, the two quarter (doggie) windows and the rear window down to where its slider
-says, opens or tilts the sunroof (its front panel lifts and slides back over the rear one), and California
-Mode opens all eight at once; Display's Hollywood Mode turns the center screen to landscape.
+Audio lights the trunk amplifier and rings over the seats of the chosen sound stage; Doors & Windows
+locks and unlocks, swings the doors and the liftgate open, winds each of the four door windows, the two
+quarter (doggie) windows and the rear window down to where its slider says (its own top edge, curved or
+slanted, sinking into the door), opens or tilts the sunroof (its front panel lifts and slides back over
+the rear one), and California Mode opens all eight windows at once. Each door's chip on the car has a
+button for the door and one for its window, and rides on the door. Display's Hollywood Mode turns the
+center screen to landscape.
 
 *Mock APA* (*Assist → Parking*) demos automated parking in a parking lot drawn around the car. The car
 scans along the aisle and reports the open spaces it passes; you pick one (on the ground or in the
@@ -213,8 +216,9 @@ The model's roof, sunroof, seats (cushion and back apart), windows, vents, scree
 of their own in `pulse_ocean_v0.10_parts.glb`. `tools/export_ocean_glb.py` splits them out of the Pulse
 Ocean package's glb, which merges every part into one mesh per material: it matches each triangle to the
 part it came from in the package's master .blend (and, for parts made of several pieces, which piece),
-puts the seat backs and the screen on pivots of their own, and leaves everything else (rig, materials,
-textures, animations) as it was:
+puts the seat backs and the screen on pivots of their own, leaves out the bent caps the package added
+to close the seats (they cut through the cushions and backs as dark wedges), and leaves everything else
+(rig, materials, textures, animations) as it was:
 
 ```
 blender -b Pulse-Ocean-Master.blend --python openpilot/sunnypilot/webhud/tools/export_ocean_glb.py -- \

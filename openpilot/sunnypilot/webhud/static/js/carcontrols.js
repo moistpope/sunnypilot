@@ -19,6 +19,7 @@ const CARDS_MIN_W = 840;  // px of free width that fits two cards beside the car
 const CHIP_GAP = 46;      // px a chip sits out from its point, away from the car's center
 const SEATS_FOR_STAGE = { all: ['FL', 'FR', 'RL', 'RR'], driver: ['FL'], passenger: ['FR'], front: ['FL', 'FR'], rear: ['RL', 'RR'] };
 const WINDOWS = ['FL', 'FR', 'RL', 'RR', 'QL', 'QR', 'rear'];   // cutaway.js WINDOWS; the sunroof is apart
+const DOORS = ['Door_Front_L', 'Door_Front_R', 'Door_Rear_L', 'Door_Rear_R', 'Tailgate'];   // cutaway.js DOORS
 const SEAT_STEP = { slide: 0.01, front: 0.004, rear: 0.004, recline: 0.025 };   // per press, and every 90 ms held
 const RANGE_MI = 330;     // EPA range at 100%, for the mock range readout
 
@@ -68,9 +69,9 @@ export class CarControls {
     this.stopApa();
     this.showPanel(null);
     this.clearPins();
-    // the car as it was: windows up, sunroof shut, the screen back to portrait
-    for (const k of WINDOWS) this.v['win.' + k] = 0;
-    Object.assign(this.v, { 'win.sunroof': 0, 'win.sunroofMode': 'closed', 'display.hollywood': false, 'energy.port': false });
+    // the car as it was: doors shut, windows up, sunroof shut, the screen back to portrait
+    this.closeAll();
+    Object.assign(this.v, { 'display.hollywood': false, 'energy.port': false });
     this.apply();
     this.cut.setRoof(false);
     this.cut.setGhost(false);
@@ -244,7 +245,10 @@ export class CarControls {
       const node = el('div.ccard', el('h4', card.title), ...card.controls.map(ctl => this.control(ctl, true)));
       add(node, ANCHORS[card.anchor], 'card');
     }
-    for (const chip of c.chips || []) add(this.chip(chip), ANCHORS[chip.anchor], 'chip', { toward: chip.toward });
+    for (const chip of c.chips || []) {
+      const at = ANCHORS[chip.anchor];
+      add(this.chip(chip), at, 'chip', { toward: chip.toward, atFn: chip.door ? this.cut.doorPoint(chip.door, at) : null });
+    }
     if (this.cardsShown) {   // on-car views get a way back at the top
       this.backBtn = el('button.carback', { onclick: () => this.back() });
       this.backBtn.innerHTML = iconSvg('back');
@@ -254,6 +258,7 @@ export class CarControls {
   }
 
   chip(chip) {
+    if (chip.kind === 'pair') return this.pairChip(chip);
     const b = el('button.callout');
     const label = el('span');
     const ic = el('span.tt');
@@ -283,6 +288,30 @@ export class CarControls {
     return b;
   }
 
+  // A door's chip: a button that opens or shuts the door and one that winds its window all the way down or
+  // up (a quarter window's has only the window's). Icons only, so eight fit beside the panel; the leader
+  // line says which door.
+  pairChip(chip) {
+    const name = chip.door === 'Tailgate' ? 'liftgate' : 'door', glass = chip.door === 'Tailgate' ? 'rear window' : 'window';
+    const door = chip.door && el('button.cbtn', { onclick: () => this.toggleDoor(chip.door) });
+    const win = el('button.cbtn', { onclick: () => this.set(chip.win, this.v[chip.win] > 0 ? 0 : 100) });
+    if (door) door.innerHTML = iconSvg('door');
+    win.innerHTML = iconSvg('window');
+    const b = el('div.callout.pair', { role: 'group', 'aria-label': chip.label }, door, win);
+    const show = () => {
+      const open = chip.door && this.v['doors.open'].includes(chip.door), pct = this.v[chip.win];
+      if (door) {
+        setClass(door, 'on', open);
+        door.title = `${chip.label}: ${open ? `close the ${name}` : `open the ${name}`}`;
+      }
+      setClass(win, 'on', pct > 0);
+      win.title = `${chip.label} ${glass}: ${pct <= 0 ? 'closed' : pct >= 100 ? 'open' : `${pct}% open`}`;
+    };
+    this.watch(show);
+    show();
+    return b;
+  }
+
   // ---- per frame ---------------------------------------------------------------------------------------
 
   // place the pins next to their points (after the scene has rendered, so the camera is this frame's)
@@ -293,7 +322,6 @@ export class CarControls {
     const cam = this.scene.camera, W = window.innerWidth, H = window.innerHeight;
     const r = this.rect || { left: 0, right: W, top: 0, bottom: H };
     const proj = (v) => { this._p.copy(v).project(cam); return [(this._p.x + 1) / 2 * W, (1 - this._p.y) / 2 * H, this._p.z < 1]; };
-    const [cx, cy] = proj(this._c.set(0, 0.8, 2.4));
     const midX = (r.left + r.right) / 2;
     const placed = [];
     for (const p of this.pins) {
@@ -311,10 +339,12 @@ export class CarControls {
       let x, y;
       if (p.kind === 'badge') {
         x = sx - p.w / 2; y = sy - p.h / 2;
-      } else if (p.kind === 'chip') {   // out from the point, away from the car's middle
-        let dx = sx - cx, dy = sy - cy;
+      } else if (p.kind === 'chip') {   // out from the point, away from the car's middle: its side, or its end
+        const at = p.atFn ? p.atFn() : p.at;
+        const [mx, my] = Math.abs(at.x) > 0.3 ? proj(this._c.set(0, at.y, at.z)) : proj(this._c.set(0, at.y, 2.4));
+        let dx = sx - mx, dy = sy - my;
         const d = Math.hypot(dx, dy);
-        if (d < 80) { dx = p.toward ? p.toward[0] : 0; dy = p.toward ? p.toward[1] : -1; }   // too near the middle to say
+        if (d < 12) { dx = p.toward ? p.toward[0] : 0; dy = p.toward ? p.toward[1] : -1; }   // facing us: no way out to see
         else { dx /= d; dy /= d; }
         const lo = r.right - r.left >= p.w ? r.left : 8, hi = r.right - r.left >= p.w ? r.right : W - 8;
         x = Math.max(lo, Math.min(hi - p.w, sx + dx * (CHIP_GAP + p.w / 2) - p.w / 2));
@@ -403,6 +433,7 @@ export class CarControls {
     if (id === 'win.sunroofMode') this.v['win.sunroof'] = value === 'open' ? (this.v['win.sunroof'] || 100) : 0;
     if (id === 'win.sunroof') this.v['win.sunroofMode'] = value > 0 ? 'open' : this.v['win.sunroofMode'] === 'tilt' ? 'tilt' : 'closed';
     if (id === 'seat.memory') this.v['seat.FL.pos'] = { ...this.memory[value] };
+    if (id === 'doors.locked' && value && this.v['doors.closeWin']) this.closeAll(false);   // BCM_ArmedClsWinSetSts
     this.apply();
     this.notify();
   }
@@ -415,8 +446,7 @@ export class CarControls {
       Object.assign(v, { 'win.sunroof': 100, 'win.sunroofMode': 'open' });
       this.app.toast('California Mode: all eight open');
     } else if (action === 'closeAll') {
-      for (const k of WINDOWS) v['win.' + k] = 0;
-      Object.assign(v, { 'win.sunroof': 0, 'win.sunroofMode': 'closed' });
+      this.closeAll();
     } else if (action === 'hollywood') {
       v['display.hollywood'] = !v['display.hollywood'];
     } else if (action === 'saveMemory') {
@@ -428,6 +458,18 @@ export class CarControls {
     }
     this.apply();
     this.notify();
+  }
+
+  // every window and the sunroof shut, and the doors too
+  closeAll(doors = true) {
+    for (const k of WINDOWS) this.v['win.' + k] = 0;
+    Object.assign(this.v, { 'win.sunroof': 0, 'win.sunroofMode': 'closed' });
+    if (doors) this.v['doors.open'] = [];
+  }
+
+  toggleDoor(name) {
+    const open = this.v['doors.open'];
+    this.set('doors.open', open.includes(name) ? open.filter(n => n !== name) : [...open, name]);
   }
 
   watch(fn, panel = false) { this.watchers.push({ fn, panel }); }
@@ -469,6 +511,7 @@ export class CarControls {
     if (v['icc.bsd'] || v['icc.bacm'] || v['icc.fcta']) kinds.push('corner');
     if (v['icc.chime'] || v['icc.apa']) kinds.push('ultrasonic');
     cut.setSensors(c === 'assist' && v['icc.global'], kinds);
+    for (const n of DOORS) cut.setDoor(n, v['doors.open'].includes(n));
     for (const k of WINDOWS) cut.setWindow(k, v['win.' + k] / 100);
     cut.setSunroof(v['win.sunroof'] / 100, v['win.sunroofMode'] === 'tilt');
     const theme = v['display.theme'], dark = document.documentElement.dataset.theme === 'dark';
@@ -560,6 +603,7 @@ export class CarControls {
         for (const [val, text] of c.options) {
           const input = el('input', { type: 'checkbox', checked: this.v[c.id].includes(val),
             onchange: e => this.set(c.id, e.target.checked ? [...this.v[c.id], val] : this.v[c.id].filter(x => x !== val)) });
+          this.watch(() => { input.checked = this.v[c.id].includes(val); }, !compact);
           box.append(el('label', input, text));
         }
         return stack(lbl(), box);

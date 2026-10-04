@@ -17,10 +17,12 @@ Done:
   `Window_Quarter_L/R` under Body. Parts made of several pieces (the roof glass's front and rear panels,
   the seats' backs, the screen and its stand) are told apart by island. Triangle counts per material match
   the package's glb exactly, every triangle matched its part within 3 mm, and the rig, paints, wheels,
-  lamps and animations are unchanged. The tool rebuilds the file byte for byte.
+  lamps and animations are unchanged. The tool rebuilds the file byte for byte. It leaves out the seats'
+  bent caps (below).
 - `cutaway.js`: roof fade, zone glows, ghost, drive units, battery, charge-port door, amplifier, sensor
-  fans, airflow, sound rings, drive-mode pulse, windows (cut from the top by a moving plane, so the glass
-  sinks rather than shrinks), sunroof (tilt, or lift and slide back over the rear panel, the shade with
+  fans, airflow, sound rings, drive-mode pulse, doors and liftgate (swung on their hinges), windows (their
+  own top edge, sampled from the glass, sinks down the opening, so the glass neither shrinks nor goes
+  flat-topped), sunroof (tilt, or lift and slide back over the rear panel, the shade with
   it), seat slide, cushion tilt and recline, and the center screen (portrait, turning landscape for
   Hollywood Mode, with a home screen or film drawn on it).
 - `apamock.js`: *Assist → Parking → Mock APA*, automated parking in a demo lot (see the README). It sleeps once
@@ -50,6 +52,16 @@ Changes from the plan:
   Keys and the doors no longer open. Ambient lighting is white only; charging tops out at 32 A; the seats
   heat but don't ventilate and have no lumbar, and adjust by slide, cushion front and rear height and
   recline, with memory 1–3. Hollywood Mode is a button. Mock APA was added.
+- **Second review (2026-10-04):** Doors and windows are one category again, *Doors & Windows*, with the
+  lock and the locking settings back in it from Profiles & Keys. Each door's chip has two buttons (the
+  door, its window) and rides on the door as it swings; the quarter windows' chips wind them. A window now
+  keeps its own top edge as it winds down (it was cut flat). The front seats had dark jagged wedges across
+  the cushions and backs: the Pulse package closed the seats' open edges with one n-gon per hole
+  (`interior-closure-validation.json`: 36 on the front seats, 32 on the rear), and the bent ones (3–17 cm
+  off flat) are triangulated straight through the bolsters. The export now leaves those out (2,326
+  triangles, front and rear); the flat ones (side walls, cushion bottoms) stay, and the seats show no holes.
+  Chips now go out from the car's center line (left-side parts to the left, the rear window's back) rather
+  than from one point on screen.
 - **Zones** (tap targets and badge spots) are boxes in the car frame (`cutaway.js` `ZONES`). The glows are
   shells that share each part's geometry, not one shader injected into every material.
 
@@ -68,6 +80,12 @@ tilted and reclined and back to its memory position, Hollywood Mode both ways (b
 Mock APA backing into P2 and driving nose first into P3 (picked by tapping the ground), Cancel mid-way,
 and Done, which hands the HUD back to the live data. The pane only renders while it's in view, so the APA
 runs were stepped frame by frame from the console. Exiting restores the windows, sunroof, seats and screen.
+
+The second round, checked at 1400×900 and 768×1024: the seats from front, back, side and above (alone and
+in the car) with no wedges and no holes; the front, rear and quarter windows at 0, 35 and 65% with the
+glass painted orange to see its top edge (curve and slant kept); a front door and the liftgate open with
+their windows down (the glass and the chip go with them); the checkboxes and chips in step; Close all and
+exit shutting everything; the overview badges, Seats and Service chips.
 
 Open:
 - Head-unit performance. The glows double the draw calls of the parts they cover, but only while car
