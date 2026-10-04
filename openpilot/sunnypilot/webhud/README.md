@@ -163,6 +163,48 @@ default). On the car's own screen, where the comma joins the head unit's hotspot
 don't resolve, use the Android app in [`android/`](android/README.md): it finds the comma on the
 hotspot, runs the HUD full screen and rides out dropouts.
 
+## Car controls mockup
+
+A look at fuller car controls on top of the HUD (this branch only). Nothing in it reaches the car: the
+settings live in the page, in memory, and its modules (`static/js/carcontrols.js`, `carcatalog.js`,
+`cutaway.js`) make no requests. The panels and the ribbon say so, so its driver-assistance switches
+aren't mistaken for the *CAN settings* tab.
+
+Tap the car. A ribbon of categories slides up, the camera goes to a top view with the roof (everything
+between the side rails above the doors, and the rear window) faded to a faint outline so the cabin
+shows, and the part of the car each category is about pulses in turn under a badge. A badge, a part or
+a ribbon item opens its category; a tap on the background goes back, and from there (or with ✕)
+closes it and restores the car and your view. Auto view and the replay bar wait while it's open.
+
+The car's parts come first: Lighting, Climate, Seats, Driving, Assist, Energy, Audio, Doors, Service and
+Display; then Connectivity, Profiles & Keys, Navigation, General and Software. Lighting and Seats put
+their settings on cards beside the lamps and seats (in a panel when the screen is too narrow for them);
+the rest open a half-screen panel, beside the car in landscape and under it in portrait, with the car
+framed in what's left. Each category moves the camera to its part and shows its settings on the car:
+the lighting preview drives the model's lamps; seat heat and ventilation glow orange and blue, and the
+position pad moves the seat; Climate blows air from the vents, tinted by each side's temperature; Seats
+and Driving turn the rest of the car see-through; Driving shows the drive units in x-ray, and a drive
+mode change sends a ring of particles out from the car in the mode's color (Earth green, Fun blue,
+Hyper orange), styled like the tire trails; Assist draws the sensors' coverage on the ground; Energy
+opens a charge-port door on the left front fender and fills an x-ray battery to the charge level;
+Audio lights the trunk amplifier and rings over the seats of the chosen sound stage; Doors opens the
+model's doors and liftgate on their hinges, and California Mode winds every window down.
+
+The menus follow the Ocean user guide where it shows them. Lighting, Doors and driver assistance use the
+option values the head unit sends on CAN (`carcatalog.js` names each list's DBC signal); the rest are
+plausible values for a mockup.
+
+The model's roof, seats, windows, vents, screens and console are meshes of their own in
+`pulse_ocean_v0.10_parts.glb`. `tools/export_ocean_glb.py` splits them out of the Pulse Ocean package's
+glb, which merges every part into one mesh per material: it matches each triangle to the part it came
+from in the package's master .blend, and leaves everything else (rig, materials, textures, animations)
+as it was:
+
+```
+blender -b Pulse-Ocean-Master.blend --python openpilot/sunnypilot/webhud/tools/export_ocean_glb.py -- \
+  --glb Pulse-Ocean-ADAS.glb --out openpilot/third_party/webhud/models/pulse_ocean_v0.10_parts.glb
+```
+
 ## Pieces
 
 | File | Role |
@@ -178,6 +220,7 @@ hotspot, runs the HUD full screen and rides out dropouts.
 | `dbc.py` | Small DBC reader/decoder that keeps value tables, comments and cycle times. |
 | `../selfdrive/car/can_overrides.py` | Validates/applies `FiskerCanOverrides`; card polls it at 10 Hz and updates the dicts carcontroller reads, in place. |
 | `static/` | The app (plain ES modules, no build step). three.js, the Ocean model and the DBC subset live in `openpilot/third_party/webhud/`. |
+| `tools/export_ocean_glb.py` | Rebuilds the Ocean model with its roof, seats, windows and dash parts split out, for the car controls mockup (run in Blender). |
 | `android/` | Head-unit app: finds the comma on the hotspot and shows the HUD full screen through a local relay. Not shipped to the device. |
 
 ## ADASBUS signals used

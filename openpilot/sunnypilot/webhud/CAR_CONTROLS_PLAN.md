@@ -1,27 +1,60 @@
 # Car controls mockup: plan and status
 
-Handoff notes for the `fisker-car-controls-mockup` branch. The approved plan is below; the status
-section says what's in the branch so far.
+Notes for the `fisker-car-controls-mockup` branch. The approved plan is below; the status section
+says what's in the branch and where it went differently.
 
 ## Status
 
-Done:
-- The view bar became a camera dock: camera button with a Chase/Top/Close/Wide menu, and the gear
-  (`index.html`, `app.css`, `main.js` `bindViewdock`). Double-tap recenter now counts only taps.
-- All car-mode CSS (ribbon, panel, callouts, on-car cards, control widgets) in `app.css`.
-- `scene.js` studio camera: `enterStudio`, `exitStudio`, `focus({at, az, el, fit|r})`, `setFrame`,
-  `pickEgo`, `pickZone`, `lampOverride`; `viewAnim` animates target and x/y offsets.
-- `models.js` exposes `userData.model/mats/meshes`; `tracks.js` exports `SPECK_FRAGMENT` and
-  `speckBlending`.
-- `cutaway.js` is a placeholder with the hooks `scene.js` calls.
+The mockup is built: everything in the plan below is in the branch, with the changes listed here.
 
-Next:
-1. Export the parts glb from `FiskerOcean.blend` (this needs the file, hence the move to a local session).
-2. `cutaway.js`: roof fade, zone glow shader, ghosting, built parts (drive units, battery, charge-port door,
-   amp), door tweens, airflow, sound rings, sensor fans, `ModePulse`.
-3. `carcatalog.js` and `carcontrols.js` (ribbon, panels, callouts, cards, mock state), wired into
-   `main.js`: tap-to-enter, autoView suspended, layout to `scene.setFrame`, replay bar hidden in car mode.
-4. Verify with screenshots, update README, commit and push.
+Done:
+- Camera dock, studio camera and car-mode CSS (part 1).
+- The model: `models/pulse_ocean_v0.10_parts.glb` replaces `pulse_ocean_v0.10.glb`, built by
+  `tools/export_ocean_glb.py` (run in Blender 4.3+). New nodes: `Roof`, `Seat_FL`, `Seat_FR`, `Seat_Rear`,
+  `Dash_Vents`, `Center_Screen`, `Driver_Display`, `Console` under Body, `Window_Front_L/R` and
+  `Window_Rear_L/R` under the doors, `Window_Quarter_L/R` under Body. Triangle counts per material match
+  the package's glb exactly, every triangle matched its part within 3 mm, and the rig, paints, wheels,
+  lamps and animations are unchanged. The tool rebuilds the file byte for byte.
+- `cutaway.js`: roof fade, zone glows, ghost, drive units, battery, charge-port door, amplifier, sensor
+  fans, airflow, sound rings, drive-mode pulse, doors and liftgate, windows, seat moves. It sleeps once
+  the car is back as modeled, so the HUD pays nothing for it with car mode closed.
+- `carcatalog.js` (15 categories) and `carcontrols.js` (ribbon, panels, badges, cards, chips, mock state),
+  wired into `main.js`.
+- README section; `third_party/webhud/README.md` and `models/LICENSE.md` updated.
+
+Changes from the plan:
+- **The .blend:** the user's `FiskerOcean.blend` is the base model the Pulse glb was made from. It has every
+  part as its own object, but no rig (no `Steer_`/`Wheel_`/`Door_` nodes, no `Light_*` materials). The Pulse
+  package's own `Pulse-Ocean-Master.blend` has the same parts already rigged, with the exact vertices of the
+  glb, so the tool uses it as the parts reference.
+- **The export:** the tool doesn't re-export from Blender. It splits the package's glb in place: each
+  triangle is matched to its master part by centroid, then the groups' triangles move into nodes of their
+  own, so nothing else can drift.
+- **The roof** is `Roof` plus the liftgate's glass and frit, which also lower in California Mode. The
+  headliner mesh also carries the pillar trims, so only its part above 0.76 m and within 0.57 m of the
+  center line counts as roof.
+- **The overview** pulses the parts one after another, as a wave, rather than all at once, which washed the
+  cabin in color. On a short landscape screen (free height under 420 px) the car lies nose-right.
+- **Lighting and Seats** show their cards in the panel when the free area is narrower than 840 px (phones,
+  small landscape).
+- **Driving** also turns the rest of the car see-through, like Seats.
+- **Zones** (tap targets and badge spots) are boxes in the car frame (`cutaway.js` `ZONES`). The glows are
+  shells that share each part's geometry, not one shader injected into every material.
+
+Checked in the Browser pane (the plan's Playwright setup was for the cloud container): 1920×1080,
+1080×1920, 844×390 and 390×844, dark and light. Every category opened, the pulse ran through Earth, Fun
+and Hyper, the doors, liftgate and windows moved, and paint, wheels and lamps work on the new model. A
+background tap or ✕ restores the car (opaque roof, doors shut, windows up, seats back, no glows) and the
+saved view, with no console errors. The new modules contain no `api(`, `fetch`, `send(` or `WebSocket`
+calls. codespell and ruff pass. `pytest openpilot/sunnypilot/webhud/tests` can't run on the Mac (it needs
+the compiled `libparams_c`), so `test_server.py`'s model and static-file checks were done by hand with
+curl against `--demo`.
+
+Open:
+- Head-unit performance. The glows double the draw calls of the parts they cover, but only while car
+  mode is open. The airflow (1,400 points) and pulse (6,000 points) run only in their views.
+- On a phone in landscape the free area beside the panel is small; the HMI sizes are what it's laid out for.
+- The Pulse package states no license (`models/LICENSE.md`).
 
 ## Plan
 
