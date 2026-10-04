@@ -52,7 +52,8 @@ export class FrameMeter {
     if (w.frames >= 10) {   // fewer: the page is hidden, or a tab in the background
       this.stats = { fps, worst: w.worst, work: w.work / w.frames, calls: r.calls, tris: r.triangles };
       this.hz = Math.max(this.hz, Math.min(144, Math.round(fps / 30) * 30));
-      if (this.app.settings.renderScale === 'auto') this._auto(fps, now);
+      // a page the browser calls hidden may be throttled (a covered window): not slow, so auto waits
+      if (this.app.settings.renderScale === 'auto' && !document.hidden) this._auto(fps, now);
     }
     this._reset(now);
     this._show();
