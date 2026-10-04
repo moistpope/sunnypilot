@@ -11,7 +11,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { SPECK_FRAGMENT, speckBlending } from './tracks.js';
 
-// everything between the rails (with the sunroof and its shade), and the rear window
+// everything between the rails (with the sunroof and the trim under it), and the rear window
 const ROOF_NODES = ['Roof', 'Sunroof', 'Sunshade', 'Tailgate__PBR_glass_dark', 'Tailgate__black'];
 const ROOF_MIN = 0.08;      // the faded roof keeps this much opacity: a faint glassy edge
 // The doors that open: hinge axis (glTF, the node's own) and open angle, from the model's controls.json
@@ -38,18 +38,23 @@ const TIRES = ['Wheel_Front_L__PBR_tire', 'Wheel_Front_R__PBR_tire', 'Wheel_Rear
 const LAMP_NODES = ['Body__Light_Headlights_L', 'Body__Light_Headlights_R', 'Body__Light_DRL_L', 'Body__Light_DRL_R', 'Body__Light_DRL_Center'];
 
 // Zones: what a category lights up and where a tap picks it. boxes: [x0, y0, z0, x1, y1, z1] tap targets
-// (mirror: and the same on the right), at: where its badge sits, nodes: model parts that glow, built:
-// drawn parts that glow.
+// (mirror: and the same on the right; the nearest box along a tap wins, so a box over the cabin would
+// take the taps meant for the parts inside), roofBoxes: tap targets on parts that fade with the roof, which
+// count only while the car is solid, at: where its badge sits, nodes: model parts that glow, built: drawn
+// parts that glow.
 export const ZONES = {
   lamps: { boxes: [[-0.98, 0.62, -0.1, 0.98, 1.05, 0.72]], at: [-0.6, 1.0, 0.36], nodes: LAMP_NODES },
   vents: { boxes: [[-0.75, 0.9, 1.42, 0.75, 1.25, 1.72]], at: [0.42, 1.12, 1.6], nodes: ['Dash_Vents', 'Console'] },
   seats: { boxes: [[-0.72, 0.3, 1.86, 0.72, 1.5, 2.8]], at: [-0.39, 1.25, 2.4], nodes: ['Seat_FL', 'Seat_FR'] },
   drive: { boxes: [[-0.72, 0.1, 2.8, 0.72, 1.3, 3.72]], at: [0, 1.15, 3.25], nodes: ['Seat_Rear'], built: ['motors'] },
-  sensors: { boxes: [[-0.3, 1.2, 1.0, 0.3, 1.6, 1.75], [-0.3, 0.2, -0.15, 0.3, 0.5, 0.15]], at: [0.12, 0.9, 0.05], built: ['sensors'] },
+  // the front radar; the camera behind the mirror, over the dash, only while the roof is solid
+  sensors: { boxes: [[-0.3, 0.2, -0.15, 0.3, 0.5, 0.15]], roofBoxes: [[-0.3, 1.2, 1.0, 0.3, 1.6, 1.75]], at: [0.12, 0.9, 0.05], built: ['sensors'] },
   port: { boxes: [[-1.1, 0.75, 1.1, -0.75, 1.15, 1.6]], at: [-0.95, 0.98, 1.36], built: ['port'] },
   amp: { boxes: [[0.2, 0.55, 3.85, 0.95, 1.1, 4.65]], at: [0.55, 0.95, 4.2], built: ['amp'] },
-  doors: { boxes: [[-1.05, 0.4, 1.6, -0.6, 1.58, 4.05], [-0.6, 1.55, 2.2, 0.6, 1.72, 3.35], [-0.55, 0.6, 4.1, 0.55, 1.5, 4.75]], mirror: true,
-    at: [-0.86, 1.36, 2.2], nodes: [...Object.keys(DOORS), ...Object.values(WINDOWS).flatMap(([, ...names]) => names), 'Sunroof'] },
+  // the doors (outside the seats), the quarter windows, the liftgate under its window; the rear window
+  // (over the trunk) only while it's solid; not the sunroof, which lies over the whole cabin
+  doors: { boxes: [[-1.08, 0.3, 1.62, -0.73, 1.56, 3.63], [-0.76, 1.26, 3.63, -0.58, 1.53, 4.05], [-0.62, 0.65, 4.6, 0.62, 1.2, 4.8]],
+    roofBoxes: [[-0.56, 1.17, 4.28, 0.56, 1.48, 4.6]], mirror: true, at: [-0.86, 1.36, 2.2], nodes: [...Object.keys(DOORS), ...Object.values(WINDOWS).flatMap(([, ...names]) => names), 'Sunroof'] },
   wheels: { boxes: [[0.72, 0, 0.5, 1.05, 0.78, 1.36], [0.72, 0, 3.4, 1.05, 0.78, 4.25]], mirror: true, at: [0.98, 0.8, 0.93], nodes: TIRES },
   screen: { boxes: [[-0.25, 0.7, 1.72, 0.25, 1.15, 2.0]], at: [0, 1.12, 1.86], nodes: ['Center_Screen', 'Driver_Display'] },
 };
@@ -278,7 +283,7 @@ export class Cutaway {
     this.doors = new Map();      // node name -> { node, axis, angle, k, want }: open 0..1
     this.windows = new Map();    // WINDOWS key -> { nodes, edge, k, want }: open 0..1
     this.seats = new Map();      // 'FL' | 'FR' -> { node, back, rest, want, k }: slide, front, rear (m), recline (rad)
-    this.sunroof = null;         // { hinge, shade, k, want, tilt, wantTilt }
+    this.sunroof = null;         // { hinge, rest, k, want, tilt, wantTilt }: the panel (and its trim) hangs from hinge
     this.screen = null;          // { node, face, k, want (1 = portrait) }
     this.built = {};             // drawn parts
     this.groups = new THREE.Group();   // everything drawn here, in the car frame
@@ -340,7 +345,8 @@ export class Cutaway {
     this.roof.mats = [...fading];
 
     // The sunroof's panel hangs from a hinge at its front edge (Body's frame = glTF axes: +x forward, +y up),
-    // so it can tilt about it, then rise and slide back over the rear panel; the shade under it slides back.
+    // so it can tilt about it, then rise and slide back over the rear panel. The trim under its glass
+    // (Sunshade, the same size, 1 cm lower) goes with it: moved apart, the two read as the sunroof splitting.
     const panel = find('Sunroof');
     if (panel) {
       const box = new THREE.Box3().setFromObject(panel);
@@ -350,7 +356,8 @@ export class Cutaway {
       hinge.position.copy(panel.parent.worldToLocal(new THREE.Vector3(0, box.max.y, box.min.z)));
       hinge.attach(panel);
       const shade = find('Sunshade');
-      this.sunroof = { hinge, rest: hinge.position.clone(), shade, shadeRest: shade && shade.position.clone(), k: 0, want: 0, tilt: 0, wantTilt: 0 };
+      if (shade) hinge.attach(shade);
+      this.sunroof = { hinge, rest: hinge.position.clone(), k: 0, want: 0, tilt: 0, wantTilt: 0 };
     }
 
     // front seats: the cushion slides and tilts about its middle, the back reclines at the hip
@@ -545,8 +552,9 @@ export class Cutaway {
     if (!ray || !this.ego) return null;
     let best = null, bestD = Infinity;
     const box = this._box || (this._box = new THREE.Box3());
+    const solid = !this.roof.want && !this.ghost.want;   // the faded roof and the see-through body don't catch taps
     for (const [id, z] of Object.entries(ZONES)) {
-      for (const b of z.boxes) {
+      for (const b of solid && z.roofBoxes ? [...z.boxes, ...z.roofBoxes] : z.boxes) {
         for (const s of z.mirror ? [1, -1] : [1]) {
           box.min.set(s > 0 ? b[0] : -b[3], b[1], b[2]);
           box.max.set(s > 0 ? b[3] : -b[0], b[4], b[5]);
@@ -972,7 +980,7 @@ export class Cutaway {
       w.k = step(w.k, w.want, WINDOW_RATE);
       w.edge.drop.value = w.edge.travel * w.k;
     }
-    // the sunroof: tilted about its front edge, or raised and slid back; the shade goes first
+    // the sunroof: tilted about its front edge, or raised and slid back
     const sr = this.sunroof;
     if (sr && (sr.k !== sr.want || sr.tilt !== sr.wantTilt)) {
       sr.tilt = sr.k > 0 ? step(sr.tilt, 0, 1.2) : step(sr.tilt, sr.wantTilt, 1.2);
@@ -980,7 +988,6 @@ export class Cutaway {
       const lift = Math.min(1, sr.k / 0.12), slide = Math.max(0, (sr.k - 0.12) / 0.88);
       sr.hinge.position.set(sr.rest.x - SUNROOF_SLIDE * smooth(slide), sr.rest.y + SUNROOF_LIFT * smooth(lift), sr.rest.z);
       sr.hinge.rotation.z = SUNROOF_TILT * smooth(sr.tilt);
-      if (sr.shade) sr.shade.position.x = sr.shadeRest.x - 0.9 * smooth(Math.min(1, (sr.k + sr.tilt) * 3));
     }
     // front seats follow their controls closely (the buttons step them)
     for (const st of this.seats.values()) {

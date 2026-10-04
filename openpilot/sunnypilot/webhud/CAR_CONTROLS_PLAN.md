@@ -22,8 +22,8 @@ Done:
 - `cutaway.js`: roof fade, zone glows, ghost, drive units, battery, charge-port door, amplifier, sensor
   fans, airflow, sound rings, drive-mode pulse, doors and liftgate (swung on their hinges), windows (their
   own top edge, sampled from the glass, sinks down the opening, so the glass neither shrinks nor goes
-  flat-topped), sunroof (tilt, or lift and slide back over the rear panel, the shade with
-  it), seat slide, cushion tilt and recline, and the center screen (portrait, turning landscape for
+  flat-topped), sunroof (tilt, or lift and slide back over the rear panel, the trim under its glass
+  with it), seat slide, cushion tilt and recline, and the center screen (portrait, turning landscape for
   Hollywood Mode, with a home screen or film drawn on it).
 - `apamock.js`: *Assist → Parking → Mock APA*, automated parking in a demo lot (see the README). It sleeps once
   the car is back as modeled, so the HUD pays nothing for it with car mode closed.
@@ -62,8 +62,17 @@ Changes from the plan:
   triangles, front and rear); the flat ones (side walls, cushion bottoms) stay, and the seats show no holes.
   Chips now go out from the car's center line (left-side parts to the left, the rear window's back) rather
   than from one point on screen.
-- **Zones** (tap targets and badge spots) are boxes in the car frame (`cutaway.js` `ZONES`). The glows are
-  shells that share each part's geometry, not one shader injected into every material.
+- **Third review (2026-10-04):** The sunroof seemed to split as it opened. The trim under its glass
+  (`Sunshade`, the same size, 1 cm lower) slid back on its own, three times as fast, and showed as a dark
+  layer racing ahead under the glass. It now rides on the panel's hinge, so the two move as one; open, they
+  clear the rear panel by 5.6 cm or more. The sunroof is no longer a tap target for Doors & Windows: its box
+  lay over the whole cabin and, being nearest from above, took the taps meant for the seats, console and
+  screen. Doors & Windows now picks only the doors (outside the seats), the quarter windows, the liftgate,
+  and the rear window while the roof is solid. Boxes on parts that fade with the roof (the rear window, the
+  windshield camera's) don't catch taps while the roof is faded or the body see-through.
+- **Zones** (tap targets and badge spots) are boxes in the car frame (`cutaway.js` `ZONES`); the nearest box
+  along a tap wins, so none may lie over the cabin's parts. The glows are shells that share each part's
+  geometry, not one shader injected into every material.
 
 Checked in the Browser pane (the plan's Playwright setup was for the cloud container): 1920×1080,
 1080×1920, 844×390 and 390×844, dark and light. Every category opened, the pulse ran through Earth, Fun
@@ -86,6 +95,11 @@ in the car) with no wedges and no holes; the front, rear and quarter windows at 
 glass painted orange to see its top edge (curve and slant kept); a front door and the liftgate open with
 their windows down (the glass and the chip go with them); the checkboxes and chips in step; Close all and
 exit shutting everything; the overview badges, Seats and Service chips.
+
+The third round, at 1400×900: the sunroof stepped open, shut and tilted, one piece throughout; a map of
+the zone every point of the car picks from the overview's top view (seats, rear seats, vents, screen and
+amplifier each their own, Doors & Windows only at the sides and the liftgate); and picks at the doors,
+windows, rear window, liftgate and sunroof from the Doors & Windows and Audio views.
 
 Open:
 - Head-unit performance. The glows double the draw calls of the parts they cover, but only while car
