@@ -33,6 +33,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.window.OnBackInvokedDispatcher
+import org.json.JSONObject
 
 /**
  * The HUD, full screen. The page comes from the app's own [LocalServer] (its files are in the APK) and
@@ -116,6 +117,20 @@ class MainActivity : Activity(), Link.Listener, Infotainment.Listener, CanBridge
         /** The car's current state (IBUS frames) the page decodes, as JSON; the page asks on start. */
         @JavascriptInterface
         fun canState(): String = CanBridge.snapshot()
+
+        /**
+         * Send a frame to the car: {bus, addr, data (hex), repeat?, gapMs?}. Only the head unit's control
+         * messages on the allowlist go out (CanIds.TX, checked here and in the helper). Returns null when
+         * queued, else why not; the page shows that.
+         */
+        @JavascriptInterface
+        fun canSend(json: String): String? = try {
+            val j = JSONObject(json)
+            val data = j.getString("data").chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            CanBridge.send(j.getString("bus"), j.getInt("addr"), data, j.optInt("repeat", 1), j.optLong("gapMs", 20))
+        } catch (e: Exception) {
+            "bad request: ${e.message}"
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

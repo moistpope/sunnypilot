@@ -22,10 +22,12 @@ const SPEED_MSG = 0x318, YAW_MSG = 0x112, GEAR_MSG = 0x214;
 const GEAR_REVERSE = 3;       // VCU_GearSig
 
 export class StateBuilder {
-  /** worldDbc: the ADASBUS DBC; radarDbc: the radar's, or null. */
-  constructor(worldDbc, radarDbc = null) {
+  /** worldDbc: the ADASBUS DBC (or the IBUS one, which carries the same signals); radarDbc: the radar's, or
+   *  null; gearMsg: where VCU_GearSig comes from (0x214 on the ADAS bus, 0x234 on IBUS1). */
+  constructor(worldDbc, radarDbc = null, { gearMsg = GEAR_MSG } = {}) {
     this.world = new FiskerWorld(worldDbc);
     this.radar = new FiskerRadar(radarDbc);
+    this.gearMsg = gearMsg;
     this.model = new WorldModel();
     this.services = {};
     this.serviceT = {};
@@ -67,7 +69,7 @@ export class StateBuilder {
     const spd = this.world.frames.get(SPEED_MSG), yaw = this.world.frames.get(YAW_MSG);
     if (spd === undefined || yaw === undefined || Math.max(spd[1], yaw[1]) !== t || t - Math.min(spd[1], yaw[1]) > 0.1) return;   // nothing new in this batch, or one of the two has gone quiet
     let v = this.world.decoded(SPEED_MSG, t).ESP_VehSpd / 3.6 * this.model.calib.speedScale;
-    const gear = this.world.decoded(GEAR_MSG, t);
+    const gear = this.world.decoded(this.gearMsg, t);
     if (gear !== null && Math.trunc(gear.VCU_GearSig) === GEAR_REVERSE) v = -v;
     this.model.odo.update(t, v, this.world.decoded(YAW_MSG, t).YRS_YawRate * Math.PI / 180);
     this._odoCanT = t;

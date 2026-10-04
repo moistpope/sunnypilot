@@ -8,6 +8,7 @@ import { Hud } from './hud.js';
 import { FrameMeter } from './perf.js';
 import { Infotainment } from './infotainment.js';
 import { CarState } from './carstate.js';
+import { CarCommands } from './cancmd.js';
 import { Settings } from './settings.js';
 import { VehicleState } from './vehicle.js';
 
@@ -15,7 +16,8 @@ const SETTINGS_VERSION = 3;
 const AUTO_VIEW_HOLD_MS = 10000;   // a parking maneuver starting this soon after the user picked a view keeps it
 const TAP_PX = 8, TAP_MS = 300;    // a tap moves less and is shorter than this; two within TAP_MS are a double tap
 const STALE_MS = 6000;             // the server streams at 20 Hz: this long without a message means the link is dead
-const OFFLINE_MS = 3000;           // without the comma this long, the driving data comes off the screen
+const OFFLINE_MS = 3000;           // without the comma this long, the car's own buses take over, or the driving data comes off
+const LOCAL_MS = 2500;             // the car's own view (10 Hz) counts as live this long after its last snapshot
 const DEFAULTS = {
   theme: 'auto', units: 'auto', laneSource: 'blend', egoPaint: OCEAN_PAINT_DEFAULT, egoWheels: OCEAN_WHEELS_DEFAULT, view: 'chase',
   showPath: true, showUss: true, showOpLeads: true, autoView: true, showGround: true, showRoad: true, showSigns: true,
@@ -49,7 +51,9 @@ class App {
     this.state = null;
     this.ws = null;
     this.connected = false;
-    this.offline = false;          // no comma for a while: driving data hidden (see setOffline)
+    this.source = 'none';          // where the driving data comes from: 'comma' | 'car' (its own buses, through the app) | 'none'
+    this.localState = null;        // the car's own view, decoded from IBUS by the worker (the state when the comma is away)
+    this.lastLocalAt = -1e9;
     this.retry = 0;
     this.retryTimer = 0;
     this.rawAddrs = [];
@@ -88,6 +92,9 @@ class App {
     this.meter = new FrameMeter(this);
     this.info = new Infotainment(this);
     this.carState = new CarState(this);
+    this.cmd = new CarCommands(this);   // sending to the car, through the app
+    // every frame the app reads on the car's buses also goes to the worker, which keeps the car's own view of the world
+    window.addEventListener('webhud:can', (e) => { if (this.worker && Array.isArray(e.detail)) this.worker.postMessage({ type: 'ibus', t: Date.now() / 1000, frames: e.detail }); });
     let last = performance.now();
     const loop = (now) => {
       requestAnimationFrame(loop);   // schedule first: one bad frame must not stop the HUD
@@ -97,7 +104,7 @@ class App {
       // the car controls' mock parking drive stands in for the live data while it runs
       try { this.car.beforeFrame(dt); } catch (e) { this.reportError(e); }
       const mock = this.car.apa;
-      const state = mock ? mock.state : this.state, settings = mock ? mock.settings : this.settings;
+      const state = mock ? mock.state : this.liveState(), settings = mock ? mock.settings : this.settings;
       try { this.vehicle.update(state, mock ? 0 : now - this.lastStateAt, dt); } catch (e) { this.reportError(e); }
       try { if (mock) this.scene.update(state, settings); } catch (e) { this.reportError(e); }
       try { this.scene.frame(dt, this.vehicle); } catch (e) { this.reportError(e); }
@@ -159,22 +166,29 @@ class App {
   // The comma's bridge streams what it reads: raw ADASBUS and radar frames and openpilot's services. The
   // decoding and the world model (js/world/) run in a worker, off this thread, and hand back the state
   // snapshots the view draws. The DBCs come from the same origin as the page.
-  startWorker() {
+  startWorker(attempt = 0) {
     const w = new Worker('/js/world/worker.js', { type: 'module' });
     this.worker = w;
+    this.workerReady = false;
     w.onmessage = (ev) => {
       const msg = ev.data;
       if (msg.type === 'state') this.onState(msg.data);
+      else if (msg.type === 'local') this.onLocal(msg.data);
       else if (msg.type === 'raw') this.ui.onRaw(msg.data);
-      else if (msg.type === 'ready') { this.dbc = msg.dbc; if (this.ui.isOpen && this.ui.tab === 'signals') this.ui.show('signals', true); }
+      else if (msg.type === 'ready') { this.workerReady = true; this.dbc = msg.dbc; if (this.ui.isOpen && this.ui.tab === 'signals') this.ui.show('signals', true); }
       else if (msg.type === 'error') this.reportError(new Error('world model: ' + msg.message));
     };
-    w.onerror = (e) => this.reportError(new Error('world model worker: ' + (e.message || e)));
+    // a worker that failed to come up (its scripts not served in time, right after the app started) is
+    // started again: without it nothing is decoded
+    w.onerror = (e) => {
+      this.reportError(new Error('world model worker: ' + (e.message || e.type || e)));
+      if (!this.workerReady && this.worker === w && attempt < 10) { w.terminate(); setTimeout(() => this.startWorker(attempt + 1), 2000); }
+    };
     w.postMessage({ type: 'calibration', on: this.settings.calibration !== false });
     const text = (path, required) => fetch(path, { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error(`${path}: ${r.status}`); return r.text(); })
       .catch(e => { if (required) throw e; return null; });
-    const load = () => Promise.all([text('/dbc/fisker_ocean_adas_world.dbc', true), text('/dbc/fisker_ocean_mrr.dbc', false)])
-      .then(([worldDbc, radarDbc]) => w.postMessage({ type: 'init', worldDbc, radarDbc }))
+    const load = () => Promise.all([text('/dbc/fisker_ocean_adas_world.dbc', true), text('/dbc/fisker_ocean_mrr.dbc', false), text('/dbc/fisker_ocean_ibus.dbc', false)])
+      .then(([worldDbc, radarDbc, ibusDbc]) => { w.postMessage({ type: 'init', worldDbc, radarDbc, ibusDbc }); this.carState.apply(); })
       .catch(e => { this.reportError(e); setTimeout(load, 3000); });   // the comma isn't there yet: try again
     load();
   }
@@ -236,19 +250,62 @@ class App {
     this.worker.postMessage({ type: 'raw', addrs });
   }
 
-  // Alone on the car's screen (the Android app without the comma): once the link has been gone a while the
-  // driving data comes off, since what was last shown is no longer true; the car controls, music and
-  // navigation carry on. Back on, the bridge's first tick restores everything.
-  setOffline(on) {
-    if (on === this.offline) return;
-    this.offline = on;
-    document.documentElement.classList.toggle('offline', on);
-    if (on) {
+  // The state the view draws: the comma's while its ticks come, else the car's own view from IBUS (the
+  // Android app, with lanes, objects, signs and the car's state from the ADAS mirror and the body buses;
+  // no openpilot and no radar), else nothing.
+  liveState() {
+    if (this.state && performance.now() - this.lastStateAt <= OFFLINE_MS) return this.state;
+    if (this.localState && performance.now() - this.lastLocalAt <= LOCAL_MS) return this.localState;
+    return null;
+  }
+
+  /** No comma: the settings that live on it have nothing to show (Settings.needsComma). */
+  get offline() { return this.source !== 'comma'; }
+
+  // Which source the driving data comes from, and what that changes on screen: the comma's ticks, the car's own
+  // buses, or neither (then what was last shown is no longer true and comes off, while the car controls, music
+  // and navigation carry on). Back on, the first tick or snapshot restores everything.
+  updateSource() {
+    const now = performance.now();
+    const source = this.state && now - this.lastStateAt <= OFFLINE_MS ? 'comma' : this.localState && now - this.lastLocalAt <= LOCAL_MS ? 'car' : 'none';
+    if (source === this.source) return;
+    const was = this.source;
+    this.source = source;
+    document.documentElement.classList.toggle('offline', source === 'none');
+    document.documentElement.classList.toggle('caronly', source === 'car');
+    if (source === 'none') {
       this.state = null;
+      this.localState = null;
       if (!this.car.apa) { this.scene.update(null, this.settings); this.scene.clearWorld(); }
-      this.updateRadarChip();
-      if (this.ui.isOpen) this.ui.show(this.ui.tab, true);
+    } else if (source === 'car' && was === 'comma') {
+      this.state = null;   // the comma's last state is history; the car's own view takes over at once
+      if (!this.car.apa) this.scene.update(this.localState, this.settings);
     }
+    this.updateRadarChip();
+    this.updateModeChip();
+    if (this.ui.isOpen) this.ui.show(this.ui.tab, true);
+  }
+
+  updateModeChip() {
+    const st = this.liveState();
+    const replay = st && st.mode === 'replay' && st.replay;
+    const chip = $('#chip-mode');
+    chip.className = 'chip ' + (replay ? 'replay' : this.source === 'car' ? 'warn' : 'ok');
+    setText(chip, replay ? 'REPLAY' : this.source === 'car' ? 'CAR' : 'LIVE');
+    chip.title = this.source === 'car' ? "From the car's own buses: no openpilot and no radar until the comma is back" : '';
+    setClass($('#replaybar'), 'hidden', !replay);
+  }
+
+  // the car's own view from the worker (IBUS through the app): drawn whenever the comma's ticks aren't coming
+  onLocal(state) {
+    this.localState = state;
+    this.lastLocalAt = performance.now();
+    this.updateSource();
+    if (this.source !== 'car') return;
+    this.lastStateAt = this.lastLocalAt;
+    if (!this.car.apa) this.scene.update(state, this.settings);
+    this.updateRadarChip();
+    this.autoView(state);
   }
 
   setConn(cls, text) {
@@ -263,15 +320,16 @@ class App {
     const on = this.settings.showRadar === true;
     setClass(chip, 'hidden', !on);
     if (!on) return;
-    const r = this.state && this.state.radar;
+    const st = this.liveState();
+    const r = st && st.radar;
     chip.className = 'chip ' + (r ? 'radar' : 'warn');
     setText(chip, r ? `radar ${r.count}` : 'no bus 1 data');
     chip.title = r ? 'Tracks the mid-range radar reports this cycle' : 'No radar frames on CAN bus 1: this log has none, or the harness doesn\'t tap the radar bus';
   }
 
   watchdog() {
-    this.setOffline(performance.now() - this.lastStateAt > OFFLINE_MS);
-    if (!this.connected) return;
+    this.updateSource();
+    if (!this.connected) { if (this.source === 'car') this.setConn('warn', 'no comma'); return; }
     if (performance.now() - this.lastMsgAt > STALE_MS) {
       this.setConn('bad', 'reconnecting');
       this.reconnectNow();
@@ -288,13 +346,10 @@ class App {
     const prevMode = this.state && this.state.mode;
     this.state = state;
     this.lastStateAt = performance.now();
-    this.setOffline(false);
+    this.updateSource();
     if (!this.car.apa) this.scene.update(state, this.settings);
     const replay = state.mode === 'replay' && state.replay;
-    const chip = $('#chip-mode');
-    chip.className = 'chip ' + (replay ? 'replay' : 'ok');
-    setText(chip, replay ? 'REPLAY' : 'LIVE');
-    setClass($('#replaybar'), 'hidden', !replay);
+    this.updateModeChip();
     if (replay) this.updateReplaybar(state.replay);
     this.updateRadarChip();
     if (this.ui.isOpen && this.ui.tab === 'display') this.ui.showLaneConf();

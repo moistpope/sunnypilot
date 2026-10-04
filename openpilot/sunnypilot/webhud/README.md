@@ -162,15 +162,37 @@ each later distance only nudges it back inside what that distance allows. In a p
 the app, neither card shows. *Display → Debug → Demo music & navigation* plays a made-up playlist and
 route (the turns come nearer as the car drives), for trying them without the car.
 
-Live car state (`static/js/carstate.js`, shown in the car-control menus): on Pulse — the add-on board
-the app runs on — the two CAN controllers are wired to the car's IBUS1 and IBUS2. The app reads the
-status the gateway broadcasts (locks, doors, windows, sunroof, lights, climate, seats, gear, drive
-mode, regen, battery) and forwards it to the page, which decodes it (`carsignals.js`, generated from
-the vendor matrices and validated against opendbc's CANParser) and shows a "From the car" block at the
-top of each menu with a live dot. Receive only: the app reads these buses, it never writes to them, so
-this shows what the car is doing but does not change it. In a plain browser, or until a frame arrives,
-the block is absent and the controls stay a mockup. *Display → Debug → Demo live car state* fills it
-with made-up values for working without the car. See [`android/`](android/README.md#live-car-state).
+The car's own buses (`static/js/carstate.js`, `cancmd.js`, `ibus_tables.js`): on Pulse — the add-on board
+the app runs on — the two CAN controllers are wired to the car's IBUS1 and IBUS2. The app reads what
+the gateway broadcasts there and forwards every frame to the page (see
+[`android/`](android/README.md#the-cars-own-buses)). Two things come of that:
+
+- **The HUD without the comma.** The gateway mirrors the ADAS bus onto IBUS2 for the head unit, with the
+  same layout and signal names, and IBUS1 carries speed, gear, steering, yaw and the body. The page's
+  world-model worker keeps a second decoder fed from these frames, with a DBC generated from the IBUS
+  matrices (`third_party/webhud/dbc/fisker_ocean_ibus.dbc`, `tools/gen_ibus.py`): the status card,
+  lanes, objects, signs, lights and parking sensors all work from the car alone (no openpilot, no radar).
+  Whenever the comma's ticks aren't coming, this view takes over (*CAR* in the mode chip); with nothing
+  at all, the driving data comes off the screen and the car controls, music and navigation carry on.
+- **Live car controls.** The car-control menus show a "From the car" block at the top of each menu and
+  their controls follow what the car reports (`carcatalog.js` `live`, from the generated table of status
+  signals): locks, doors, the liftgate, windows, sunroof, mirrors, lights, climate, seat heat, gear, drive
+  mode, battery and charging. The 3D car follows the same values: open doors swing open, windows sit
+  where they are, the liftgate lifts as far as the car says. Setting a control **sends the head unit's
+  own control message** to the car (`tx`: windows auto up/down, lock, liftgate, sunroof position,
+  mirrors, lamps, climate, seat heat and seat moves, the locking settings), and the car's answer shows
+  when it comes. What can't be sent is greyed with why (`off`): either the car has no message for it, or
+  the head unit sends that message itself every second with its own values (drive mode, regen, creep,
+  charge limit and current, brightness, ambient light, California Mode), or one frame would carry every
+  audio volume along (ICC_0x44/0x46). Energy shows the charging power, pack voltage and current, time
+  left, limits and the battery's health. In a plain browser nothing is live and nothing is sent: the
+  controls stay a mockup. *Display → Debug → Demo live car state* fills the read-out with made-up values.
+
+Not everything the matrices list reaches the app: Pulse's CAN driver has hardware acceptance filters
+(`/sys/module/mcp251x/parameters/rxb_*`) that pass only parts of the ID range, so the seat and mirror
+positions, the liftgate's, the steering angle, yaw rate, battery current and the charging times never
+arrive. Those read-outs stay empty and the car-only view has no steering or yaw. Opening the filters would
+raise the SPI interrupt load that already drops frames.
 
 Frame rate (`static/js/perf.js`, *Display → Debug*, on for now): a counter under the status card,
 over the car controls' panel. Tap it for the slowest frame of the last second, the HUD's own script
@@ -206,12 +228,12 @@ default). On the car's own screen, where the comma joins the head unit's hotspot
 don't resolve, use the Android app in [`android/`](android/README.md): it finds the comma on the
 hotspot, runs the HUD full screen and rides out dropouts.
 
-## Car controls mockup
+## Car controls
 
-A look at fuller car controls on top of the HUD (this branch only). Nothing in it reaches the car: the
-settings live in the page, in memory, and its modules (`static/js/carcontrols.js`, `carcatalog.js`,
-`cutaway.js`, `apamock.js`) make no requests. The panels and the ribbon say so, so its driver-assistance switches
-aren't mistaken for the *CAN settings* tab.
+Fuller car controls on top of the HUD (`static/js/carcontrols.js`, `carcatalog.js`, `cutaway.js`,
+`apamock.js`). On the car they are live and they send (above); in a browser they are a mockup, and the
+ribbon says which. The driver-assistance switches are shown greyed on the car: those settings go through
+the comma, under the *CAN settings* tab.
 
 Tap the car. A ribbon of categories slides up, the camera goes to a top view with the roof (everything
 between the side rails above the doors, and the rear window) faded to a faint outline so the cabin

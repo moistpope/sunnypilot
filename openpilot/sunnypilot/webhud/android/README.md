@@ -99,28 +99,46 @@ which app gives the turns there (the built-in navigation, or Android Auto / CarP
 unknown. `adb logcat -s WebHud` lists every notification's app and category (not its words), and the
 navigation ones in full at debug level, so it shows which app to add if none of these is it.
 
-## Live car state
+## The car's own buses
 
 Pulse (the add-on SBC the app runs on) has two MCP251x CAN controllers wired to the car: `can1` =
 IBUS1, `can2` = IBUS2, both 500 kbit/s. The gateway broadcasts the body, climate, powertrain and
-battery status on these buses all the time. The app reads the messages the car-control menus show and
-forwards each changed frame to the page, which decodes them (`static/js/carstate.js`) and fills a
-"From the car" read-out in those menus.
+battery status there all the time, and mirrors the ADAS bus onto IBUS2 for the head unit. The app
+reads the messages listed in `CanIds.kt` (generated from the matrices by `webhud/tools/gen_ibus.py`,
+with the page's `ibus_tables.js` and the IBUS DBC) and forwards every frame to the page: the car-state
+read-out decodes the body messages (`static/js/carstate.js`), the world-model worker decodes the ADAS
+mirror, so the HUD runs from the car alone when the comma is away (see the [web HUD README](../README.md)).
 
-**Receive only.** The reading is done by a bundled helper, `libcanbridge.so` (`canbridge/main.go`),
-which opens the sockets with a receive-only CAN filter and has no transmit path at all — it never
-constructs a sendable frame or writes to a socket. `CanBridge.kt` only starts it and reads its stdout.
-Nothing in the app or the helper writes to the bus.
+**Sending.** The page can send the head unit's own control messages (windows, lock, liftgate, sunroof,
+mirrors, lamps, climate, seat heat and moves, the locking settings) through `window.WebHudApp.canSend`.
+Only the IDs in `CanIds.TX` go out, and that allowlist is enforced twice: in `CanBridge.send` and in
+the helper, which only opens a transmit socket for the IDs it was given on its command line. A frame is
+refused when the bus is silent (the car asleep, or the link down) or past 60 frames a second, and every
+frame sent is logged (`adb logcat -s WebHud`, `CAN send`, and the helper's `tx ... ok`). The head unit's
+cyclic state messages (drive mode and charging, units and brightness, ambient light and California
+Mode) are never sent: the head unit would send its own values right back, and some carry an E2E
+counter. Nor are the audio messages, whose one frame carries every volume and the mute. What the app
+sends never loops back into what it reads.
 
-The helper is a plain executable shipped as a `.so` so Android installs it into the app's
-`nativeLibraryDir`, the one directory an app may exec from (`android:extractNativeLibs="true"`,
-`useLegacyPackaging`). It needs no root: an app can open CAN sockets here, the same way Pulse's own app
-does. It reads about ten status IDs per bus (kept in step with `static/js/carsignals.js`), forwards
-only frames whose payload changed, and the app coalesces them to ~15 Hz. The page asks for the current
-state when it loads (`window.WebHudApp.canState()`), then gets changes as `webhud:can` events.
+The reading and sending are done by a bundled helper, `libcanbridge.so` (`canbridge/main.go`): a plain
+executable shipped as a `.so` so Android installs it into the app's `nativeLibraryDir`, the one directory
+an app may exec from (`android:extractNativeLibs="true"`, `useLegacyPackaging`). It needs no root: an app
+can open CAN sockets here, the same way Pulse's own app does. It forwards a frame at once when its
+payload changes and repeats every ID's current frame once a second, so the page can tell a steady value
+(climate, seat heat, a window's position) from a silent bus. Frames to send come to it on stdin, one
+per line, and it answers each on stdout. The page asks for the current state when it loads
+(`window.WebHudApp.canState()`), then gets frames as `webhud:can` events, ~15 Hz batches.
 
 Rebuild the helper (needs only the Go toolchain) with `canbridge/build.sh`. `adb logcat -s WebHud`
 shows `CAN helper: ready` and `CAN frames flowing` when it's up.
+
+Pulse's CAN driver has hardware acceptance filters (`/sys/module/mcp251x/parameters/rxb_mask_*`,
+`rxb_filter_*`; also in the device tree) that pass only parts of the ID range: on IBUS1 roughly
+0x200–0x3FF, 0x500–0x5FF and 0x600–0x7FF, on IBUS2 0x200–0x23F, 0x300–0x37F, 0x500–0x53F and
+0x580–0x5BF. The seat and mirror positions (0x4F3, 0x4F5), the liftgate (0x471), the steering angle
+and yaw rate (0x1C2, 0x112), the battery current (0xE9), the charging times (0x630, 0x634) and the
+odometer (0x641) are outside them and never arrive. The lists in `CanIds.kt` include them, so they'd
+come at once if the filters were opened, at the cost of more SPI interrupts.
 
 Pulse drops a large share of received frames (about half on IBUS1, two-thirds on IBUS2): both CAN
 controllers share one SPI bus and every interrupt lands on CPU 0. Status messages repeat, so the

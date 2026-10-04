@@ -446,11 +446,11 @@ export class Cutaway {
     if (s) Object.assign(s.want, pose);
   }
 
-  // a door (DOORS name) open or shut
+  // a door (DOORS name) open or shut, or part way (0..1: the liftgate reports how far)
   setDoor(name, open) {
     this.awake = true;
     const d = this.doors.get(name);
-    if (d) d.want = open ? 1 : 0;
+    if (d) d.want = typeof open === 'number' ? Math.max(0, Math.min(1, open)) : open ? 1 : 0;
   }
 
   // A point of the car (car frame, the doors shut) on a door, as a function giving where it is now

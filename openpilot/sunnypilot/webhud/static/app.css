@@ -577,3 +577,18 @@ html.carmode #replaybar { display: none; }
    and navigation stay; what the ADAS bus and openpilot feed is hidden until the link is back. */
 .offline #drive, .offline .alerts, .offline #roadinfo, .offline #replaybar, .offline #chip-mode, .offline #chip-radar { display: none !important; }
 .offline .fps { top: calc(16px + env(safe-area-inset-top)); }
+
+/* car controls on the car: what can't be sent is greyed with why; held buttons for windows, the liftgate
+   and the seats; the charging read-out */
+.carpanel .row.off, .ccard .crow.off { opacity: .5; }
+.carpanel .row.off input, .carpanel .row.off button, .carpanel .row.off select, .ccard .crow.off input, .ccard .crow.off button { pointer-events: none; }
+.carpanel .offwhy, .ccard .offwhy { display: block; color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+.carpanel .holdbtns { display: flex; gap: 6px; align-items: center; }
+.carpanel .holdbtns button { height: 38px; min-width: 64px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-solid); color: var(--text); font-weight: 600; font-size: 13px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.carpanel .holdbtns button:active, .carpanel .holdbtns button.held { background: var(--accent); color: #fff; border-color: var(--accent); }
+.carpanel .holdbtns em { font-style: normal; color: var(--muted); font-size: 12.5px; min-width: 54px; text-align: right; }
+.carpanel .charging { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; }
+.carpanel .charging .k { color: var(--muted); }
+.carpanel .charging .big { grid-column: 1 / -1; font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.carpanel .carnote { color: var(--muted); font-size: 12px; margin: 2px 0 8px; }
+.carribbon .sent { background: var(--green); color: #fff; }

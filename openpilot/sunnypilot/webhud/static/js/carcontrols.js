@@ -1,11 +1,16 @@
-// Car controls mockup. Tap the car: a ribbon of categories slides up, the camera goes to a top view
-// with the roof faded so the cabin shows, and the part each category is about glows under a badge. A
-// category either opens a half-screen panel (the car moves into the other half) or puts its settings on
-// cards beside the car. Look and feel only: the settings live in this page (this.v, in memory) and
-// nothing is sent anywhere -- this file makes no requests, to the car, the comma or the server.
+// Car controls. Tap the car: a ribbon of categories slides up, the camera goes to a top view with the
+// roof faded so the cabin shows, and the part each category is about glows under a badge. A category
+// either opens a half-screen panel (the car moves into the other half) or puts its settings on cards
+// beside the car.
+//
+// On the car (the Android app, wired to IBUS1/IBUS2) the controls are live: their values follow what the
+// car reports (carcatalog.js `live`, from carstate.js), and so does the 3D car: doors, liftgate, windows,
+// sunroof, seats, lamps. Setting a control sends the head unit's own message (`tx`, through cancmd.js and
+// the app) and the car's answer shows when it comes; what can't be sent is greyed with the reason (`off`).
+// In a plain browser nothing is live and nothing is sent: the values live in this page (this.v).
 import * as THREE from '../vendor/three.module.min.js';
 import { $, $$, el, iconSvg, setClass, setText } from './util.js';
-import { CATEGORIES, DRIVE_MODES, SEAT_LIMITS, SEAT_MEMORY, LIVE, defaults } from './carcatalog.js';
+import { CATEGORIES, DRIVE_MODES, SEAT_LIMITS, SEAT_MEMORY, LIVE, MSG, defaults, liveControls, liveExtras } from './carcatalog.js';
 import { ZONES, ANCHORS } from './cutaway.js';
 import { ApaMock, APA_SIGNALS } from './apamock.js';
 
@@ -13,6 +18,9 @@ const OVERVIEW = { at: [0, 0.6, 2.4], az: 180, el: 90, fit: [2.3, 5.1] };   // t
 const OVERVIEW_WIDE = { at: [0, 0.6, 2.4], az: 90, el: 90, fit: [5.1, 2.3] };   // ...or right, on a short screen
 const SHORT_PX = 420;     // free height below which the overview turns the car on its side
 const MOCK_NOTE = 'Mockup: nothing here changes the car';
+const MOCK_OFF = 'Mockup: nothing on the car for this';   // carcatalog.js MOCK: off in the browser too
+const CAR_NOTE = 'On the car: a change sends the head unit\'s message, and the car\'s answer shows here';
+const LIVE_SYNC_S = 0.2;   // how often the controls take the car's values
 const SEAT_HEAT = 0xff6a2a;
 const CARD_GAP = 56;      // px between a card and the point it's about
 const CARDS_MIN_W = 840;  // px of free width that fits two cards beside the car; narrower, they go in the panel
@@ -34,6 +42,15 @@ export class CarControls {
     this.isOpen = false;
     this.cat = null;
     this.v = defaults();
+    this.defs = new Map();      // control id -> its definition (live, tx, off)
+    for (const cat of CATEGORIES) {
+      for (const card of cat.cards || []) for (const c of card.controls) if (c.id) this.defs.set(c.id, c);
+      for (const sec of cat.sections || []) for (const c of sec.controls) if (c.id) this.defs.set(c.id, c);
+      for (const chip of cat.chips || []) if (chip.id) this.defs.set(chip.id, chip);
+    }
+    this.liveList = liveControls();
+    this.liveIds = new Set();   // the controls the car reports right now: their values are the car's, not ours
+    this._syncT = 0;
     this.pins = [];
     this.watchers = [];
     this.flash = null;   // lamps shown for a moment (lighting preview), { until, lamps }
@@ -45,6 +62,10 @@ export class CarControls {
   }
 
   get cut() { return this.scene.cutaway; }
+  get cmd() { return this.app.cmd; }
+  /** Whether a change goes to the car (the app's CAN link is up). */
+  get sending() { return !!(this.cmd && this.cmd.available); }
+  get inApp() { return !!window.WebHudApp; }
   get category() { return this.find(this.cat); }
   find(id) { return CATEGORIES.find(c => c.id === id) || (this.apa && id === 'apa' ? this.apa.category : null); }
 
@@ -69,9 +90,11 @@ export class CarControls {
     this.stopApa();
     this.showPanel(null);
     this.clearPins();
-    // the car as it was: doors shut, windows up, sunroof shut, the screen back to portrait
+    // the car as it was: the mockup's doors shut, windows up, sunroof shut, the screen back to portrait;
+    // what the car reports stays as reported
     this.closeAll();
-    Object.assign(this.v, { 'display.hollywood': false, 'energy.port': false });
+    this.v['display.hollywood'] = false;
+    if (!this.liveIds.has('energy.port')) this.v['energy.port'] = false;
     this.apply();
     this.cut.setRoof(false);
     this.cut.setGhost(false);
@@ -96,7 +119,7 @@ export class CarControls {
         else if (r > cats.scrollLeft + cats.clientWidth) cats.scrollLeft = r - cats.clientWidth;
       }
     });
-    this.v['energy.port'] = !!c && c.id === 'energy';   // the port opens to show it, and closes when you move on
+    if (!this.liveIds.has('energy.port')) this.v['energy.port'] = !!c && c.id === 'energy';   // the mockup's port opens to show it
     this.cardsShown = !!(c && c.cards) && this.roomForCards();
     this.showPanel(c && (c.sections || !this.cardsShown) ? c : null);
     this.buildPins(c);
@@ -169,7 +192,8 @@ export class CarControls {
     }
     const done = el('button.done.icon', { title: 'Close', 'aria-label': 'Close car controls', onclick: () => this.exit() });
     done.innerHTML = iconSvg('close');
-    this.ribbon.replaceChildren(el('span.mock', 'Mockup'), cats, done);
+    this.mockTag = el('span.mock', 'Mockup');
+    this.ribbon.replaceChildren(this.mockTag, cats, done);
     this.ribbon.setAttribute('aria-hidden', 'true');
   }
 
@@ -209,7 +233,7 @@ export class CarControls {
     }
     // keep the scroll position when the same panel is rebuilt
     const keep = this.panelCat === c.id ? this.panel.querySelector('.pbody')?.scrollTop : 0;
-    this.panel.replaceChildren(el('header', back, h2, close), body, el('div.pfoot', MOCK_NOTE));
+    this.panel.replaceChildren(el('header', back, h2, close), body, el('div.pfoot', this.sending ? CAR_NOTE : this.inApp ? 'The car\'s CAN link is down: nothing can be sent' : MOCK_NOTE));
     body.scrollTop = keep || 0;
     this.panelCat = c.id;
     this.panel.classList.add('open');
@@ -307,7 +331,7 @@ export class CarControls {
     b.addEventListener('click', () => {
       if (chip.id === 'win.sunroof') this.set('win.sunroofMode', this.v['win.sunroofMode'] === 'closed' ? 'open' : 'closed');
       else if (chip.kind === 'window') this.set(chip.id, this.v[chip.id] > 0 ? 0 : 100);   // one touch: all the way
-      else if (chip.kind === 'port') this.set(chip.id, !this.v[chip.id]);
+      else if (chip.kind === 'port') { if (this.liveIds.has(chip.id)) this.app.toast(chip.off || 'The car has no message for the charge port door'); else this.set(chip.id, !this.v[chip.id]); }
       else if (chip.kind === 'heat') this.set(chip.id, (this.v[chip.id] + 1) % 4);
       else if (chip.kind === 'tire') this.app.toast('Tire pressures (mockup)');
     });
@@ -316,13 +340,14 @@ export class CarControls {
     return b;
   }
 
-  // A door's chip: a button that opens or shuts the door and one that winds its window all the way down or
-  // up (a quarter window's has only the window's). Icons only, so eight fit beside the panel; the leader
-  // line says which door.
+  // A door's chip: the liftgate's has a button that opens or closes it (the doors are manual: theirs only
+  // shows whether the door is open), and one that winds its window all the way down or up through the head
+  // unit (the quarter windows and the rear window have no message: theirs only shows where they are). Icons
+  // only, so eight fit beside the panel; the leader line says which door.
   pairChip(chip) {
-    const name = chip.door === 'Tailgate' ? 'liftgate' : 'door', glass = chip.door === 'Tailgate' ? 'rear window' : 'window';
+    const liftgate = chip.door === 'Tailgate', glass = liftgate ? 'rear window' : 'window';
     const door = chip.door && el('button.cbtn', { onclick: () => this.toggleDoor(chip.door) });
-    const win = el('button.cbtn', { onclick: () => this.set(chip.win, this.v[chip.win] > 0 ? 0 : 100) });
+    const win = el('button.cbtn', { onclick: () => this.windowTouch(chip) });
     if (door) door.innerHTML = iconSvg('door');
     win.innerHTML = iconSvg('window');
     const b = el('div.callout.pair', { role: 'group', 'aria-label': chip.label }, door, win);
@@ -330,20 +355,33 @@ export class CarControls {
       const open = chip.door && this.v['doors.open'].includes(chip.door), pct = this.v[chip.win];
       if (door) {
         setClass(door, 'on', open);
-        door.title = `${chip.label}: ${open ? `close the ${name}` : `open the ${name}`}`;
+        door.title = liftgate ? `Liftgate: ${open ? 'close it' : 'open it'}` : `${chip.label} door: ${open ? 'open' : 'closed'} (it's manual)`;
+        if (!liftgate && this.liveIds.has('doors.open')) door.disabled = true;
       }
       setClass(win, 'on', pct > 0);
-      win.title = `${chip.label} ${glass}: ${pct <= 0 ? 'closed' : pct >= 100 ? 'open' : `${pct}% open`}`;
+      const can = chip.winSig || !this.liveIds.has(chip.win);
+      win.disabled = !can;
+      win.title = `${chip.label} ${glass}: ${pct <= 0 ? 'closed' : pct >= 100 ? 'open' : `${pct}% open`}${can ? '' : ' (the head unit has no message for it)'}`;
     };
     this.watch(show);
     show();
     return b;
   }
 
+  // a window chip or the sunroof's: all the way the other way
+  windowTouch(chip) {
+    const pct = this.v[chip.win];
+    if (chip.winSig && this.sending) this.cmd.request(MSG.BODY, { [chip.winSig]: pct > 0 ? 5 : 6 });   // Auto_Up / Auto_Down
+    else if (!this.liveIds.has(chip.win)) this.set(chip.win, pct > 0 ? 0 : 100);
+    else this.app.toast('The head unit has no message for this window');
+  }
+
   // ---- per frame ---------------------------------------------------------------------------------------
 
   // place the pins next to their points (after the scene has rendered, so the camera is this frame's)
   frame(dt) {
+    this._syncT += dt;
+    if (this._syncT > LIVE_SYNC_S) { this._syncT = 0; this.syncLive(); }
     if (!this.isOpen) return;
     this._tick(dt);
     // refresh the panel's live "From the car" read-out as CAN data arrives (~5 Hz)
@@ -445,10 +483,52 @@ export class CarControls {
     this.scene.update(this.app.state || {}, this.app.settings);   // the live data again
   }
 
-  // things that change on their own: the lighting preview's flashes, the battery charging
+  // The car's values into the controls (and onto the car model), as it reports them. A control the car reports
+  // is the car's: a change sends a request and waits for the car's answer instead of pretending.
+  syncLive() {
+    const cs = this.app.carState;
+    if (!cs || !cs.connected) {
+      if (this.liveIds.size) { this.liveIds.clear(); this.notify(); }
+      return;
+    }
+    let changed = false;
+    const take = (id, v) => {
+      this.liveIds.add(id);
+      const prev = this.v[id];
+      const same = typeof v === 'object' && v !== null ? JSON.stringify(prev) === JSON.stringify(v) : prev === v;
+      if (!same) { this.v[id] = v; changed = true; }
+    };
+    for (const [id, live] of this.liveList) {
+      const v = live(cs);
+      if (v !== undefined) take(id, v);
+      else this.liveIds.delete(id);
+    }
+    for (const [id, v] of Object.entries(liveExtras(cs))) take(id, v);
+    // what the car says follows on the model whether or not the controls are open
+    if (changed) {
+      if (this.isOpen) { this.apply(); this.notify(); }
+      else this.applyBody();
+    }
+    if (this.mockTag) {
+      const text = this.sending ? 'On the car' : this.inApp ? 'Car link down' : 'Mockup';
+      if (this.mockTag.textContent !== text) { setText(this.mockTag, text); setClass(this.mockTag, 'sent', this.sending); }
+    }
+  }
+
+  // the body as the car reports it: doors, liftgate, windows, sunroof (the lamps follow through the HUD's own lamp state)
+  applyBody() {
+    const v = this.v, cut = this.cut;
+    if (!cut) return;
+    for (const n of DOORS) cut.setDoor(n, n === 'Tailgate' && this.liveIds.has('doors.liftgate') ? v['doors.liftgate'] / 100 : v['doors.open'].includes(n));
+    for (const k of WINDOWS) cut.setWindow(k, v['win.' + k] / 100);
+    cut.setSunroof(v['win.sunroof'] / 100, v['win.sunroofMode'] === 'tilt');
+    if (this.liveIds.has('seat.FL.pos')) cut.seatPose('FL', v['seat.FL.pos']);
+  }
+
+  // things that change on their own: the lighting preview's flashes, the mockup's battery charging
   _tick(dt) {
     if (this.cat === 'lighting') this.scene.lampOverride = this.lamps();
-    if (this.v['energy.charging'] && this.v['energy.soc'] < this.v['energy.limit']) {
+    if (!this.liveIds.has('energy.soc') && this.v['energy.charging'] && this.v['energy.soc'] < this.v['energy.limit']) {
       this.v['energy.soc'] = Math.min(this.v['energy.limit'], this.v['energy.soc'] + dt * 0.6);
       this.cut.setBattery(this.cat === 'energy', this.v['energy.soc'] / 100, true);
       this._socShown = this._socShown || 0;
@@ -459,6 +539,13 @@ export class CarControls {
   // ---- state -------------------------------------------------------------------------------------------
 
   set(id, value) {
+    const def = this.defs.get(id);
+    if (def && def.off && (this.inApp || def.off === MOCK_OFF)) { this.app.toast(def.off); return; }
+    if (def && def.tx && this.inApp) {
+      if (!this.sending) { this.app.toast(this.cmd.why || 'Not connected to the car'); return; }
+      def.tx(this.cmd, value, this.app.carState);
+      if (this.liveIds.has(id)) { this.notify(); return; }   // the car reports it: its answer is the new value
+    }
     const prev = this.v[id];
     this.v[id] = value;
     if (id === 'drive.mode' && value !== prev) this.cut.pulse(DRIVE_MODES.find(m => m[0] === value)[3]);
@@ -486,6 +573,7 @@ export class CarControls {
       this.app.toast('California Mode: all eight open');
     } else if (action === 'closeAll') {
       this.closeAll();
+      if (this.sending) this.app.toast('Closing the windows and the sunroof');
     } else if (action === 'hollywood') {
       v['display.hollywood'] = !v['display.hollywood'];
     } else if (action === 'saveMemory') {
@@ -499,15 +587,22 @@ export class CarControls {
     this.notify();
   }
 
-  // every window and the sunroof shut, and the doors too
+  // every window and the sunroof shut, and the doors too: sent to the car for what it can do (the four door
+  // windows and the sunroof), and the mockup's values for the rest
   closeAll(doors = true) {
-    for (const k of WINDOWS) this.v['win.' + k] = 0;
-    Object.assign(this.v, { 'win.sunroof': 0, 'win.sunroofMode': 'closed' });
-    if (doors) this.v['doors.open'] = [];
+    if (this.sending) {
+      for (const sig of ['ICC_LeFrntWinCtrl', 'ICC_RiFrntWinCtrl', 'ICC_LeReWinCtrl', 'ICC_RiReWinCtrl']) this.cmd.request(MSG.BODY, { [sig]: 5 });
+      this.cmd.request(MSG.BODY, { ICC_SunroofPercCtrlCmdReq: 0, ICC_SunroofshadePercCtrlCmdReq: 0 });
+    }
+    for (const k of WINDOWS) if (!this.liveIds.has('win.' + k)) this.v['win.' + k] = 0;
+    if (!this.liveIds.has('win.sunroof')) Object.assign(this.v, { 'win.sunroof': 0, 'win.sunroofMode': 'closed' });
+    if (doors && !this.liveIds.has('doors.open')) this.v['doors.open'] = [];
   }
 
   toggleDoor(name) {
     const open = this.v['doors.open'];
+    if (name === 'Tailgate' && this.sending) { this.cmd.pulse(MSG.LIFTGATE, { ICC_TrActnCmd: open.includes(name) ? 2 : 1 }); return; }
+    if (this.liveIds.has('doors.open')) { this.app.toast(name === 'Tailgate' ? 'The liftgate needs the car\'s CAN link' : 'The doors are manual'); return; }
     this.set('doors.open', open.includes(name) ? open.filter(n => n !== name) : [...open, name]);
   }
 
@@ -543,6 +638,7 @@ export class CarControls {
     cut.setPowertrain(c === 'driving', mode && mode[3]);
     cut.setBattery(c === 'energy', v['energy.soc'] / 100, !!v['energy.charging']);
     cut.setPort(!!v['energy.port'], !!v['energy.charging']);
+    cut.setMirrors?.(v['doors.mirrors'] === 'folded');
     cut.setAmp(c === 'audio');
     cut.setSound(c === 'audio' ? SEATS_FOR_STAGE[v['audio.stage']] || [] : []);
     const kinds = ['camera'];
@@ -550,7 +646,7 @@ export class CarControls {
     if (v['icc.bsd'] || v['icc.bacm'] || v['icc.fcta']) kinds.push('corner');
     if (v['icc.chime'] || v['icc.apa']) kinds.push('ultrasonic');
     cut.setSensors(c === 'assist' && v['icc.global'], kinds);
-    for (const n of DOORS) cut.setDoor(n, v['doors.open'].includes(n));
+    for (const n of DOORS) cut.setDoor(n, n === 'Tailgate' && this.liveIds.has('doors.liftgate') ? v['doors.liftgate'] / 100 : v['doors.open'].includes(n));
     for (const k of WINDOWS) cut.setWindow(k, v['win.' + k] / 100);
     cut.setSunroof(v['win.sunroof'] / 100, v['win.sunroofMode'] === 'tilt');
     const theme = v['display.theme'], dark = document.documentElement.dataset.theme === 'dark';
@@ -559,8 +655,21 @@ export class CarControls {
 
   // ---- controls ----------------------------------------------------------------------------------------
 
-  // A control as a panel row (or block) or, compact, a row of an on-car card.
+  // A control as a panel row (or block) or, compact, a row of an on-car card. One the car can't take is
+  // shown greyed, with why.
   control(c, compact) {
+    const node = this._control(c, compact);
+    if (node && c.off && (this.inApp || c.off === MOCK_OFF)) {
+      node.classList.add('off');
+      node.title = c.off;
+      const lbl = node.querySelector('.lbl') || node;
+      if (!lbl.querySelector('.offwhy')) lbl.append(el('small.offwhy', c.off));
+      for (const i of node.querySelectorAll('input, button, select')) i.disabled = true;
+    }
+    return node;
+  }
+
+  _control(c, compact) {
     const lbl = () => el('div.lbl', el('b', c.label), c.sub ? el('small', c.sub) : null);
     const row = (...kids) => el(compact ? 'div.crow' : 'div.row', ...kids);
     const stack = (...kids) => el(compact ? 'div.crow.stack' : 'div.row.stack', ...kids);
@@ -618,6 +727,8 @@ export class CarControls {
         return row(compact ? el('span', c.label) : lbl(), box);
       }
       case 'seatpos': return this.seatPos(c, compact);
+      case 'hold': return this.holdControl(c, compact);
+      case 'charging': return this.chargingInfo();
       case 'memory': {
         const seg = el('div.seg');
         for (const n of [1, 2, 3]) seg.append(el('button', { dataset: { v: String(n) }, onclick: () => this.set(c.id, n) }, String(n)));
@@ -625,6 +736,7 @@ export class CarControls {
         this.watch(mark, !compact);
         mark();
         const save = el('button.btn.small', { onclick: () => this.act('saveMemory') }, 'Save');
+        if (c.noSave && this.inApp) { save.disabled = true; save.title = c.noSave; }
         return row(compact ? el('span', c.label) : lbl(), el('div.memory', seg, save));
       }
       case 'modes': {
@@ -685,30 +797,104 @@ export class CarControls {
       backrest.setAttribute('transform', `rotate(${(q.recline / Math.PI * 180).toFixed(1)} 101 72)`);
     };
     const nudge = (key, sign) => {
+      if (this.liveIds.has(id)) return;   // the car's seat moves by the car's request below, and reports where it is
       const q = { ...this.v[id] }, [lo, hi] = SEAT_LIMITS[key];
       q[key] = Math.max(lo, Math.min(hi, q[key] + sign * SEAT_STEP[key]));
-      this.set(id, q);
+      const prev = this.v[id];
+      this.v[id] = q;
+      this.apply();
+      this.notify();
+      if (prev === q) this.set(id, q);
     };
-    const hold = (label, text, fn) => {
+    // held: the head unit's manual-move request every 100 ms (ICC_0x533: 1 = forward / up, 2 = back / down),
+    // then "Off"; without the car's link, the mockup's seat moves instead
+    const hold = (label, text, key, sign) => {
       const b = el('button', { 'aria-label': label, title: label }, text);
-      let timer = 0;
-      const stop = () => clearInterval(timer);
-      b.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); stop(); timer = setInterval(fn, 90); });
+      let timer = 0, holding = false;
+      const sig = c.moves && c.moves[key];
+      const start = () => {
+        if (sig && this.inApp) {
+          if (!this.sending) { this.app.toast(this.cmd.why || 'Not connected to the car'); return; }
+          holding = this.cmd.hold(MSG.SEATMOVE, { [sig]: sign > 0 ? 1 : 2 });
+          setClass(b, 'held', holding);
+          return;
+        }
+        if (sig === undefined && c.moves && this.inApp) { this.app.toast('The head unit has no message for this adjuster'); return; }
+        nudge(key, sign); clearInterval(timer); timer = setInterval(() => nudge(key, sign), 90);
+      };
+      const stop = () => { clearInterval(timer); if (holding) { holding = false; setClass(b, 'held', false); this.cmd.release(MSG.SEATMOVE); } };
+      b.addEventListener('pointerdown', (e) => { e.preventDefault(); start(); });
       for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, stop);
-      b.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } });
+      b.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!sig || !this.inApp) nudge(key, sign); } });
       return b;
     };
     const pair = (name, key, a, b) => el('div.adj', el('small', name),
-      hold(`${name} ${a[0]}`, a[1], () => nudge(key, a[2])), hold(`${name} ${b[0]}`, b[1], () => nudge(key, b[2])));
+      hold(`${name} ${a[0]}`, a[1], key, a[2]), hold(`${name} ${b[0]}`, b[1], key, b[2]));
+    // on the car the cushion tilts (its front edge) and rises as a whole (height); the mockup moves each edge
+    const car = !!(c.moves && this.inApp);
     const grid = el('div.adjs',
       pair('Slide', 'slide', ['forward', '◀', 1], ['back', '▶', -1]),
       pair('Back', 'recline', ['up', '↶', -1], ['down', '↷', 1]),
-      pair('Front', 'front', ['up', '▲', 1], ['down', '▼', -1]),
-      pair('Rear', 'rear', ['up', '▲', 1], ['down', '▼', -1]));
+      pair(car ? 'Tilt' : 'Front', 'front', ['up', '▲', 1], ['down', '▼', -1]),
+      pair(car ? 'Height' : 'Rear', 'rear', ['up', '▲', 1], ['down', '▼', -1]));
     this.watch(draw, !compact);
     draw();
     const box = el('div.seatpos', pic, grid);
     return compact ? el('div.crow.stack', el('span', c.label), box) : el('div.row.stack', el('div.lbl', el('b', c.label)), box);
+  }
+
+  // Buttons held (or tapped) that ask the car for a motion: the windows (the head unit's all-the-way up or
+  // down; a second press while it moves should stop it, so a release after a long press sends it again) and
+  // the liftgate (open, stop, close). Beside them, where the car says it is.
+  holdControl(c, compact) {
+    const out = el('em');
+    const box = el('div.holdbtns');
+    for (const b of c.buttons || []) {
+      const btn = el('button', { 'aria-label': `${c.label} ${b.label}` }, b.label);
+      let downAt = 0;
+      const go = () => {
+        if (!this.inApp) { this.set(c.id, b.label === 'Up' || b.label === 'Close' ? 0 : 100); return; }   // the mockup
+        if (!this.sending) { this.app.toast(this.cmd.why || 'Not connected to the car'); return; }
+        b.down(this.cmd);
+      };
+      btn.addEventListener('pointerdown', (e) => { e.preventDefault(); downAt = performance.now(); setClass(btn, 'held', true); go(); });
+      const up = () => {
+        if (!downAt) return;
+        const held = performance.now() - downAt;
+        downAt = 0;
+        setClass(btn, 'held', false);
+        if (b.again && held > 350 && this.sending) b.down(this.cmd);   // let go mid-way: the same request again, to stop
+      };
+      for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) btn.addEventListener(ev, up);
+      btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+      box.append(btn);
+    }
+    box.append(out);
+    const show = () => {
+      const v = this.v[c.id];
+      setText(out, v == null ? '—' : c.unit ? `${v}${c.unit.startsWith('%') ? c.unit : ' ' + c.unit}` : String(v));
+    };
+    this.watch(show, !compact);
+    show();
+    const head = el('div.lbl', el('b', c.label), c.sub ? el('small', c.sub) : null);
+    return el(compact ? 'div.crow.stack' : 'div.row.stack', head, box);
+  }
+
+  // Energy: what the car reports about charging, as a block (the hero above has the battery itself)
+  chargingInfo() {
+    const box = el('div.charging');
+    const show = () => {
+      const cs = this.app.carState;
+      const items = cs ? LIVE.energy(cs).filter(([k]) => k !== 'Battery') : [];
+      box.replaceChildren();
+      if (!items.length) { box.append(el('span.k', cs && cs.demo ? 'Demo' : this.inApp ? 'No charging data from the car' : 'Charging data comes from the car\'s own buses (the app on the car)')); return; }
+      const power = items.find(([k]) => k === 'Battery power');
+      if (power) box.append(el('div.big', `${power[1]}`));
+      for (const [k, v] of items) if (k !== 'Battery power') box.append(el('span.k', k), el('span', v));
+    };
+    this.watch(show, true);
+    show();
+    return box;
   }
 
   // The mock parking's panel: where it's at, the spaces it found, start and cancel, and the CAN signals
@@ -787,9 +973,17 @@ export class CarControls {
       const soc = this.v['energy.soc'], lim = this.v['energy.limit'];
       big.replaceChildren(String(Math.floor(soc)), el('small', '%'));
       const range = Math.round(RANGE_MI * soc / 100);
-      const status = this.v['energy.charging']
-        ? (soc >= lim ? `Charged to your ${lim}% limit` : `Charging · 7.4 kW · ${Math.ceil((lim - soc) * 0.12 * 10) / 10} h to ${lim}%`)
-        : this.v['energy.port'] ? 'Charge port open' : 'Not plugged in';
+      const cs = this.app.carState, live = this.liveIds.has('energy.soc');
+      let status;
+      if (live) {
+        const kw = this.v['energy.power'] || 0, gun = cs.rawOf('VCU_ACChrgDchaGunCnctnSts'), left = cs.rawOf('VCU_ACRmngChrgTi');
+        const leftText = left !== undefined && left < 0xFFFF ? ` · ${left >= 60 ? `${Math.floor(left / 60)} h ${left % 60} min` : `${left} min`} left` : '';
+        status = kw > 0.3 ? `Charging · ${kw.toFixed(1)} kW${leftText}` : gun === 2 ? 'Plugged in, not charging' : this.v['energy.port'] ? 'Charge port open' : kw < -0.3 ? `Using ${(-kw).toFixed(1)} kW` : 'Not plugged in';
+      } else {
+        status = this.v['energy.charging']
+          ? (soc >= lim ? `Charged to your ${lim}% limit` : `Charging · 7.4 kW · ${Math.ceil((lim - soc) * 0.12 * 10) / 10} h to ${lim}%`)
+          : this.v['energy.port'] ? 'Charge port open' : 'Not plugged in';
+      }
       meta.replaceChildren(el('b', `${range} mi range`), status);
       bar.firstChild.style.width = `${soc}%`;
       bar.lastChild.style.left = `${lim}%`;
@@ -801,6 +995,7 @@ export class CarControls {
 
   lockHero() {
     const icon = el('span.tt'), text = el('div.meta'), btn = el('button.btn.primary', { onclick: () => this.set('doors.locked', !this.v['doors.locked']) });
+    if (!this.sending && this.inApp) btn.disabled = true;
     const show = () => {
       const locked = this.v['doors.locked'];
       icon.innerHTML = iconSvg(locked ? 'lock' : 'unlock');

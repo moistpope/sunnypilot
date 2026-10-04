@@ -84,7 +84,8 @@ export class Hud {
     else if (mads && mads.state === 'softDisabling') { latCls = 'warn'; latText = 'Take over'; }
     else if (mads && mads.enabled) { latCls = 'override'; latText = mads.state === 'overriding' ? 'Driver steering' : 'Steering paused'; }
     else if (tja && (tja.v === 3 || tja.v === 4)) { latCls = 'active'; latText = 'Fisker autosteer'; }
-    else if ((mads && mads.available) || (ss && ss.engageable)) latCls = 'available';
+    else if (!cc && f && f.vehicle && f.vehicle.epsLatCtrl && f.vehicle.epsLatCtrl.v === 2) { latCls = 'active'; latText = 'Steering'; }   // the car's own buses: the EPS is being steered
+    else if ((mads && mads.available) || (ss && ss.engageable) || (!cc && f && f.vehicle && f.vehicle.epsLatCtrl && f.vehicle.epsLatCtrl.v === 1)) latCls = 'available';
     this.latIcon.className = 'assist-icon ' + latCls;
 
     // ACC set speed: Fisker ADAS (cluster unit) first, then openpilot's cruise state
