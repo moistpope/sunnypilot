@@ -12,6 +12,10 @@
 // changing and holds still when it isn't. The lane lines, stop lines, crosswalks and headlight throw
 // are masked by the same field, so they grow, bend and vanish with the road.
 //
+// When the map knows the road (mapsurface.js), the reference is a polyline instead of the arc: the
+// map's centerline bent onto the camera lanes near the car, as far as the matcher's horizon, so the
+// field follows the road's real shape through bends and on past the cameras' reach.
+//
 // Scene frame: X right, Y up, Z backward; the car frame (x ahead of the front bumper, y left) is
 // x = -Z, y = -X.
 import * as THREE from '../vendor/three.module.min.js';
@@ -68,16 +72,44 @@ function noiseTexture(size, cells, octaves, gain, seed, anisotropy) {
 }
 
 // The field, in GLSL. p: car frame point; g: ground coordinates (m, fixed to the ground) for the noise.
+const POLY_MAX = 64;
+
 const FIELD_GLSL = `
+#define POLY_MAX ${POLY_MAX}
 uniform vec3 uArc;       // the road's reference arc in the car frame: y at the bumper, tan(heading), curvature
+uniform vec2 uPoly[POLY_MAX];   // ...or its reference polyline (car frame), with each point's station
+uniform float uPolyS[POLY_MAX];
+uniform int uPolyN;      // points in use; 0 = use the arc
 uniform vec4 uLat;       // lane region from the arc (right, left: outer lines, m), shoulder, side fade
 uniform vec4 uLong;      // the road's ends (back, front: where it has faded out, m along it), their fades
 uniform vec4 uDisc;      // the disc: center (car frame), radius (faded out), fade width
 uniform vec4 uField;     // reveal 0..1, edge ripple (in fade widths), ripple phase, lane tint
 uniform sampler2D tField;
 
+// (station along the polyline, offset to its left), from the nearest segment
+vec2 polySD(vec2 p) {
+  float best = 1e18;
+  vec2 sd = vec2(0.0);
+  for (int i = 0; i < POLY_MAX - 1; i++) {
+    if (i >= uPolyN - 1) break;
+    vec2 a = uPoly[i], ab = uPoly[i + 1] - a;
+    float L2 = dot(ab, ab);
+    float t = L2 > 0.0 ? clamp(dot(p - a, ab) / L2, 0.0, 1.0) : 0.0;
+    vec2 q = a + ab * t, r = p - q;
+    float d2 = dot(r, r);
+    if (d2 < best) {
+      best = d2;
+      float L = sqrt(L2);
+      vec2 u = L > 0.0 ? ab / L : vec2(1.0, 0.0);
+      sd = vec2(uPolyS[i] + t * L, r.y * u.x - r.x * u.y);
+    }
+  }
+  return sd;
+}
+
 // (station along the arc, offset to its left): the arc through (0, y0) heading atan(t) with curvature k
 vec2 roadSD(vec2 p) {
+  if (uPolyN > 1) return polySD(p);
   float h0 = atan(uArc.y);
   vec2 u = vec2(cos(h0), sin(h0));
   vec2 q = p - vec2(0.0, uArc.x);
@@ -113,6 +145,9 @@ export class RoadField {
     this.cloud = noiseTexture(256, 4, 5, 0.55, 3, anisotropy);
     this.uniforms = {
       uArc: { value: new THREE.Vector3() },
+      uPoly: { value: Array.from({ length: POLY_MAX }, () => new THREE.Vector2()) },
+      uPolyS: { value: new Float32Array(POLY_MAX) },
+      uPolyN: { value: 0 },
       uLat: { value: new THREE.Vector4(-1.8, 1.8, SHOULDER, SIDE_FADE) },
       uLong: { value: new THREE.Vector4(-4, 4, BACK_FADE, 10) },
       uDisc: { value: new THREE.Vector4(-EGO_LEN / 2, 0, DISC_R, DISC_FADE) },
@@ -176,17 +211,31 @@ export class RoadField {
 
   // Shape the field from the road model's output (road.js `update`) for this frame. The road grows out
   // of the disc as it's revealed: across first, out to the lane region, then along, out to its reach.
-  update(road, ground, tint) {
+  // With a map reference (mapsurface.js) the road is that polyline instead of the arc, reaches as far as
+  // the horizon, and shows even when the cameras report no lanes, as wide as the map says.
+  update(road, ground, tint, ref = null) {
     const U = this.uniforms, sf = road.surface, a = road.anchor;
-    const across = smoothstep(0, 0.55, sf.reveal), along = smoothstep(0.15, 1, sf.reveal);
+    const mapReveal = ref ? ref.reveal : 0;
+    const reveal = Math.max(sf.reveal, mapReveal);
+    const across = smoothstep(0, 0.55, reveal), along = smoothstep(0.15, 1, reveal);
     U.uArc.value.set(a.c.y0, a.c.t, Math.max(-0.2, Math.min(0.2, a.c.k)));
-    // the car's own place across the road, which the lane region grows out from
-    const car = -a.c.y0 * Math.cos(Math.atan(a.c.t));
-    U.uLat.value.set(mix(car - 0.4, sf.right - a.offset, across), mix(car + 0.4, sf.left - a.offset, across), SHOULDER, SIDE_FADE);
-    const reach = mix(3, sf.reach, along), fade = Math.max(8, 0.4 * reach);
-    U.uLong.value.set(mix(-3, BACK, along), reach + fade, BACK_FADE, fade);
+    if (ref) {
+      const P = U.uPoly.value, S = U.uPolyS.value, n = Math.min(ref.pts.length, P.length);
+      for (let i = 0; i < n; i++) { P[i].set(ref.pts[i][0], ref.pts[i][1]); S[i] = ref.st[i]; }
+      U.uPolyN.value = n;
+    } else U.uPolyN.value = 0;
+    // the car's own place across the road, which the lane region grows out from. The arc is the anchor line
+    // (a.offset from the ego lane's center); the map reference is the center itself
+    const rel = ref ? 0 : a.offset;
+    const car = ref ? -ref.centerY0 : -a.c.y0 * Math.cos(Math.atan(a.c.t));
+    let right = sf.right - rel, left = sf.left - rel;
+    if (ref && ref.width && sf.reveal < mapReveal) { right = ref.width[0]; left = ref.width[1]; }
+    U.uLat.value.set(mix(car - 0.4, right, across), mix(car + 0.4, left, across), SHOULDER, SIDE_FADE);
+    const reach = mix(3, ref ? Math.max(sf.reach, ref.reach) : sf.reach, along);
+    const fade = ref ? ref.fade : Math.max(8, 0.4 * reach);
+    U.uLong.value.set(mix(-3, ref ? -ref.back : BACK, along), reach + fade, BACK_FADE, fade);
     U.uDisc.value.set(-EGO_LEN / 2, 0, mix(DISC_R, ROAD_DISC_R, across), mix(DISC_FADE, 2.5, across));
-    U.uField.value.set(sf.reveal, RIPPLE + RIPPLE_MORPH * sf.energy, sf.phase, tint);
+    U.uField.value.set(reveal, RIPPLE + RIPPLE_MORPH * sf.energy, sf.phase, tint);
     ground.updateWorldMatrix(true, false);   // with this frame's pose of `world` above it
     U.uGroundInv.value.copy(ground.matrixWorld).invert();
   }

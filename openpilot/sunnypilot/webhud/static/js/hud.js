@@ -21,6 +21,10 @@ export class Hud {
     this.alerts = $('#alerts');
     this.telltales = $('#telltales');
     this.roadinfo = $('#roadinfo');
+    this.roadname = $('#roadname');
+    this.roadnameName = $('#roadname-name');
+    this.roadnameRef = $('#roadname-ref');
+    this.lastRoadName = { key: '', at: 0 };
     this.blinkL = $('#blink-l');
     this.blinkR = $('#blink-r');
     this.gears = $$('#gear span');
@@ -71,6 +75,31 @@ export class Hud {
     this._telltales(op, f, cs, lights);
     this._alerts(state, op, f);
     this._roadinfo(f, unit);
+    this._roadname(state);
+  }
+
+  // The road we're on, bottom center: the map match's name and ref (mapmatch.js), else the road name
+  // sunnypilot's mapd reports; the last one stays, dimmed, for a while when neither has one.
+  _roadname(state) {
+    const m = state.map, way = m && m.way;
+    const mapd = state.op && state.op.liveMapDataSP && state.op.liveMapDataSP.roadName;
+    let name = '', ref = '', stale = false;
+    const pretty = (r) => (r || '').split(';').map(x => x.trim()).filter(Boolean).join(' · ');
+    if (way && (way.name || way.ref)) { name = way.name || pretty(way.ref); ref = way.name ? pretty(way.ref) : ''; }
+    else if (mapd) { name = pretty(mapd); }
+    const now = performance.now();
+    if (name) this.lastRoadName = { key: name + '|' + ref, name, ref, at: now };
+    else if (now - this.lastRoadName.at < 8000 && this.lastRoadName.name) { name = this.lastRoadName.name; ref = this.lastRoadName.ref; stale = true; }
+    setClass(this.roadname, 'hidden', !name);
+    setClass(this.roadname, 'stale', stale);
+    setClass(this.roadname, 'lifted', state.mode === 'replay');
+    if (!name) return;
+    const key = name + '|' + ref;
+    if (this.roadname.dataset.key !== key) {
+      this.roadname.dataset.key = key;
+      setText(this.roadnameName, name);
+      setText(this.roadnameRef, ref);
+    }
   }
 
   _assist(op, f, unit, conv) {

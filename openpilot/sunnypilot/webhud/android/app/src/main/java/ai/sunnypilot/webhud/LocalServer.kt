@@ -3,6 +3,7 @@ package ai.sunnypilot.webhud
 import android.content.res.AssetManager
 import android.util.Log
 import java.io.ByteArrayOutputStream
+import java.io.FileInputStream
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
@@ -31,6 +32,7 @@ import kotlin.concurrent.thread
 class LocalServer(
     private val assets: AssetManager?,
     private val assetVersion: String,
+    private val mapTiles: MapTiles?,
     private val onDeviceUnreachable: () -> Unit,
 ) {
     private val server = bind()
@@ -114,7 +116,7 @@ class LocalServer(
         } else {
             try {
                 client.soTimeout = 0
-                serveAsset(client, method, path, text)
+                if (path.startsWith("/map/tile/")) serveTile(client, method, path, text) else serveAsset(client, method, path, text)
             } catch (e: IOException) {
                 // the page went away mid-file
             } finally {
@@ -252,6 +254,30 @@ class LocalServer(
             val bytes = assets.open("$WWW/$rel").use { it.readBytes() }
             respond(out, 200, "OK", type, bytes, headers, method == "HEAD")
         }
+        out.flush()
+    }
+
+    /** An OSM road tile for the page's map matcher (MapTiles): long-lived, so cached hard; a first request for
+     *  an area waits while its cell downloads. */
+    private fun serveTile(client: Socket, method: String, path: String, head: String) {
+        val out = client.getOutputStream()
+        val parsed = MapTiles.parsePath(URLDecoder.decode(path, "UTF-8"))
+        val file = if (parsed == null || mapTiles == null) null else mapTiles.tile(parsed.first, parsed.second, parsed.third)
+        if (file == null) {
+            respond(out, 404, "Not Found", "text/plain", "no such map tile".toByteArray(), emptyMap(), method == "HEAD")
+            return
+        }
+        val etag = "\"${file.lastModified().toString(16)}-${file.length().toString(16)}\""
+        val headers = linkedMapOf("ETag" to etag, "Cache-Control" to "max-age=604800")
+        val inm = header(head, "If-None-Match")
+        if (inm != null && inm.split(',').any { it.trim().removePrefix("W/") == etag || it.trim() == "*" }) {
+            respond(out, 304, "Not Modified", null, null, headers, true)
+            return
+        }
+        headers["Content-Type"] = "application/octet-stream"
+        headers["Content-Length"] = file.length().toString()
+        writeHead(out, 200, "OK", headers)
+        if (method != "HEAD") FileInputStream(file).use { stream(it, out, file.length()) }
         out.flush()
     }
 

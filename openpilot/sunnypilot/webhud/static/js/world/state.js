@@ -7,6 +7,8 @@
 // (on unless the view turns it off) corrects the sources and the speed.
 import { hexToBytes } from './dbc.js';
 import { FiskerRadar } from './fisker_radar.js';
+import { PoseEstimator } from './pose.js';
+import { MapMatcher } from './mapmatch.js';
 
 /** A bridge tick's frames, [[address, bus, hex], ...], as the builder takes them. */
 export function wireFrames(frames) {
@@ -20,20 +22,30 @@ const ODOMETRY_CAN_S = 0.5;   // carState stands in for the CAN odometry once th
 // ADASBUS odometry: the signals carState itself uses (opendbc/car/fisker/carstate.py)
 const SPEED_MSG = 0x318, YAW_MSG = 0x112, GEAR_MSG = 0x214;
 const GEAR_REVERSE = 3;       // VCU_GearSig
+// The telematics box's GPS and heading (pose.js): the gateway mirrors them onto the ADAS bus and IBUS2/IBUS1,
+// the fix quality (0x46F/0x472) only onto IBUS1
+const GPS_MSG = 0x526, HEADING_MSG = 0x179, INS_MSG = 0x174, GPS_FIX_MSG = 0x46F, GPS_ACC_MSG = 0x472;
+const GPS_CAN_S = 1.0;        // the comma's GPS stands in once the car's own hasn't been seen for this long
+const GPS_SERVICES = new Set(['gpsLocationExternal', 'gpsLocation']);
 
 export class StateBuilder {
   /** worldDbc: the ADASBUS DBC (or the IBUS one, which carries the same signals); radarDbc: the radar's, or
-   *  null; gearMsg: where VCU_GearSig comes from (0x214 on the ADAS bus, 0x234 on IBUS1). */
-  constructor(worldDbc, radarDbc = null, { gearMsg = GEAR_MSG } = {}) {
+   *  null; gearMsg: where VCU_GearSig comes from (0x214 on the ADAS bus, 0x234 on IBUS1); mapData: the road
+   *  map (mapdata.js) for the map matcher, or null for none. */
+  constructor(worldDbc, radarDbc = null, { gearMsg = GEAR_MSG, mapData = null } = {}) {
     this.world = new FiskerWorld(worldDbc);
     this.radar = new FiskerRadar(radarDbc);
     this.gearMsg = gearMsg;
     this.model = new WorldModel();
+    this.pose = new PoseEstimator({ speedScale: this.model.calib.speedScale });
+    this.map = mapData;
+    this.matcher = mapData ? new MapMatcher(mapData) : null;
     this.services = {};
     this.serviceT = {};
     this.brand = null;
     this.t = 0.0;
     this._odoCanT = -1e9;
+    this._gpsCanT = -1e9;
     this._adasFed = new Map();
     this._rsFed = null;
   }
@@ -42,10 +54,13 @@ export class StateBuilder {
     this.world.reset();
     this.radar.reset();
     this.model.reset();
+    this.pose.reset();
+    if (this.matcher) this.matcher.reset();
     this.services = {};
     this.serviceT = {};
     this.t = 0.0;
     this._odoCanT = -1e9;
+    this._gpsCanT = -1e9;
     this._adasFed.clear();
     this._rsFed = null;
   }
@@ -62,17 +77,43 @@ export class StateBuilder {
       this.world.update(frames, t);
       this.radar.update(frames, t);
       this._odometryFromCan(t);
+      this._gpsFromCan(t);
     }
   }
 
   _odometryFromCan(t) {
     const spd = this.world.frames.get(SPEED_MSG), yaw = this.world.frames.get(YAW_MSG);
     if (spd === undefined || yaw === undefined || Math.max(spd[1], yaw[1]) !== t || t - Math.min(spd[1], yaw[1]) > 0.1) return;   // nothing new in this batch, or one of the two has gone quiet
-    let v = this.world.decoded(SPEED_MSG, t).ESP_VehSpd / 3.6 * this.model.calib.speedScale;
+    let vRaw = this.world.decoded(SPEED_MSG, t).ESP_VehSpd / 3.6;
     const gear = this.world.decoded(this.gearMsg, t);
-    if (gear !== null && Math.trunc(gear.VCU_GearSig) === GEAR_REVERSE) v = -v;
-    this.model.odo.update(t, v, this.world.decoded(YAW_MSG, t).YRS_YawRate * Math.PI / 180);
+    if (gear !== null && Math.trunc(gear.VCU_GearSig) === GEAR_REVERSE) vRaw = -vRaw;
+    const w = this.world.decoded(YAW_MSG, t).YRS_YawRate * Math.PI / 180;
+    this.model.odo.update(t, vRaw * this.model.calib.speedScale, w);
+    this.pose.predict(t, vRaw, w);
     this._odoCanT = t;
+  }
+
+  /** The car's own GPS fixes and heading, as they arrive (the pose estimator removes their lag). */
+  _gpsFromCan(t) {
+    const g = this.world.frames.get(GPS_MSG);
+    if (g !== undefined && g[1] === t) {
+      const d = this.world.decoded(GPS_MSG, t);
+      const q = this.world.decoded(GPS_FIX_MSG, t), a = this.world.decoded(GPS_ACC_MSG, t);   // null on the comma's buses
+      if (d !== null && (q === null || Math.trunc(q.TBOX_GPSFixOK) === 1)) {
+        this.pose.gps(t, d.TBOX_GPSLati, d.TBOX_GPSLongi, { accuracy: a !== null && a.TBOX_HorzAccuracy > 0 ? a.TBOX_HorzAccuracy : null });
+        this._gpsCanT = t;
+      }
+    }
+    const h = this.world.frames.get(HEADING_MSG);
+    if (h !== undefined && h[1] === t) {
+      const d = this.world.decoded(HEADING_MSG, t);
+      if (d !== null && d.TBOX_HeadingStdDev < 10.0) this.pose.heading(t, d.TBOX_Heading, d.TBOX_HeadingStdDev);
+    }
+    const i = this.world.frames.get(INS_MSG);   // the TBOX's forward velocity (cm/s): calibrates the wheel speed
+    if (i !== undefined && i[1] === t) {
+      const d = this.world.decoded(INS_MSG, t);
+      if (d !== null) this.pose.speedObs(t, d.TBOX_XVelocity / 100);
+    }
   }
 
   /** data: the service's extract (extract.py's output), published at t. */
@@ -83,8 +124,11 @@ export class StateBuilder {
     if (which === 'carParams') {
       this.brand = data.brand || this.brand;
     } else if (which === 'carState' && t - this._odoCanT > ODOMETRY_CAN_S) {
-      const v = (data.vEgo || 0.0) * this.model.calib.speedScale * (data.gear === 'reverse' ? -1 : 1);   // wheel speed too
-      this.model.odo.update(t, v, data.yawRate || 0.0);
+      const vRaw = (data.vEgo || 0.0) * (data.gear === 'reverse' ? -1 : 1), w = data.yawRate || 0.0;   // wheel speed too
+      this.model.odo.update(t, vRaw * this.model.calib.speedScale, w);
+      this.pose.predict(t, vRaw, w);
+    } else if (GPS_SERVICES.has(which) && t - this._gpsCanT > GPS_CAN_S && data.fix && data.lat != null) {
+      this.pose.gps(t, data.lat, data.lon, { accuracy: data.acc ?? null, speed: data.speed ?? null, bearing: data.bearing ?? null });
     }
   }
 
@@ -131,7 +175,20 @@ export class StateBuilder {
       fisker,
       radar: this.fisker ? this.radar.state(now) : null,
       objects: this.model.step(now),   // the world model's fused objects
+      pose: this.pose.state(now),      // where the car is (pose.js): east/north from the first fix, heading, lat/lon
+      map: this._map(now),             // the road it's on and the road ahead (mapmatch.js), null without a map or a fix
       calibration: calibrationToJson(this.model.calib),
     };
+  }
+
+  /** Match the pose onto the map once there is a fix; tiles load in the background the first time. */
+  _map(now) {
+    if (!this.map || !this.pose.origin || !this.pose.fixes) return null;
+    this.map.setOrigin({ lat: this.pose.origin.lat, lon: this.pose.origin.lon, seq: this.pose.seq });
+    const p = this.pose.poseAt(now);
+    const [lat, lon] = this.pose.toGeodetic(p[0], p[1]);
+    if (!this.map.ensure(lat, lon, now)) return { loading: true, tiles: this.map.loaded };
+    const m = this.matcher.update(p, Math.abs(this.pose.v), now);
+    return m === null ? { loading: false, tiles: this.map.loaded } : { ...m, tiles: this.map.loaded };
   }
 }

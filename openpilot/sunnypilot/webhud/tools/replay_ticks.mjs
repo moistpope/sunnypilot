@@ -8,7 +8,7 @@
 //   node tools/replay_ticks.mjs --diff reference.jsonl    # a reference run's lines carry "fed" (the tick) and
 //                                                         # "snap" (the expected snapshot): report differences
 //
-// Record a stream from a running server with tools/record_ticks.py.
+// Record a stream from a running server with tools/record_ticks.mjs.
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -43,7 +43,9 @@ function feed(tick) {
 
 // ---- comparison: numbers within a tolerance of the last rounded digit, everything else exact ----
 const TOL_REL = 1e-6;
+const IGNORE = new Set(['snap.pose', 'snap.map', 'snap.fisker.horizon']);   // added after the references were recorded (pose_eval.mjs / map_eval.mjs check them)
 function compare(a, b, where, out) {
+  if (IGNORE.has(where)) return;
   if (typeof a === 'number' && typeof b === 'number') {
     const tol = Math.max(TOL_REL * Math.max(Math.abs(a), Math.abs(b)), roundingTol(a, b));
     if (Math.abs(a - b) > tol) out.push([where, a, b]);

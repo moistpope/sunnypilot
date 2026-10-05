@@ -39,7 +39,7 @@ class Link private constructor(context: Context) {
     private val probes = Executors.newFixedThreadPool(8) { Thread(it, "webhud-probe").apply { isDaemon = true } }
     val root = RootShell()   // also turns on the notification listener (HudListener.grant)
     private val neighbors = Neighbors(root)
-    val server = LocalServer(context.assets, assetVersion(context), onDeviceUnreachable = { checkNow() })
+    val server = LocalServer(context.assets, assetVersion(context), MapTiles(java.io.File(context.filesDir, "osm/offline")), onDeviceUnreachable = { checkNow() })
 
     // UI thread only
     private var listener: Listener? = null

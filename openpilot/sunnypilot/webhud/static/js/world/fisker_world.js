@@ -10,6 +10,7 @@
 // Coordinate frame of the returned geometry: x forward, y LEFT, meters, origin at the ego front
 // bumper (where the ADAS object list and openpilot's radarState are referenced).
 import { bytesEqual, bytesToHex, pyRound } from './dbc.js';
+import { ADASIS_MSGS, AdasisHorizon } from './adasis.js';
 
 export const BUS_PT = 0;    // vehicle side: gateway-mirrored body/HMI/chassis
 export const BUS_CAM = 2;   // OEM ADAS module side
@@ -91,6 +92,7 @@ export class FiskerWorld {
       for (const name in m.signals) this.signalMeta[name] = m.signals[name];
     }
     this.lastT = 0.0;
+    this.horizon = new AdasisHorizon();   // the head unit's map horizon, accumulated from every frame (adasis.js)
   }
 
   reset() {
@@ -98,6 +100,7 @@ export class FiskerWorld {
     this._decoded.clear();
     this.counts.clear();
     this.lastT = 0.0;
+    this.horizon.reset();
   }
 
   /** frames: array of [address, data (Uint8Array), src]. */
@@ -114,6 +117,7 @@ export class FiskerWorld {
       }
       store.set(addr, [data, t, src]);
       counts.set(addr, (counts.get(addr) || 0) + 1);
+      if (ADASIS_MSGS.has(addr)) this.horizon.feed(addr, this.dbc.messages.get(addr).decode(data), t);   // every frame counts, not just the latest
     }
     this.lastT = t;
   }
@@ -178,6 +182,7 @@ export class FiskerWorld {
       warnings: FiskerWorld._warnings(s),
       camera: FiskerWorld._camera(s),
       power: FiskerWorld._power(s),
+      horizon: this.horizon.state(now == null ? this.lastT : now),
     };
   }
 

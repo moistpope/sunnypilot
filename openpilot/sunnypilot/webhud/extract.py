@@ -15,7 +15,7 @@ from collections.abc import Callable
 SERVICES = [
   "carState", "carParams", "selfdriveState", "selfdriveStateSP", "carControl", "radarState", "modelV2",
   "longitudinalPlan", "longitudinalPlanSP", "driverMonitoringState", "deviceState", "liveMapDataSP",
-  "gpsLocationExternal",
+  "gpsLocationExternal", "gpsLocation",   # u-blox or the modem's GPS: whichever the device has publishes
 ]
 
 # modelV2 has 33 points per line out to ~190 m; keep every other one up to MODEL_MAX_X
@@ -254,11 +254,13 @@ def live_map_data_sp(lm) -> dict:
 
 
 def gps_location(gps) -> dict:
+  acc = _g(gps, "horizontalAccuracy")
   return {
-    "lat": _f(_g(gps, "latitude"), 6),
-    "lon": _f(_g(gps, "longitude"), 6),
+    "lat": _f(_g(gps, "latitude"), 7),
+    "lon": _f(_g(gps, "longitude"), 7),
     "bearing": _f(_g(gps, "bearingDeg"), 1),
     "speed": _f(_g(gps, "speed")),
+    "acc": _f(acc, 1) if acc else None,   # horizontal 1-sigma, m (the modem's GPS doesn't report one)
     "fix": bool(_g(gps, "hasFix", False)),
   }
 
@@ -277,5 +279,6 @@ EXTRACTORS: dict[str, Callable] = {
   "deviceState": device_state,
   "liveMapDataSP": live_map_data_sp,
   "gpsLocationExternal": gps_location,
+  "gpsLocation": gps_location,
 }
 assert set(EXTRACTORS) == set(SERVICES)

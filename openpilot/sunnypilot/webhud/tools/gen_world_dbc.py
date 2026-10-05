@@ -22,6 +22,10 @@ EXTRA_MESSAGES = {
   "ACU_0x159", "EPS_0x1C2", "EPS_0x1C4", "VCU_0x214", "VCU_0x219", "ESP_0x318", "BCM_0x321",
   "BCM_0x333", "BCM_0x335", "BCM_0x343", "VCU_0x358", "ICC_0x35B", "BCM_0x364", "ECC_0x373",
   "PLGM_0x471", "FCM_0x487", "MFS_0x514", "ICC_0x52A", "ICC_0x531",
+  # the telematics box's GPS (10 Hz lat/lon, altitude, fused heading, its IMU) and the head unit's ADASIS v2 map
+  # horizon (position on path, segments, stubs, profiles, meta), for the page's pose estimator and map matcher
+  "TBOX_0x174", "TBOX_0x175", "TBOX_0x176", "TBOX_0x179", "TBOX_0x525", "TBOX_0x526",
+  "ICC_0x250", "ICC_0x251", "ICC_0x252", "ICC_0x255", "ICC_0x361", "ICC_0x362",
 }
 
 

@@ -1768,8 +1768,8 @@ BO_ 594 ICC_0x252: 8 ICC
  SG_ ICC_ProfLongSignCondition : 63|4@0+ (1,0) [0|15] "" ICC
 
 BO_ 597 ICC_0x255: 8 ICC
- SG_ ICC_ProfShortMsgType : 10|3@0+ (1,0) [0|7] "" ICC
- SG_ ICC_ProfShortOffset : 7|13@0+ (1,0) [0|8190] "m" ICC
+ SG_ ICC_ProfShortMsgType : 7|3@0+ (1,0) [0|7] "" ICC
+ SG_ ICC_ProfShortOffset : 4|13@0+ (1,0) [0|8190] "m" ICC
  SG_ ICC_ProfShortPathIdx : 21|6@0+ (1,0) [8|63] "" ICC
  SG_ ICC_ProfShortCycCnt : 23|2@0+ (1,0) [0|3] "" ICC
  SG_ ICC_ProfShortUpdate : 24|1@0+ (1,0) [0|1] "" ICC

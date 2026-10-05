@@ -212,9 +212,60 @@ main thread (`static/js/world/`: `dbc.js`, `fisker_world.js`, `fisker_radar.js`,
 the car's own screen carries the HUD, the comma stays light, and the Android app runs the whole
 page from its own package: without the comma it still shows the car, the car controls, the music
 and the navigation, with the driving data off the screen until the link is back (*offline*). The
-DBCs come down as files (`/dbc/`). `tools/replay_ticks.mjs` runs the same pipeline in Node over a
-recorded tick stream, for working on the decoding and fusion without a browser; the tests are in
-`static/js/world/tests/` (`node --test static/js/world/tests/*.test.js`).
+DBCs come down as files (`/dbc/`). `tools/record_ticks.mjs` saves a running server's tick stream and
+`tools/replay_ticks.mjs` runs the same pipeline in Node over it, for working on the decoding and fusion
+without a browser; the tests are in `static/js/world/tests/` (`node --test static/js/world/tests/*.test.js`).
+
+Where the car is (`static/js/world/pose.js`, the snapshot's `pose`): the worker keeps the rear axle's
+pose in a local east/north frame from the car's odometry (wheel speed and yaw-rate gyro at CAN rate),
+corrected by the telematics box's GPS fixes (`TBOX_0x526`, 10 Hz, mirrored on bus 0 and IBUS2) and its
+fused heading (`TBOX_0x179`), or by the comma's `gpsLocation(External)` when the car's own isn't there.
+A fix describes where the car was ~0.2 s earlier (measured on both receivers), so it is matched against
+the pose the odometry had then and the difference nudges the whole recent track; the heading sensor keeps
+the gyro's integration straight and estimates its bias; the fixes calibrate the wheel speed (it reads ~3%
+low) and, on drives varied enough to tell, the GPS lag. The view's ground frame follows this pose
+(`scene.js` `_followPose`), so GPS corrections slide the ground under the car instead of stepping it, and
+map geometry can be drawn in the same frame. `tools/pose_eval.mjs` reports how it did on a recording.
+
+The road from the map (`static/js/world/osmtile.js`, `mapdata.js`, `mapmatch.js`; the snapshot's `map`): the
+worker reads the OpenStreetMap road tiles sunnypilot's mapd uses (one packed Cap'n Proto file per 0.25 deg
+tile, 2 x 2 deg cells from `map-data.pfeifer.dev`, the same files mapd keeps under `<media>/osm/offline/`),
+asks its own server for them (`GET /map/tile/<lat>/<lon>/<name>`: `maptiles.py` on the comma or a PC,
+`MapTiles.kt` in the app, both downloading a cell the first time and keeping it), projects the drivable
+ways into the pose's frame and indexes their segments on a grid. The matcher scores the ways within 40 m
+by distance and heading (one-way respected), stays on the current way until an unconnected one has won for
+a while or the current one has ended, and follows the most likely continuation (same ref or name, then the
+smallest turn) ~500 m ahead into a *horizon*: the centerline polyline in the pose frame with the roads
+branching off it (offset along, angle, class, name). The match is which road and roughly where along it,
+never which lane. On the recorded drives it agreed with mapd's road name 90-100% of the time
+(`tools/map_eval.mjs`).
+
+Drawing it (`static/js/mapsurface.js`, `ground.js`, *Display → Map road*): the map is the road's only
+geometry; nothing of the cameras' lane shape is mixed into it (blending the two produced fans and kinks
+wherever they disagreed). The pose places the car on it: its heading and position bring the horizon into
+the car frame, and the lane model refines the placement sideways, sliding the whole map line so it passes
+through the ego lane's center at the car and turning it by the small angle between the map's direction and
+the lanes' (clamped to 4 deg, smoothed over a second). The ground field takes that polyline as its
+reference instead of the single arc, and the lane lines are parallel offsets of it at the distances the
+cameras measure at the car, so the road keeps the map's bends and goes on to the horizon with the car in
+its lane on it. With no lanes from the cameras the map alone shows the carriageway, as wide as its lane
+count says, with the lane structure it implies (a two-way road's centerline, lane boundaries, edges), and
+on a two-way road the placement leans on "we drive in the right half" rather than the meter-level GPS
+lateral, moving slowly. Junctions are drawn as a map draws them (`mapsurface.js` `junctions`): each road
+leaving or joining ours is a strip of ground in its own width for its first 60 m whose edges curve into
+ours with fillets (tight at a street corner, a long taper at a ramp's gore), our edge line opens across the
+mouth between the fillets, our lane dashes stop inside a crossing with arms on both sides, and the arm gets
+its own centerline or lane boundaries past the mouth. One-way roads that end at a node on our road (on-ramps,
+merging lanes) are included as arms too. The road we're on is named at the bottom center of the screen
+(the match's name and ref, else mapd's road name). At a junction the horizon takes
+a continuation only if it turns less than 55 deg (any turn short of a U-turn when it keeps the name or ref,
+or is the only way on, i.e. a bend OSM split into two ways; drops down the road hierarchy penalized) and
+stops where the road would double back, so a wrong guess at a turn is a road that ends rather than one that
+loops; where the road itself ends the field fades within 12 m. A way the current one leads into takes
+over only when the current one ends within 6 m; any other way must win clearly for 8 snapshots, so a
+ramp running beside the road doesn't pull the horizon onto itself. The head unit's ADASIS horizon
+(`ICC_0x361`, `0x250`, `0x251`, `0x255`) is the same idea from the car's own navigation and serves as the
+cross-check.
 
 Loading: static files carry an `ETag`/`Last-Modified`, and the server answers a current copy with
 `304`. In a browser the page's service worker (`static/sw.js`) keeps the car model, three.js and the
@@ -322,6 +373,8 @@ Bus 2 (ADAS module) unless noted; the full set is in the *Signals* tab.
 - **Parking:** `0x352` ultrasonic zones (front/rear/left/right × 4), `0x356/0x359` park-distance (cm), `0x2C7..0x2EA` APA slots, `0x2CD` curb warnings, `0x316` surround-view state.
 - **Driver monitoring:** `0x527`. **Camera:** `0x32B`.
 - **Vehicle (bus 0):** `VCU_0x102` driver torque request per axle, `MCU_F_0x150`/`MCU_R_0x151` motor torque + speed, `VCU_0x214` gear/ready/pedal, `ICC_0x531` cluster speed + unit, `BCM_0x335` lamp outputs, `EPS_0x1C2` steering angle, `BCM_0x343` doors/locks/windows, `PLGM_0x471` liftgate, `ECC_0x373` outside temp, `VCU_0x358` regen/e-pedal, `ICC_0x52A`/`ICC_0x35B` the ICC's own settings (shown next to the overrides).
+- **Position (bus 0, from the telematics box through the gateway):** `TBOX_0x526` GPS lat/lon (10 Hz), `TBOX_0x525` altitude, `TBOX_0x179` fused heading + std dev, `TBOX_0x174..0x176` its IMU (the forward velocity calibrates the wheel speed; the angular rates don't match the chassis gyro's scale and aren't used). The fix quality (`0x46B..0x473`: fix OK, HDOP, satellites, horizontal accuracy) is on IBUS1 only, so the app sees it and the comma doesn't.
+- **Map horizon (bus 0, the head unit's ADASIS v2 from its navigation):** `ICC_0x361` position on path (offset, probability, age ~150 ms, relative heading), `ICC_0x250` segment (road class, form of way, lanes, speed-limit class), `ICC_0x251` stubs (branches, turn angle), `ICC_0x255` profile short (curvature, slope, ~900 m ahead; value 511 = straight), `ICC_0x252` profile long (signs), `ICC_0x362` meta. Forwarded by the bridge and read on IBUS2, not decoded yet (the IBUS2 matrix has 0x255's header three bits off; `tools/gen_ibus.py` corrects it to the standard layout the car sends).
 
 Not documented in the matrix, so exposed as display toggles (*Display → Geometry calibration*): the
 sign of lane curvature and of object heading (lane heading grows to the right, verified on the car).
@@ -330,6 +383,7 @@ Verify them on a drive with good lane confidence against the openpilot lanes (*L
 ## API
 
 `GET /api/status`, `GET /api/routes`, `POST /api/replay {action: load|play|pause|toggle|seek|step|speed|live|demo, ...}`,
+`GET /map/tile/<lat>/<lon>/<name>` (an OSM road tile, fetched into mapd's folder on first use),
 `PUT /api/upload?name=<file>` (raw rlog/qlog body), `GET|PUT /api/params` (personality, experimental
 mode, units), `GET|PUT|DELETE /api/overrides`. Static: the page, `/vendor/`, `/models/` and `/dbc/`
 (the ADASBUS subset and the radar DBC, which the page decodes with). WebSocket `/ws`: the server sends
@@ -350,7 +404,11 @@ python -m openpilot.sunnypilot.webhud.server --replay <rlog.zst | segment dir | 
 python -m openpilot.sunnypilot.webhud.tools.gen_world_dbc FM29_ADASBUS_Matrix_CANFD_V390.8_20230524.dbc
 pytest openpilot/sunnypilot/webhud/tests                        # the bridge
 node --test openpilot/sunnypilot/webhud/static/js/world/tests/*.test.js   # the page's decoding and world model
+node openpilot/sunnypilot/webhud/tools/record_ticks.mjs http://sunnypilot.local:8088 ticks.jsonl --seconds 120   # save a tick stream
 node openpilot/sunnypilot/webhud/tools/replay_ticks.mjs ticks.jsonl      # the same pipeline over a recorded tick stream
+node openpilot/sunnypilot/webhud/tools/pose_eval.mjs ticks.jsonl         # how the pose estimator did on it (fix innovations, heading, scale, lag)
+node openpilot/sunnypilot/webhud/tools/map_eval.mjs --tiles ~/.comma/media/0/osm/offline ticks.jsonl   # how the map matcher did (vs mapd's road name)
+python -m openpilot.sunnypilot.webhud.server --replay <rlog.zst> --map-root <dir of OSM cells>   # the map from somewhere other than mapd's folder
 ```
 
 On a PC without the native params library, settings are kept in `~/.comma/webhud_dev_params.json`.

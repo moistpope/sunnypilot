@@ -13,6 +13,7 @@
 //               {type:'raw', data}                   the watched messages' decoded signals, ~5 Hz
 import { DBC, hexToBytes } from './dbc.js';
 import { StateBuilder, wireFrames } from './state.js';
+import { MapData } from './mapdata.js';
 
 const RAW_RATE_HZ = 5;
 
@@ -23,6 +24,20 @@ const LOCAL_QUIET_S = 2.0;   // no IBUS frames this long: the car's view stops
 
 let builder = null;
 let local = null;            // the car's own buses (IBUS1 = bus 0, IBUS2 = bus 2 for the decoder)
+const tileBytes = new Map(); // cell/file -> Uint8Array: both builders read the same tiles
+
+/** GET /map/tile/<cell>/<file> from the page's server (maptiles.py, LocalServer.kt); null when it hasn't got it. */
+async function fetchTile(cell, file) {
+  const key = cell + '/' + file;
+  const have = tileBytes.get(key);
+  if (have) return have;
+  const r = await fetch(`/map/tile/${cell}/${encodeURIComponent(file)}`);
+  if (!r.ok) return null;
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  tileBytes.set(key, bytes);
+  if (tileBytes.size > 12) tileBytes.delete(tileBytes.keys().next().value);
+  return bytes;
+}
 let localT = -1e9;           // when the last IBUS frame came in (page clock, s)
 let rawAddrs = [];
 let rawNext = 0;
@@ -33,10 +48,10 @@ self.onmessage = (ev) => {
   const msg = ev.data;
   try {
     if (msg.type === 'init') {
-      builder = new StateBuilder(new DBC(msg.worldDbc), msg.radarDbc ? new DBC(msg.radarDbc) : null);
+      builder = new StateBuilder(new DBC(msg.worldDbc), msg.radarDbc ? new DBC(msg.radarDbc) : null, { mapData: new MapData(fetchTile) });
       builder.setCalibration(calibrationOn);
       if (msg.ibusDbc) {
-        local = new StateBuilder(new DBC(msg.ibusDbc), null, { gearMsg: 0x234 });
+        local = new StateBuilder(new DBC(msg.ibusDbc), null, { gearMsg: 0x234, mapData: new MapData(fetchTile) });
         local.setCalibration(calibrationOn);
         local.setBrand('fisker');
         setInterval(localTick, 1000 / LOCAL_HZ);

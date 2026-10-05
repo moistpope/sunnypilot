@@ -304,6 +304,7 @@ export class Settings {
     this.showLaneConf();
     body.append(this.toggleRows([
       ['showRoad', 'Inferred road', 'Fill in the road and lanes the cameras don\'t report, following the last known lanes and your path.'],
+      ['mapRoad', 'Map road', 'Shape the road from the map beyond the cameras\' reach: its bends, branches and the way ahead, from where the GPS and the car\'s own motion place you.'],
       ['showGround', 'Ground texture', 'Fine textured ground that moves under the car with its speed and steering.'],
       ['showSigns', 'Traffic lights & signs', 'Lights, signs and stop lines the car\'s camera reports, placed where they most likely are.'],
       ['showPath', 'Planned path', 'Blue band along openpilot\'s path while steering is engaged.'],

@@ -217,6 +217,33 @@ BO_ 345 ACU_0x159: 8 GW
  SG_ ACU_SeatTrkPosnSwtFrntDrvr : 29|2@0+ (1,0) [0|3] ""  ADASBUS_Virtual_ECU
  SG_ ACU_SeatTrkPosnSwtFrntPass : 31|2@0+ (1,0) [0|3] ""  ADASBUS_Virtual_ECU
 
+BO_ 372 TBOX_0x174: 8 GW
+ SG_ TBOX_174_CheckSum : 7|8@0+ (1,0) [0|255] ""  ADAS,FCM
+ SG_ TBOX_174_AliveCounter : 11|4@0+ (1,0) [0|14] ""  ADAS,FCM
+ SG_ TBOX_XAcce : 23|16@0- (0.01,0) [-327|327] "m/s2"  ADAS,FCM
+ SG_ TBOX_XVelocity : 39|16@0- (1,0) [-32768|32767] "cm/s"  ADAS,FCM
+ SG_ TBOX_XAgrRate : 55|16@0- (0.01,0) [-327|327] "deg/s"  ADAS,FCM
+
+BO_ 373 TBOX_0x175: 8 GW
+ SG_ TBOX_175_CheckSum : 7|8@0+ (1,0) [0|255] ""  ADAS,FCM
+ SG_ TBOX_175_AliveCounter : 11|4@0+ (1,0) [0|14] ""  ADAS,FCM
+ SG_ TBOX_YAcce : 23|16@0- (0.01,0) [-327|327] "m/s2"  ADAS,FCM
+ SG_ TBOX_YVelocity : 39|16@0- (1,0) [-32768|32767] "cm/s"  ADAS,FCM
+ SG_ TBOX_YAgrRate : 55|16@0- (0.01,0) [-327|327] "deg/s"  ADAS,FCM
+
+BO_ 374 TBOX_0x176: 8 GW
+ SG_ TBOX_176_CheckSum : 7|8@0+ (1,0) [0|255] ""  ADAS,FCM
+ SG_ TBOX_176_AliveCounter : 11|4@0+ (1,0) [0|14] ""  ADAS,FCM
+ SG_ TBOX_ZAcce : 23|16@0- (0.01,0) [-327|327] "m/s2"  ADAS,FCM
+ SG_ TBOX_ZVelocity : 39|16@0- (1,0) [-32768|32767] "cm/s"  ADAS,FCM
+ SG_ TBOX_ZAgrRate : 55|16@0- (0.01,0) [-327|327] "deg/s"  ADAS,FCM
+
+BO_ 377 TBOX_0x179: 8 GW
+ SG_ TBOX_179_CheckSum : 7|8@0+ (1,0) [0|255] ""  ADAS,FCM
+ SG_ TBOX_179_AliveCounter : 11|4@0+ (1,0) [0|14] ""  ADAS,FCM
+ SG_ TBOX_Heading : 23|16@0+ (0.01,0) [0|359.9] "deg"  ADAS,FCM
+ SG_ TBOX_HeadingStdDev : 39|16@0+ (0.01,0) [0|179.9] "deg"  ADAS,FCM
+
 BO_ 448 ADAS_0x1C0: 8 ADAS
  SG_ ADAS_1C0_CheckSum : 7|8@0+ (1,0) [0|255] ""  GW
  SG_ ADAS_1C0_AliveCounter : 11|4@0+ (1,0) [0|14] ""  GW
@@ -383,6 +410,78 @@ BO_ 537 VCU_0x219: 8 GW
  SG_ VCU_VehSecureRels : 57|1@0+ (1,0) [0|1] ""  ADASBUS_Virtual_ECU
  SG_ VCU_AxReqActv : 59|2@0+ (1,0) [0|3] ""  ADAS
  SG_ VCU_SpclTerrainModReq : 62|3@0+ (1,0) [0|7] ""  ADASBUS_Virtual_ECU
+
+BO_ 592 ICC_0x250: 8 GW
+ SG_ ICC_SegOffset : 4|13@0+ (1,0) [0|8190] "m"  ADAS
+ SG_ ICC_SegMsgType : 7|3@0+ (1,0) [0|7] ""  ADAS
+ SG_ ICC_SegPathIdx : 21|6@0+ (1,0) [8|63] ""  ADAS
+ SG_ ICC_SegCycCnt : 23|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_SegUpdate : 24|1@0+ (1,0) [0|1] ""  ADAS
+ SG_ ICC_SegRetr : 25|1@0+ (1,0) [0|1] ""  ADAS
+ SG_ ICC_SegBuildUpArea : 27|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_SegBridge : 29|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_SegTunnel : 31|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_SegFuncRoadClass : 34|3@0+ (1,0) [0|7] ""  ADAS
+ SG_ ICC_SegRelProbb : 39|5@0+ (3.3333,0) [0|100] "%"  ADAS
+ SG_ ICC_SegFormOfWay : 43|4@0+ (1,0) [0|15] ""  ADAS
+ SG_ ICC_SegCmplxInsct : 45|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_SegPartOfCalcRoute : 47|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_SegEffSpdLmtType : 50|3@0+ (1,0) [0|7] ""  ADAS
+ SG_ ICC_SegEffSpdLmt : 55|5@0+ (1,0) [0|31] "km/h or mph"  ADAS
+ SG_ ICC_SegNumOfLaneDrvDir : 58|3@0+ (1,0) [0|7] ""  ADAS
+ SG_ ICC_SegNumOfLaneOppDir : 60|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_SegDividedRoad : 62|2@0+ (1,0) [0|3] ""  ADAS
+
+BO_ 593 ICC_0x251: 8 GW
+ SG_ ICC_StubOffset : 4|13@0+ (1,0) [0|8190] "m"  ADAS
+ SG_ ICC_StubMsgType : 7|3@0+ (1,0) [0|7] ""  ADAS
+ SG_ ICC_StubPathIdx : 21|6@0+ (1,0) [8|63] ""  ADAS
+ SG_ ICC_StubCycCnt : 23|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_StubUpdate : 24|1@0+ (1,0) [0|1] ""  ADAS
+ SG_ ICC_StubRetr : 25|1@0+ (1,0) [0|1] ""  ADAS
+ SG_ ICC_StubStubPathIdx : 31|6@0+ (1,0) [0|63] ""  ADAS
+ SG_ ICC_StubFuncRoadClass : 34|3@0+ (1,0) [0|7] ""  ADAS
+ SG_ ICC_StubRelProbb : 39|5@0+ (3.333,0) [0|100] "%"  ADAS
+ SG_ ICC_StubFormOfWay : 43|4@0+ (1,0) [0|15] ""  ADAS
+ SG_ ICC_StubCmplxInsct : 45|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_StubPartOfCalcRout : 47|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_StubTurnAngl : 55|8@0+ (1.417,0) [0|358.583] "degrees"  ADAS
+ SG_ ICC_StubNumOfLaneDrvDir : 58|3@0+ (1,0) [0|7] ""  ADAS
+ SG_ ICC_StubNumOfLaneOppDir : 60|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_StubRtOfWay : 62|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_StubLastStub : 63|1@0+ (1,0) [0|1] ""  ADAS
+
+BO_ 594 ICC_0x252: 8 GW
+ SG_ ICC_ProfLongOffset : 4|13@0+ (1,0) [0|8190] "m"  ADAS
+ SG_ ICC_ProfLongMsgType : 7|3@0+ (1,0) [0|7] ""  ADAS
+ SG_ ICC_ProfLongPathIdx : 21|6@0+ (1,0) [8|63] ""  ADAS
+ SG_ ICC_ProfLongCycCnt : 23|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_ProfLongUpdate : 24|1@0+ (1,0) [0|1] ""  ADAS
+ SG_ ICC_ProfLongRetr : 25|1@0+ (1,0) [0|1] ""  ADAS
+ SG_ ICC_ProfLongCtrlPoint : 26|1@0+ (1,0) [0|1] ""  ADAS
+ SG_ ICC_ProfLongProfType : 31|5@0+ (1,0) [0|31] ""  ADAS
+ SG_ ICC_ProfLongSignType : 39|8@0+ (1,0) [0|255] ""  ADAS
+ SG_ ICC_ProfLongSignValue : 47|8@0+ (1,0) [0|255] ""  ADAS
+ SG_ ICC_ProfLongSignTimeSpec : 49|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_ProfLongSignVehSpec : 51|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_ProfLongSignLane : 55|4@0+ (1,0) [0|15] ""  ADAS
+ SG_ ICC_0x252_Reserved : 56|1@0+ (1,0) [0|1] ""  ADAS
+ SG_ ICC_ProfLongSignLocation : 59|3@0+ (1,0) [0|7] ""  ADAS
+ SG_ ICC_ProfLongSignCondition : 63|4@0+ (1,0) [0|15] ""  ADAS
+
+BO_ 597 ICC_0x255: 8 GW
+ SG_ ICC_ProfShortOffset : 4|13@0+ (1,0) [0|8190] "m"  ADAS
+ SG_ ICC_ProfShortMsgType : 7|3@0+ (1,0) [0|7] ""  ADAS
+ SG_ ICC_ProfShortPathIdx : 21|6@0+ (1,0) [8|63] ""  ADAS
+ SG_ ICC_ProfShortCycCnt : 23|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_ProfShortUpdate : 24|1@0+ (1,0) [0|1] ""  ADAS
+ SG_ ICC_ProfShortRetr : 25|1@0+ (1,0) [0|1] ""  ADAS
+ SG_ ICC_ProfShortCtrlPoint : 26|1@0+ (1,0) [0|1] ""  ADAS
+ SG_ ICC_ProfShortProfType : 31|5@0+ (1,0) [0|31] ""  ADAS
+ SG_ ICC_ProfShortDist1 : 37|10@0+ (1,0) [0|1022] "m"  ADAS
+ SG_ ICC_ProfShortAccurClass : 39|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_ProfShortValue0 : 43|10@0+ (1,0) [0|1023] ""  ADAS
+ SG_ ICC_ProfShortValue1 : 49|10@0+ (1,0) [0|1023] ""  ADAS
 
 BO_ 711 ADAS_0x2C7: 8 ADAS
  SG_ ADAS_APASlot5_FrLeCrnr_y : 7|12@0+ (0.05,-100) [-100|100] "m"  GW
@@ -1045,6 +1144,35 @@ BO_ 859 ICC_0x35B: 8 GW
  SG_ ICC_TP_Setting : 61|2@0+ (1,0) [0|3] ""  ADAS
  SG_ ICC_BSD_Sensitivity : 63|2@0+ (1,0) [0|3] ""  ADAS
 
+BO_ 865 ICC_0x361: 8 GW
+ SG_ ICC_PosnOffset : 4|13@0+ (1,0) [0|8190] "m"  ADAS
+ SG_ ICC_PosnMsgTye : 7|3@0+ (1,0) [0|7] ""  ADAS
+ SG_ ICC_PosnPathldx : 21|6@0+ (1,0) [8|63] ""  ADAS
+ SG_ ICC_PosnCycCnt : 23|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_PosnAge : 24|9@0+ (5,0) [0|2545] "ms"  ADAS
+ SG_ ICC_PosnPosProbb : 29|5@0+ (3.333,0) [0|100] "%"  ADAS
+ SG_ ICC_PosnIdx : 31|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_PosnSpd : 40|9@0+ (0.2,-12.8) [-12.8|89.2] "m/s"  ADAS
+ SG_ ICC_PosnCurLane : 43|3@0+ (1,0) [0|7] ""  ADAS
+ SG_ ICC_PosnPosConfdc : 46|3@0+ (1,0) [0|7] ""  ADAS
+ SG_ ICC_PosnRehead : 63|8@0+ (1.417,0) [0|358.583] "degrees"  ADAS
+
+BO_ 866 ICC_0x362: 8 GW
+ SG_ ICC_MetaCountryCode : 1|10@0+ (1,0) [0|1023] ""  ADAS,FCM
+ SG_ ICC_MetaMapProvider : 4|3@0+ (1,0) [0|7] "m"  ADAS
+ SG_ ICC_MetaMsgType : 7|3@0+ (1,0) [0|7] ""  ADAS
+ SG_ ICC_MetaHwVer : 16|9@0+ (1,0) [0|511] ""  ADAS
+ SG_ ICC_MetaProtVerMinorSub : 19|3@0+ (1,0) [0|7] ""  ADAS
+ SG_ ICC_MetaProtVerMajor : 21|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_MetaCycCnt : 23|2@0+ (1,0) [0|3] ""  ADAS
+ SG_ ICC_MetaRegionCode : 38|15@0+ (1,0) [0|32767] ""  ADAS,FCM
+ SG_ ICC_MetaDrvSide : 39|1@0+ (1,0) [0|1] ""  ADAS
+ SG_ ICC_MetaMapVerYear : 53|6@0+ (1,2000) [2000|2063] ""  ADAS
+ SG_ ICC_MetaMapVerQtr : 55|2@0+ (1,1) [1|3] ""  ADAS
+ SG_ ICC_MetaProtVerMinor : 59|4@0+ (1,0) [0|15] ""  ADAS
+ SG_ ICC_MetaSpdUnits : 60|1@0+ (1,0) [0|1] ""  ADAS
+ SG_ ICC_Reserved : 63|3@0+ (1,0) [0|7] ""  ADAS
+
 BO_ 868 BCM_0x364: 8 GW
  SG_ BCM_364_CheckSum : 7|8@0+ (1,0) [0|255] ""  ADASBUS_Virtual_ECU
  SG_ BCM_364_AliveCounter : 11|4@0+ (1,0) [0|14] ""  ADASBUS_Virtual_ECU
@@ -1271,6 +1399,15 @@ BO_ 1300 MFS_0x514: 8 GW
  SG_ MFS_RiRollPress : 47|2@0+ (1,0) [0|3] ""  ADAS
  SG_ MFS_Ri_Fail : 49|2@0+ (1,0) [0|3] ""  ADAS
  SG_ MFS_Le_Fail : 51|2@0+ (1,0) [0|3] ""  ADASBUS_Virtual_ECU
+
+BO_ 1317 TBOX_0x525: 8 GW
+ SG_ TBOX_525_CheckSum : 7|8@0+ (1,0) [0|255] ""  ADAS
+ SG_ TBOX_525_AliveCounter : 11|4@0+ (1,0) [0|14] ""  ADAS
+ SG_ TBOX_GPSHei : 23|17@0+ (0.1,-500) [-500|8000] "m"  ADAS
+
+BO_ 1318 TBOX_0x526: 8 GW
+ SG_ TBOX_GPSLongi : 7|32@0+ (1E-006,-180) [-180|179.999999] "deg"  ADAS
+ SG_ TBOX_GPSLati : 39|32@0+ (1E-006,-90) [-90|90] "deg"  ADAS
 
 BO_ 1319 ADAS_0x527: 8 ADAS
  SG_ ADAS_DrvrAttention_Zone : 3|4@0+ (1,0) [0|15] ""  GW
@@ -1747,6 +1884,25 @@ CM_ SG_ 345 ACU_BucSwtStFrntDrvr "Buckle switch state front driver";
 CM_ SG_ 345 ACU_BucSwtStFrntPass "Buckle switch state front passenger";
 CM_ SG_ 345 ACU_SeatTrkPosnSwtFrntDrvr "Seat Track Position Sensor Front Driver";
 CM_ SG_ 345 ACU_SeatTrkPosnSwtFrntPass "Seat Track Position Sensor Front Passenger";
+CM_ SG_ 372 TBOX_174_CheckSum "TBOX_174_message checksum (E2E Data ID: 0x66)";
+CM_ SG_ 372 TBOX_174_AliveCounter "TBOX_174_message counter";
+CM_ SG_ 372 TBOX_XAcce "X Acceleration";
+CM_ SG_ 372 TBOX_XVelocity "X Velocity";
+CM_ SG_ 372 TBOX_XAgrRate "X Angular Rate";
+CM_ SG_ 373 TBOX_175_CheckSum "TBOX_175_message checksum (E2E Data ID: 0x67)";
+CM_ SG_ 373 TBOX_175_AliveCounter "TBOX_175_message counter";
+CM_ SG_ 373 TBOX_YAcce "Y Acceleration";
+CM_ SG_ 373 TBOX_YVelocity "Y Velocity";
+CM_ SG_ 373 TBOX_YAgrRate "Y Angular Rate";
+CM_ SG_ 374 TBOX_176_CheckSum "TBOX_176_message checksum (E2E Data ID: 0x64)";
+CM_ SG_ 374 TBOX_176_AliveCounter "TBOX_176_message counter";
+CM_ SG_ 374 TBOX_ZAcce "Z Acceleration";
+CM_ SG_ 374 TBOX_ZVelocity "Z Velocity";
+CM_ SG_ 374 TBOX_ZAgrRate "Z Angular Rate";
+CM_ SG_ 377 TBOX_179_CheckSum "TBOX_179_message checksum (E2E Data ID: 0x6B)";
+CM_ SG_ 377 TBOX_179_AliveCounter "TBOX_179_message counter";
+CM_ SG_ 377 TBOX_Heading "Vehicle heading";
+CM_ SG_ 377 TBOX_HeadingStdDev "Vehicle heading Std Dev";
 CM_ SG_ 448 ADAS_1C0_CheckSum "ADAS_1C0_CheckSum (E2E data ID: 0xC3); Calculation E2E from byte 1~3";
 CM_ SG_ 448 ADAS_1C0_AliveCounter "ADAS_1C0_AliveCounter";
 CM_ SG_ 448 ADAS_LatCtrl_Sts "Lateral control function status";
@@ -1879,6 +2035,66 @@ CM_ SG_ 537 VCU_VehSecureHold "Safety condition requestVehicle secure condition.
 CM_ SG_ 537 VCU_VehSecureRels "Safety condition release requestVehicle secure condition released request.";
 CM_ SG_ 537 VCU_AxReqActv "VCU longitudinal acceleration request activationAxrequest flag.";
 CM_ SG_ 537 VCU_SpclTerrainModReq "VCU all terrain driving mode request";
+CM_ SG_ 592 ICC_SegOffset "The distance from the starting point of the current segment to the starting point of the PathOffset of this segment from start position of the path modulo 8191; Value 8191 is invalid";
+CM_ SG_ 592 ICC_SegMsgType "Identify the message as the segment message";
+CM_ SG_ 592 ICC_SegPathIdx "Index value of path to which this segment belongsValue is Index of path of which this segment is part";
+CM_ SG_ 592 ICC_SegCycCnt "Loop counter of SEGMENT Message: The reconstructor can use this value to detect missing messagesCyclic counter of this message type:Reconstructor can use this value to detect missing messages";
+CM_ SG_ 592 ICC_SegUpdate "UpdateValue true indicates that this message contains updated information of already transmitted SEGMENT. ";
+CM_ SG_ 592 ICC_SegRetr "If true, the message has been sent once before (Seg)";
+CM_ SG_ 592 ICC_SegBuildUpArea "segment built-up information";
+CM_ SG_ 592 ICC_SegBridge "Informationsegment bridge";
+CM_ SG_ 592 ICC_SegTunnel "segment tunnel information";
+CM_ SG_ 592 ICC_SegFuncRoadClass "segment FRC information (corresponding road type, main road)Functional Road Class indicates relative importance of the road in the routing network and lower values indicate higher priority. This information is usually map-provider specific. ";
+CM_ SG_ 592 ICC_SegRelProbb "resolution should use 100/30 %.";
+CM_ SG_ 592 ICC_SegFormOfWay "segment road facilities information (for ramp information, refer to sheet3, where 9 corresponding ramp information) see sheet3 for details";
+CM_ SG_ 592 ICC_SegCmplxInsct "Whether the segment is the information on the complex intersection";
+CM_ SG_ 592 ICC_SegPartOfCalcRoute "whether the information on the planning path is on the segment";
+CM_ SG_ 592 ICC_SegEffSpdLmtType "segment Effective speed limit type information";
+CM_ SG_ 592 ICC_SegEffSpdLmt "information of speed limit (current speed limit)see sheet5 for details";
+CM_ SG_ 592 ICC_SegNumOfLaneDrvDir "Number of lanes in driving direction: also indicates driving direction.";
+CM_ SG_ 592 ICC_SegNumOfLaneOppDir "Number of lanes in opposite direction";
+CM_ SG_ 592 ICC_SegDividedRoad "segment Divided Road";
+CM_ SG_ 593 ICC_StubOffset "Distance between the start point of the st<UNK> and the start point of the pathOffset of the position of the crossing from the start path position modulo 8191. Offset 8191 is invalid.";
+CM_ SG_ 593 ICC_StubMsgType "Identify the message as a St<UNK> Message";
+CM_ SG_ 593 ICC_StubPathIdx "Index value of the parent path, 0 represents the first path in horizon starting from this STUBIndex of parent path; zero indicates this STUB starts first path in the Horizon";
+CM_ SG_ 593 ICC_StubCycCnt "Cyclic counter of STUB Message: The reconstructor can detect lost messages with this valueCyclic counter of this message type:Reconstructor can use this value to detect missing messages.";
+CM_ SG_ 593 ICC_StubUpdate "UpdateStub Segment";
+CM_ SG_ 593 ICC_StubRetr "If true, this message has been sent once before (St<UNK>)";
+CM_ SG_ 593 ICC_StubStubPathIdx "st<UNK> path indexValues 8 to 63:ï¿½ï¿½Normalï¿½ï¿½ STUB message, defining the origin of a new path; subsequent messages referring to this Index value will provide more data about it.";
+CM_ SG_ 593 ICC_StubRelProbb "Resolution should be 100/30 %";
+CM_ SG_ 593 ICC_StubFormOfWay "Road facilities information of st<UNK> (corresponding ramp information, branch)Form of Way of new path";
+CM_ SG_ 593 ICC_StubCmplxInsct "Is the information on complex intersections";
+CM_ SG_ 593 ICC_StubPartOfCalcRout "if the information on the planned path is the st<UNK>";
+CM_ SG_ 593 ICC_StubTurnAngl "Angle of the new path relative to the main path. Resolution should be 360/254 degrees";
+CM_ SG_ 593 ICC_StubNumOfLaneDrvDir "Number of lanes in driving direction: also indicates driving direction.";
+CM_ SG_ 593 ICC_StubNumOfLaneOppDir "Number of lanes in opposite direction";
+CM_ SG_ 593 ICC_StubRtOfWay "Road priority information";
+CM_ SG_ 593 ICC_StubLastStub "Last Stub at OffsetValue true indicates that this STUB message is last one that refers to given parent path and offset; value false says that more STUB messages for this offset on parent path will be sent";
+CM_ SG_ 594 ICC_ProfLongOffset "The position of the first contour point from the start position 8191 is offset.Offset of position of the first profile spot from start position modulo 8191. Offset 8191 is invalid";
+CM_ SG_ 594 ICC_ProfLongMsgType "Identify the message as Profile long";
+CM_ SG_ 594 ICC_ProfLongPathIdx "Index value of path to which this profile (s) belongsIndex of the path where this profile(s) is located";
+CM_ SG_ 594 ICC_ProfLongCycCnt "Loop counter of this message type and profile type: The reconstructor can use this value to detect missing messagesCyclic counter of this message type and profile type:Reconstructor can use this value to detect missing messages";
+CM_ SG_ 594 ICC_ProfLongUpdate "PROFILE LONG updateValue true indicates that this message contains updated information of already transmitted PROFILE LONG";
+CM_ SG_ 594 ICC_ProfLongRetr "If true, this message has been sent once before";
+CM_ SG_ 594 ICC_ProfLongCtrlPoint "Control PointIf true, values in this message specifies additional control points required for the interpolation of this profile; if false, actual profile values are specified.";
+CM_ SG_ 594 ICC_ProfLongSignType "Types of traffic signSee table TrafficSign:Traffic signs and situations";
+CM_ SG_ 594 ICC_ProfLongSignTimeSpec "The traffic sign is valid for a specific timeThis field marks a sign that is valid only on specific days or at specific times:";
+CM_ SG_ 594 ICC_ProfLongSignVehSpec "The traffic sign is valid for a specific vehicleThis field marks a sign that is valid only for specific vehicles. This includes signs valid only for vehicles with specific dimensions or loads:";
+CM_ SG_ 594 ICC_0x252_Reserved "Reserved space";
+CM_ SG_ 594 ICC_ProfLongSignLocation "Traffic sign position";
+CM_ SG_ 594 ICC_ProfLongSignCondition "Other Dependencies of Traffic signThis field describes other conditions and dependencies. Time and vehicle type/load dependencies are not taken into account here.";
+CM_ SG_ 597 ICC_ProfShortOffset "The position of the first contour point from the start position 8191 is offset.";
+CM_ SG_ 597 ICC_ProfShortMsgType "Identify the message as Profile Short";
+CM_ SG_ 597 ICC_ProfShortPathIdx "Index value of path to which this profile (s) belongsIndex of the path where this profile(s) is located.";
+CM_ SG_ 597 ICC_ProfShortCycCnt "Loop counter of this message type and profile type: The reconstructor can use this value to detect missing messagesCyclic counter of this message type and profile type:Reconstructor can use this value to detect missing messages";
+CM_ SG_ 597 ICC_ProfShortUpdate "PROFILE SHORT updateValue true indicates that this message contains updated information of already transmitted PROFILE SHORT";
+CM_ SG_ 597 ICC_ProfShortRetr "If true, this message has been sent once before";
+CM_ SG_ 597 ICC_ProfShortCtrlPoint "Control PointIf true, values in this message specifies additional control points required for the interpolation of this profile; if false, actual profile values are specified.";
+CM_ SG_ 597 ICC_ProfShortProfType "Standard PROFILE SHORT type";
+CM_ SG_ 597 ICC_ProfShortDist1 "Distance from the first profile to the second profile.Distance from first profile spot to the second one.";
+CM_ SG_ 597 ICC_ProfShortAccurClass "Accuracy of profile values Accuracy of profile value is implementation specific.";
+CM_ SG_ 597 ICC_ProfShortValue0 "Profile value of Offset;Profile value at Offset;a special value (usually 1023) signals an invalid, unknown or N/A value.";
+CM_ SG_ 597 ICC_ProfShortValue1 "Configuration file value of Offset + Distance1;Profile value at Offset+Distance1;a special value (usually 1023) signals an invalid, unknown or N/A value.";
 CM_ SG_ 711 ADAS_APASlot5_FrLeCrnr_y "Front left corner y in body frame - slot 5";
 CM_ SG_ 711 ADAS_APASlot5_FrRiCrnr_x "Front right corner x in body frame - slot 5";
 CM_ SG_ 711 ADAS_APASlot5_FrRiCrnr_y "Front right corner y in body frame - slot 5";
@@ -2428,6 +2644,29 @@ CM_ SG_ 859 ICC_LKA_SettingWrnTyp "ICC setting signal for lane support";
 CM_ SG_ 859 ICC_RAP_Setting "ICC setting to enable or disable the Remote Automated Parking (RAP). If enabled driver can control the RAP outside the vehicle (Feature in Standby).";
 CM_ SG_ 859 ICC_TP_Setting "ICC setting to enable or disable the Trained Parking (TP). If enabled driver can control the TP outside the vehicle (Feature in Standby)";
 CM_ SG_ 859 ICC_BSD_Sensitivity "Senstivity Setting for Blind Spot detection";
+CM_ SG_ 865 ICC_PosnOffset "Position of the vehicle from the starting point of the pathOffset of current position from the current pathï¿½ï¿½s start point modulo 8191. Value 8191 is invalid.";
+CM_ SG_ 865 ICC_PosnMsgTye "Identify the message as Position Message";
+CM_ SG_ 865 ICC_PosnPathldx "Current Path index numberIndex of current path:If this number differs from the one transmitted in the previous POSITION message with Position Index = 0, the vehicle has left the original path; Indices 0-7 have special meaning:see sheet2 for details";
+CM_ SG_ 865 ICC_PosnCycCnt "Loop counter of Position Message: Reconstructor can use this value to detect missing messagesCyclic counter of this message type:Reconstructor can use this value to detect missing messages";
+CM_ SG_ 865 ICC_PosnPosProbb "Resolution should be 100/30 %";
+CM_ SG_ 865 ICC_PosnSpd "Estimated speed of vehicle along Path";
+CM_ SG_ 865 ICC_PosnCurLane "Current lane";
+CM_ SG_ 865 ICC_PosnPosConfdc "Position confidence levelPosition confidence:this field contains Av2HP implementation specific values. Use 0 for highest confidence, 6 for lowest confidence. Value 7 means N/A";
+CM_ SG_ 865 ICC_PosnRehead "Front direction relative to path. Resolution should be 360/254 degrees";
+CM_ SG_ 866 ICC_MetaCountryCode "Country codeISO 3166-1 Release 2007-03 country code of current position;0 stands for unknown. Valid values are those specified by ISO 3166-1 numeric [14].";
+CM_ SG_ 866 ICC_MetaMapProvider "Map providers of the current area (map tile, area, country...).";
+CM_ SG_ 866 ICC_MetaMsgType "Identify the message bit";
+CM_ SG_ 866 ICC_MetaHwVer "Hardware and/or software version of generator";
+CM_ SG_ 866 ICC_MetaProtVerMinorSub "Secondary agreement sub-versionContains Minor protocol sub-version.";
+CM_ SG_ 866 ICC_MetaProtVerMajor "Main agreement versionContains Major protocol version.";
+CM_ SG_ 866 ICC_MetaCycCnt "This message type loop counter: The reconstructor can use this value to detect missing messagesCyclic counter of this message type:Reconstructor can use this value to detect missing messages.";
+CM_ SG_ 866 ICC_MetaRegionCode "Area code0 stands for unknown, value 32767 means N/AAll other values are based on ISO 3166-2 [15] with the code mapping scheme.";
+CM_ SG_ 866 ICC_MetaDrvSide "Driving direction";
+CM_ SG_ 866 ICC_MetaMapVerYear "Map version (year)Please note if the whole map may be partitioned into parts that can be released on different times or even by different providers. In that case, value of this field may vary between messages. 63 stands for N/A";
+CM_ SG_ 866 ICC_MetaMapVerQtr "Map version (quarter)Please note if the whole map may be partitioned into parts that can be released on different times or even by different providers. In that case, value if this field may vary between messages.";
+CM_ SG_ 866 ICC_MetaProtVerMinor "Minor agreement version";
+CM_ SG_ 866 ICC_MetaSpdUnits "Speed limit unit";
+CM_ SG_ 866 ICC_Reserved "Reserved space";
 CM_ SG_ 868 BCM_364_CheckSum "BCM_364_Message checksum (0xD3)BCM_364_CheckSum";
 CM_ SG_ 868 BCM_364_AliveCounter "BCM_364_Message counterBCM_364_AliveCounter";
 CM_ SG_ 868 BCM_OTARdy_Fb "BCM OTA ready status feedback";
@@ -2631,6 +2870,11 @@ CM_ SG_ 1300 MFS_RiRollDwn "Right roller (roll-down)";
 CM_ SG_ 1300 MFS_RiRollPress "Right roller (pressed-OK,Confirm(press)";
 CM_ SG_ 1300 MFS_Ri_Fail "Button Failure right buttons";
 CM_ SG_ 1300 MFS_Le_Fail "Button Failure left buttons";
+CM_ SG_ 1317 TBOX_525_CheckSum "TBOX_525_Message checksum (0xF9)TBOX_525_CheckSum";
+CM_ SG_ 1317 TBOX_525_AliveCounter "TBOX_525_Message CounterTBOX_525_AliveCounterr";
+CM_ SG_ 1317 TBOX_GPSHei "Altitude Height";
+CM_ SG_ 1318 TBOX_GPSLongi "Longitude (the east longitude is positive and the west longitude is negative.)Longitude";
+CM_ SG_ 1318 TBOX_GPSLati "Latitude (north is positive and south is negative.)Latitude";
 CM_ SG_ 1319 ADAS_DrvrAttention_Zone "Signal to the vehicle indicating where the driver's attention is centered";
 CM_ SG_ 1319 ADAS_DrvrAlert_State "Whether or not the IR LED is blocked";
 CM_ SG_ 1319 ADAS_DMS_Camera_Blockage_Status "Signal to the vehicle indicating whether or not the driver is alert";
@@ -2717,6 +2961,10 @@ BA_ "GenMsgCycleTime" BO_ 289 10;
 BA_ "GenMsgCycleTime" BO_ 336 10;
 BA_ "GenMsgCycleTime" BO_ 337 10;
 BA_ "GenMsgCycleTime" BO_ 345 100;
+BA_ "GenMsgCycleTime" BO_ 372 100;
+BA_ "GenMsgCycleTime" BO_ 373 100;
+BA_ "GenMsgCycleTime" BO_ 374 100;
+BA_ "GenMsgCycleTime" BO_ 377 100;
 BA_ "GenMsgCycleTime" BO_ 448 10;
 BA_ "GenMsgCycleTime" BO_ 450 10;
 BA_ "GenMsgCycleTime" BO_ 452 10;
@@ -2730,6 +2978,10 @@ BA_ "GenMsgCycleTime" BO_ 527 50;
 BA_ "GenMsgCycleTime" BO_ 528 50;
 BA_ "GenMsgCycleTime" BO_ 532 10;
 BA_ "GenMsgCycleTime" BO_ 537 20;
+BA_ "GenMsgCycleTime" BO_ 592 100;
+BA_ "GenMsgCycleTime" BO_ 593 100;
+BA_ "GenMsgCycleTime" BO_ 594 100;
+BA_ "GenMsgCycleTime" BO_ 597 100;
 BA_ "GenMsgCycleTime" BO_ 711 100;
 BA_ "GenMsgCycleTime" BO_ 714 100;
 BA_ "GenMsgCycleTime" BO_ 717 100;
@@ -2779,6 +3031,8 @@ BA_ "GenMsgCycleTime" BO_ 854 100;
 BA_ "GenMsgCycleTime" BO_ 856 100;
 BA_ "GenMsgCycleTime" BO_ 857 100;
 BA_ "GenMsgCycleTime" BO_ 859 200;
+BA_ "GenMsgCycleTime" BO_ 865 100;
+BA_ "GenMsgCycleTime" BO_ 866 100;
 BA_ "GenMsgCycleTime" BO_ 868 100;
 BA_ "GenMsgCycleTime" BO_ 883 100;
 BA_ "GenMsgCycleTime" BO_ 1137 100;
@@ -2786,6 +3040,8 @@ BA_ "GenMsgCycleTime" BO_ 1153 100;
 BA_ "GenMsgCycleTime" BO_ 1154 100;
 BA_ "GenMsgCycleTime" BO_ 1159 100;
 BA_ "GenMsgCycleTime" BO_ 1300 50;
+BA_ "GenMsgCycleTime" BO_ 1317 100;
+BA_ "GenMsgCycleTime" BO_ 1318 100;
 BA_ "GenMsgCycleTime" BO_ 1319 100;
 BA_ "GenMsgCycleTime" BO_ 1322 200;
 BA_ "GenMsgCycleTime" BO_ 1329 100;
@@ -3000,6 +3256,60 @@ VAL_ 537 VCU_VehSecureHold 0 "None" 1 "Vehicle_Secure" ;
 VAL_ 537 VCU_VehSecureRels 0 "None" 1 "Vehicle_Secure_Release" ;
 VAL_ 537 VCU_AxReqActv 0 "No_Request" 1 "Request" 2 "Active" 3 "ACC_driver_override" ;
 VAL_ 537 VCU_SpclTerrainModReq 0 "Initializing" 1 "Normal_request" 2 "Snow_request" 3 "Mud_request" 4 "Sand_request" 5 "Reserved" 6 "Reserved" 7 "Reserved" ;
+VAL_ 592 ICC_SegOffset 8191 "Invalid" ;
+VAL_ 592 ICC_SegMsgType 0 "System_Specific" 1 "Position" 2 "Segment" 3 "Stub" 4 "Profile_Short" 5 "Profile_Long" 6 "Meta-data" 7 "Reserved" ;
+VAL_ 592 ICC_SegUpdate 0 "False" 1 "True" ;
+VAL_ 592 ICC_SegRetr 0 "False" 1 "True" ;
+VAL_ 592 ICC_SegBuildUpArea 0 "Segment_is_not_part_of_a_built-up_area" 1 "Segment_is_part_of_a_built-up_area" 2 "Unknown" 3 "N/A_The_field_value_is_based,_but_not_lim_to,_the_presence_of_a_sign_or_polygon" ;
+VAL_ 592 ICC_SegBridge 0 "Segment_is_not_part_of_a_bridge" 1 "Segment_is_part_of_a_bridge" 2 "Unknown" 3 "Invalid" ;
+VAL_ 592 ICC_SegTunnel 0 "Segment_is_not_part_of_a_tunnel" 1 "Segment_is_part_of_a_tunnel" 2 "Unknown" 3 "Invalid" ;
+VAL_ 592 ICC_SegFuncRoadClass 0 "Unknown" 1 "Expressway" 2 "Urban_Expressway" 3 "National_Road" 4 "Provincial_Road" 5 "Urban_trunk_roadï¿½ï¿½County_road" 6 "Secondary_Roadï¿½ï¿½Tyre_road" 7 "Normal_roadsï¿½ï¿½County_rural_roadsï¿½ï¿½Path" ;
+VAL_ 592 ICC_SegRelProbb 0 "path_is_not_allowed" 31 "N/A" ;
+VAL_ 592 ICC_SegFormOfWay 0 "Unknown" 1 "Freeway_or_Controlled_Access_road_that_is_not_a_slip_road_or_ramp" 2 "Multiple_Carriageway_or_Multiply_Digitized_Road" 3 "Single_Carriageway(default)" 4 "Roundabout_Circle" 5 "Traffic_Square_or_Special_Traffic_Figure" 6 "reserved" 7 "reserved" 8 "Parallel_Road" 9 "Slip_Road_or_Ramp_on_a_Freeway_or_Controlled_Access_road" 10 "Slip_Road_or_Ramp_not_on_a_Freeway_or_Controlled_Access_road" 11 "Service_Road_or_Frontage_Road" 12 "Entrance_to_or_exit_of_a_Car_Park" 13 "Entrance_to_or_exit_to_Service" 14 "Pedestrian_Zone" 15 "N/A" ;
+VAL_ 592 ICC_SegCmplxInsct 0 "Segment_is_not_part_of_complexintersection" 1 "Segment_is_part_of_a_complexintersection" 2 "Unknown" 3 "Invalid" ;
+VAL_ 592 ICC_SegPartOfCalcRoute 0 "Segment_is_not_part_of_Calculated_Route" 1 "Segment_is_part_of_Calculated_Route" 2 "Unknown" 3 "Invalid" ;
+VAL_ 592 ICC_SegEffSpdLmtType 0 "Implicit(For_Instance,Default_Speed_Limit_In_The_Cities)" 1 "Explicit_-_On_Traffic_Sign" 2 "Explicit_-_By_Night" 3 "Explicit_-_By_Day" 4 "Explicit_-_Time_Of_Day" 5 "Explicit_-_Rain" 6 "Explicit_-_Snow" 7 "unknown" ;
+VAL_ 592 ICC_SegEffSpdLmt 0 "Unknown" 1 "value<=5km/h[mph]" 2 "5<value<=7km/h[mph]" 3 "7<value<=10km/h[mph]" 4 "10<value<=15km/h[mph]" 5 "15<value<=20km/h[mph]" 6 "20<value<=25km/h[mph]" 7 "25<value<=30km/h[mph]" 8 "30<value<=35km/h[mph]" 9 "35<value<=40km/h[mph]" 10 "40<value<=45km/h[mph]" 11 "45<value<=50km/h[mph]" 12 "50<value<=55km/h[mph]" 13 "55<value<=60km/h[mph]" 14 "60<value<=65km/h[mph]" 15 "65<value<=70km/h[mph]" 16 "70<value<=75km/h[mph]" 17 "75<value<=80km/h[mph]" 18 "80<value<=85km/h[mph]" 19 "85<value<=90km/h[mph]" 20 "90<value<=95km/h[mph]" 21 "95<value<=100km/h[mph]" 22 "100<value<=105km/h[mph]" 23 "105<value<=110km/h[mph]" 24 "110<value<=115km/h[mph]" 25 "115<value<=120km/h[mph]" 26 "120<value<=130km/h[mph]" 27 "130<value<=140km/h[mph]" 28 "140<value<=150km/h[mph]" 29 "150<value<unlimited" 30 "Unlimited" 31 "N/A" ;
+VAL_ 592 ICC_SegNumOfLaneDrvDir 0 "denotes_one-direction_road_driven_in_wrong_direction" 1 "are_verbatim_values" 2 "are_verbatim_values" 3 "are_verbatim_values" 4 "are_verbatim_values" 5 "are_verbatim_values" 6 "indicate_6_or_more_lanes" 7 "Invalid" ;
+VAL_ 592 ICC_SegNumOfLaneOppDir 0 "denotes_one-direction_road" 1 "for_one_lane_only" 2 "indicates_2_or_more_lanes" 3 "Invalid" ;
+VAL_ 592 ICC_SegDividedRoad 0 "Segment_is_not_part_of_a_divided_road/dual_carriageway" 1 "Segment_is_part_of_a_divided_road/dual_carriageway" 2 "Unknown" 3 "Invalid" ;
+VAL_ 593 ICC_StubOffset 8191 "Invalid" ;
+VAL_ 593 ICC_StubMsgType 0 "System_Specific" 1 "Position" 2 "Segment" 3 "Stub" 4 "Profile_Short" 5 "Profile_Long" 6 "Meta-data" 7 "Reserved" ;
+VAL_ 593 ICC_StubUpdate 0 "False" 1 "True" ;
+VAL_ 593 ICC_StubRetr 0 "False" 1 "True" ;
+VAL_ 593 ICC_StubStubPathIdx 0 "Segment_is_not_part_of_a_built-up_area" 1 "Segment_is_part_of_a_built-up_area" 2 "Unknown" 3 "N/A_The_field_value_is_based,_but_not_lim_to_a_posted_sign_or_polygon" ;
+VAL_ 593 ICC_StubFuncRoadClass 7 "other_roads" ;
+VAL_ 593 ICC_StubRelProbb 0 "(=_0%)_Indicates_that_turn_is_not_allowed" 30 "(=_100%)_Indicates_that_this_is_the_only_possible_turn" 31 "Invalid" ;
+VAL_ 593 ICC_StubFormOfWay 15 "Invalid" ;
+VAL_ 593 ICC_StubCmplxInsct 0 "New_path_is_not_part_of_complexintersection" 1 "New_path__is_part_of_a_complexintersection" 2 "Unknown" 3 "Invalid" ;
+VAL_ 593 ICC_StubPartOfCalcRout 0 "New_path_from_this_point_on_is_not_part_of_Calculated_Route" 1 "New_path_from_this_point_on_is_part_of_Calculated_Route" 2 "Unknown" 3 "Invalid" ;
+VAL_ 593 ICC_StubTurnAngl 0 "In_Path_Direction" 1 "1.417_Degrees_Right" 2 "Right_From_Path_Direction" 3 "Right_From_Path_Direction" 4 "Right_From_Path_Direction" 5 "Right_From_Path_Direction" 6 "Right_From_Path_Direction" 7 "Right_From_Path_Direction" 8 "Right_From_Path_Direction" 9 "Right_From_Path_Direction" 10 "Right_From_Path_Direction" 11 "Right_From_Path_Direction" 12 "Right_From_Path_Direction" 13 "Right_From_Path_Direction" 14 "Right_From_Path_Direction" 15 "Right_From_Path_Direction" 16 "Right_From_Path_Direction" 17 "Right_From_Path_Direction" 18 "Right_From_Path_Direction" 19 "Right_From_Path_Direction" 20 "Right_From_Path_Direction" 21 "Right_From_Path_Direction" 22 "Right_From_Path_Direction" 23 "Right_From_Path_Direction" 24 "Right_From_Path_Direction" 25 "Right_From_Path_Direction" 26 "Right_From_Path_Direction" 27 "Right_From_Path_Direction" 28 "Right_From_Path_Direction" 29 "Right_From_Path_Direction" 30 "Right_From_Path_Direction" 31 "Right_From_Path_Direction" 32 "Right_From_Path_Direction" 33 "Right_From_Path_Direction" 34 "Right_From_Path_Direction" 35 "Right_From_Path_Direction" 36 "Right_From_Path_Direction" 37 "Right_From_Path_Direction" 38 "Right_From_Path_Direction" 39 "Right_From_Path_Direction" 40 "Right_From_Path_Direction" 41 "Right_From_Path_Direction" 42 "Right_From_Path_Direction" 43 "Right_From_Path_Direction" 44 "Right_From_Path_Direction" 45 "Right_From_Path_Direction" 46 "Right_From_Path_Direction" 47 "Right_From_Path_Direction" 48 "Right_From_Path_Direction" 49 "Right_From_Path_Direction" 50 "Right_From_Path_Direction" 51 "Right_From_Path_Direction" 52 "Right_From_Path_Direction" 53 "Right_From_Path_Direction" 54 "Right_From_Path_Direction" 55 "Right_From_Path_Direction" 56 "Right_From_Path_Direction" 57 "Right_From_Path_Direction" 58 "Right_From_Path_Direction" 59 "Right_From_Path_Direction" 60 "Right_From_Path_Direction" 61 "Right_From_Path_Direction" 62 "Right_From_Path_Direction" 63 "Right_From_Path_Direction" 64 "Right_From_Path_Direction" 65 "Right_From_Path_Direction" 66 "Right_From_Path_Direction" 67 "Right_From_Path_Direction" 68 "Right_From_Path_Direction" 69 "Right_From_Path_Direction" 70 "Right_From_Path_Direction" 71 "Right_From_Path_Direction" 72 "Right_From_Path_Direction" 73 "Right_From_Path_Direction" 74 "Right_From_Path_Direction" 75 "Right_From_Path_Direction" 76 "Right_From_Path_Direction" 77 "Right_From_Path_Direction" 78 "Right_From_Path_Direction" 79 "Right_From_Path_Direction" 80 "Right_From_Path_Direction" 81 "Right_From_Path_Direction" 82 "Right_From_Path_Direction" 83 "Right_From_Path_Direction" 84 "Right_From_Path_Direction" 85 "Right_From_Path_Direction" 86 "Right_From_Path_Direction" 87 "Right_From_Path_Direction" 88 "Right_From_Path_Direction" 89 "Right_From_Path_Direction" 90 "Right_From_Path_Direction" 91 "Right_From_Path_Direction" 92 "Right_From_Path_Direction" 93 "Right_From_Path_Direction" 94 "Right_From_Path_Direction" 95 "Right_From_Path_Direction" 96 "Right_From_Path_Direction" 97 "Right_From_Path_Direction" 98 "Right_From_Path_Direction" 99 "Right_From_Path_Direction" 100 "Right_From_Path_Direction" 101 "Right_From_Path_Direction" 102 "Right_From_Path_Direction" 103 "Right_From_Path_Direction" 104 "Right_From_Path_Direction" 105 "Right_From_Path_Direction" 106 "Right_From_Path_Direction" 107 "Right_From_Path_Direction" 108 "Right_From_Path_Direction" 109 "Right_From_Path_Direction" 110 "Right_From_Path_Direction" 111 "Right_From_Path_Direction" 112 "Right_From_Path_Direction" 113 "Right_From_Path_Direction" 114 "Right_From_Path_Direction" 115 "Right_From_Path_Direction" 116 "Right_From_Path_Direction" 117 "Right_From_Path_Direction" 118 "Right_From_Path_Direction" 119 "Right_From_Path_Direction" 120 "Right_From_Path_Direction" 121 "Right_From_Path_Direction" 122 "Right_From_Path_Direction" 123 "Right_From_Path_Direction" 124 "Right_From_Path_Direction" 125 "Right_From_Path_Direction" 126 "178.583_Degrees_Right" 127 "Opposite_Direction" 128 "178.583_Degrees_Left_(181.417_Degrees_Right)+R[6]C" 129 "Left_From_Path_Direction" 130 "Left_From_Path_Direction" 131 "Left_From_Path_Direction" 132 "Left_From_Path_Direction" 133 "Left_From_Path_Direction" 134 "Left_From_Path_Direction" 135 "Left_From_Path_Direction" 136 "Left_From_Path_Direction" 137 "Left_From_Path_Direction" 138 "Left_From_Path_Direction" 139 "Left_From_Path_Direction" 140 "Left_From_Path_Direction" 141 "Left_From_Path_Direction" 142 "Left_From_Path_Direction" 143 "Left_From_Path_Direction" 144 "Left_From_Path_Direction" 145 "Left_From_Path_Direction" 146 "Left_From_Path_Direction" 147 "Left_From_Path_Direction" 148 "Left_From_Path_Direction" 149 "Left_From_Path_Direction" 150 "Left_From_Path_Direction" 151 "Left_From_Path_Direction" 152 "Left_From_Path_Direction" 153 "Left_From_Path_Direction" 154 "Left_From_Path_Direction" 155 "Left_From_Path_Direction" 156 "Left_From_Path_Direction" 157 "Left_From_Path_Direction" 158 "Left_From_Path_Direction" 159 "Left_From_Path_Direction" 160 "Left_From_Path_Direction" 161 "Left_From_Path_Direction" 162 "Left_From_Path_Direction" 163 "Left_From_Path_Direction" 164 "Left_From_Path_Direction" 165 "Left_From_Path_Direction" 166 "Left_From_Path_Direction" 167 "Left_From_Path_Direction" 168 "Left_From_Path_Direction" 169 "Left_From_Path_Direction" 170 "Left_From_Path_Direction" 171 "Left_From_Path_Direction" 172 "Left_From_Path_Direction" 173 "Left_From_Path_Direction" 174 "Left_From_Path_Direction" 175 "Left_From_Path_Direction" 176 "Left_From_Path_Direction" 177 "Left_From_Path_Direction" 178 "Left_From_Path_Direction" 179 "Left_From_Path_Direction" 180 "Left_From_Path_Direction" 181 "Left_From_Path_Direction" 182 "Left_From_Path_Direction" 183 "Left_From_Path_Direction" 184 "Left_From_Path_Direction" 185 "Left_From_Path_Direction" 186 "Left_From_Path_Direction" 187 "Left_From_Path_Direction" 188 "Left_From_Path_Direction" 189 "Left_From_Path_Direction" 190 "Left_From_Path_Direction" 191 "Left_From_Path_Direction" 192 "Left_From_Path_Direction" 193 "Left_From_Path_Direction" 194 "Left_From_Path_Direction" 195 "Left_From_Path_Direction" 196 "Left_From_Path_Direction" 197 "Left_From_Path_Direction" 198 "Left_From_Path_Direction" 199 "Left_From_Path_Direction" 200 "Left_From_Path_Direction" 201 "Left_From_Path_Direction" 202 "Left_From_Path_Direction" 203 "Left_From_Path_Direction" 204 "Left_From_Path_Direction" 205 "Left_From_Path_Direction" 206 "Left_From_Path_Direction" 207 "Left_From_Path_Direction" 208 "Left_From_Path_Direction" 209 "Left_From_Path_Direction" 210 "Left_From_Path_Direction" 211 "Left_From_Path_Direction" 212 "Left_From_Path_Direction" 213 "Left_From_Path_Direction" 214 "Left_From_Path_Direction" 215 "Left_From_Path_Direction" 216 "Left_From_Path_Direction" 217 "Left_From_Path_Direction" 218 "Left_From_Path_Direction" 219 "Left_From_Path_Direction" 220 "Left_From_Path_Direction" 221 "Left_From_Path_Direction" 222 "Left_From_Path_Direction" 223 "Left_From_Path_Direction" 224 "Left_From_Path_Direction" 225 "Left_From_Path_Direction" 226 "Left_From_Path_Direction" 227 "Left_From_Path_Direction" 228 "Left_From_Path_Direction" 229 "Left_From_Path_Direction" 230 "Left_From_Path_Direction" 231 "Left_From_Path_Direction" 232 "Left_From_Path_Direction" 233 "Left_From_Path_Direction" 234 "Left_From_Path_Direction" 235 "Left_From_Path_Direction" 236 "Left_From_Path_Direction" 237 "Left_From_Path_Direction" 238 "Left_From_Path_Direction" 239 "Left_From_Path_Direction" 240 "Left_From_Path_Direction" 241 "Left_From_Path_Direction" 242 "Left_From_Path_Direction" 243 "Left_From_Path_Direction" 244 "Left_From_Path_Direction" 245 "Left_From_Path_Direction" 246 "Left_From_Path_Direction" 247 "Left_From_Path_Direction" 248 "Left_From_Path_Direction" 249 "Left_From_Path_Direction" 250 "Left_From_Path_Direction" 251 "Left_From_Path_Direction" 252 "Left_From_Path_Direction" 253 "1.417_Degrees_left_(358.583_Degrees_Right)" 254 "Unknown" 255 "Invalid" ;
+VAL_ 593 ICC_StubNumOfLaneDrvDir 0 "Denotes_one-direction_road_driven_in_wrong_direction" 1 "Are_Verbatim_Values" 2 "Are_Verbatim_Values" 3 "Are_Verbatim_Values" 4 "Are_Verbatim_Values" 5 "Are_Verbatim_Values" 6 "Indicate_6_Or_More_Lanes" 7 "Invalid" ;
+VAL_ 593 ICC_StubNumOfLaneOppDir 0 "Denotes_one-direction_road" 1 "For_one_lane_only" 2 "Indicates_2_or_more_lanes" 3 "Invalid" ;
+VAL_ 593 ICC_StubRtOfWay 0 "Driving_towards_this_stub_has_priority_over_all_conflicting_vehicle_movements" 1 "Driving_towards_this_stub_might_require_yielding_to_conflicting_vehicle_movements" 2 "Unknown" 3 "Invalid" ;
+VAL_ 593 ICC_StubLastStub 0 "False" 1 "True" ;
+VAL_ 594 ICC_ProfLongOffset 8191 "Invalid" ;
+VAL_ 594 ICC_ProfLongMsgType 0 "System_Specific" 1 "Position" 2 "Segment" 3 "Stub" 4 "Profile_Short" 5 "Profile_Long" 6 "Meta-data" 7 "Reserved" ;
+VAL_ 594 ICC_ProfLongUpdate 0 "False" 1 "True" ;
+VAL_ 594 ICC_ProfLongRetr 0 "False" 1 "True" ;
+VAL_ 594 ICC_ProfLongCtrlPoint 0 "False" 1 "True" ;
+VAL_ 594 ICC_ProfLongProfType 0 "unknown" ;
+VAL_ 594 ICC_ProfLongSignType 255 "Invalid" ;
+VAL_ 594 ICC_ProfLongSignTimeSpec 0 "Not_time_dependent" 1 "Applies_now_but_not_all_the_time" 2 "Does_not_apply_now_but_at_other_times" 3 "Itï¿½ï¿½s_not_known_whether_the_sign_applies_now" ;
+VAL_ 594 ICC_ProfLongSignVehSpec 0 "Not_vehicle_specific" 1 "Applies_to_this_vehicle_but_not_to_all_vehicles" 2 "Does_not_apply_to_this_vehicle_but_possibly_to_other_vehicles" 3 "Itï¿½ï¿½s_not_known_whether_the_sign_applies_to_this_vehicle" ;
+VAL_ 594 ICC_ProfLongSignLane 1 "Not_specific_to_any_lane" 2 "lane_number" 3 "lane_number" 4 "lane_number" 5 "lane_number" 6 "lane_number" 7 "lane_number" 8 "lane_number" 9 "lane_number" 10 "lane_number" 11 "lane_number" 12 "lane_number" 13 "lane_number" 14 "lane_number" 15 "Unknown,_or_N/A" ;
+VAL_ 594 ICC_ProfLongSignLocation 0 "Unknown" 1 "Right_of_the_road" 2 "Left_of_the_road" 3 "Above_the_road" 4 "On_the_road_surface" 5 "Sign_is_not_physically_located_at_this_position,_see_remark_1" 6 "The_stretch_of_road_that_a_sign_applies_to_ends_at_this_position,_see_remark_1" 7 "N/A" ;
+VAL_ 594 ICC_ProfLongSignCondition 0 "Always_valid" 1 "Has_other_conditions_that_are_fulfilled_for_all_vehicles" 2 "Has_other_cond_that_are_fulfilled_for_this_vehicle_but_not_nec_for_all_veh" 3 "Has_other_cond_that_are_not_fulfilled_for_this_vehicle_but_poss_for_other_veh" 4 "Has_other_conditions_that_are_not_currently_fulfilled_for_any_vehicle" 5 "Sign_is_not_valid_at_all_(e.g._visible_here_but_referring_to_another_road)" 6 "Valid_only_if_snow" 7 "Valid_only_if_fog" 8 "Valid_only_if_rain" 9 "Valid_only_by_day" 10 "Valid_only_by_night" 11 "Valid_depending_on_turn_direction_/_future_path" 12 "Validity_depends_on_cond_or_combinations_of_conditions_that_cannot_be_adequately" 13 "Reserved" 14 "Reserved" 15 "Unknown_whether_validity_depends_on_conditions" ;
+VAL_ 597 ICC_ProfShortOffset 8191 "Invalid" ;
+VAL_ 597 ICC_ProfShortMsgType 0 "System_Specific" 1 "Position" 2 "Segment" 3 "Stub" 4 "Profile_Short" 5 "Profile_Long" 6 "Meta-data" 7 "Reserved" ;
+VAL_ 597 ICC_ProfShortUpdate 0 "False" 1 "True" ;
+VAL_ 597 ICC_ProfShortRetr 0 "False" 1 "True" ;
+VAL_ 597 ICC_ProfShortCtrlPoint 0 "False" 1 "True" ;
+VAL_ 597 ICC_ProfShortProfType 0 "Invalid" ;
+VAL_ 597 ICC_ProfShortDist1 0 "No_Other_Profile_Values_are_Defined_in_This_Message" 1023 "Invalid" ;
+VAL_ 597 ICC_ProfShortAccurClass 0 "Means_Highest_Accuracy" 1 "Means_Medium_Accuracy" 2 "Means_Lowest_Accuracy" 3 "Indicates_That_Accuracy_is_Unknown" ;
+VAL_ 597 ICC_ProfShortValue0 1023 "Invalid" ;
+VAL_ 597 ICC_ProfShortValue1 1023 "Invalid" ;
 VAL_ 711 ADAS_APASlot5Typ 0 "Parallel" 1 "Perpendicular" 2 "Fish_bone" 3 "Reserved" ;
 VAL_ 711 ADAS_APASlot5Sid 0 "Left" 1 "Right" ;
 VAL_ 711 ADAS_APASlot5Sts 0 "Open" 1 "Occupied" ;
@@ -3384,6 +3694,19 @@ VAL_ 859 ICC_LKA_SettingWrnTyp 0 "Audio_Visual_and_Haptic" 1 "Visual_and_Audio" 
 VAL_ 859 ICC_RAP_Setting 0 "Remote_Automated_Parking_Disabled" 1 "Remote_Automated_Parking_Enabled" 2 "Reserved" 3 "Reserved" ;
 VAL_ 859 ICC_TP_Setting 0 "Trained_Parking_Disabled" 1 "Trained_Parking_Enabled" 2 "Reserved" 3 "Reserved" ;
 VAL_ 859 ICC_BSD_Sensitivity 0 "Normal" 1 "Early" 2 "Late_or_reduced" 3 "Reserved" ;
+VAL_ 865 ICC_PosnOffset 8191 "Invalid" ;
+VAL_ 865 ICC_PosnMsgTye 0 "System_Specific" 1 "Position" 2 "Segment" 3 "Stub" 4 "Profile_Short" 5 "Profile_Long" 6 "Meta-data" 7 "Reserved" ;
+VAL_ 865 ICC_PosnAge 0 "0~2545ms" 1 "0~2545ms" 2 "0~2545ms" 3 "0~2545ms" 4 "0~2545ms" 5 "0~2545ms" 6 "0~2545ms" 7 "0~2545ms" 8 "0~2545ms" 9 "0~2545ms" 10 "0~2545ms" 11 "0~2545ms" 12 "0~2545ms" 13 "0~2545ms" 14 "0~2545ms" 15 "0~2545ms" 16 "0~2545ms" 17 "0~2545ms" 18 "0~2545ms" 19 "0~2545ms" 20 "0~2545ms" 21 "0~2545ms" 22 "0~2545ms" 23 "0~2545ms" 24 "0~2545ms" 25 "0~2545ms" 26 "0~2545ms" 27 "0~2545ms" 28 "0~2545ms" 29 "0~2545ms" 30 "0~2545ms" 31 "0~2545ms" 32 "0~2545ms" 33 "0~2545ms" 34 "0~2545ms" 35 "0~2545ms" 36 "0~2545ms" 37 "0~2545ms" 38 "0~2545ms" 39 "0~2545ms" 40 "0~2545ms" 41 "0~2545ms" 42 "0~2545ms" 43 "0~2545ms" 44 "0~2545ms" 45 "0~2545ms" 46 "0~2545ms" 47 "0~2545ms" 48 "0~2545ms" 49 "0~2545ms" 50 "0~2545ms" 51 "0~2545ms" 52 "0~2545ms" 53 "0~2545ms" 54 "0~2545ms" 55 "0~2545ms" 56 "0~2545ms" 57 "0~2545ms" 58 "0~2545ms" 59 "0~2545ms" 60 "0~2545ms" 61 "0~2545ms" 62 "0~2545ms" 63 "0~2545ms" 64 "0~2545ms" 65 "0~2545ms" 66 "0~2545ms" 67 "0~2545ms" 68 "0~2545ms" 69 "0~2545ms" 70 "0~2545ms" 71 "0~2545ms" 72 "0~2545ms" 73 "0~2545ms" 74 "0~2545ms" 75 "0~2545ms" 76 "0~2545ms" 77 "0~2545ms" 78 "0~2545ms" 79 "0~2545ms" 80 "0~2545ms" 81 "0~2545ms" 82 "0~2545ms" 83 "0~2545ms" 84 "0~2545ms" 85 "0~2545ms" 86 "0~2545ms" 87 "0~2545ms" 88 "0~2545ms" 89 "0~2545ms" 90 "0~2545ms" 91 "0~2545ms" 92 "0~2545ms" 93 "0~2545ms" 94 "0~2545ms" 95 "0~2545ms" 96 "0~2545ms" 97 "0~2545ms" 98 "0~2545ms" 99 "0~2545ms" 100 "0~2545ms" 101 "0~2545ms" 102 "0~2545ms" 103 "0~2545ms" 104 "0~2545ms" 105 "0~2545ms" 106 "0~2545ms" 107 "0~2545ms" 108 "0~2545ms" 109 "0~2545ms" 110 "0~2545ms" 111 "0~2545ms" 112 "0~2545ms" 113 "0~2545ms" 114 "0~2545ms" 115 "0~2545ms" 116 "0~2545ms" 117 "0~2545ms" 118 "0~2545ms" 119 "0~2545ms" 120 "0~2545ms" 121 "0~2545ms" 122 "0~2545ms" 123 "0~2545ms" 124 "0~2545ms" 125 "0~2545ms" 126 "0~2545ms" 127 "0~2545ms" 128 "0~2545ms" 129 "0~2545ms" 130 "0~2545ms" 131 "0~2545ms" 132 "0~2545ms" 133 "0~2545ms" 134 "0~2545ms" 135 "0~2545ms" 136 "0~2545ms" 137 "0~2545ms" 138 "0~2545ms" 139 "0~2545ms" 140 "0~2545ms" 141 "0~2545ms" 142 "0~2545ms" 143 "0~2545ms" 144 "0~2545ms" 145 "0~2545ms" 146 "0~2545ms" 147 "0~2545ms" 148 "0~2545ms" 149 "0~2545ms" 150 "0~2545ms" 151 "0~2545ms" 152 "0~2545ms" 153 "0~2545ms" 154 "0~2545ms" 155 "0~2545ms" 156 "0~2545ms" 157 "0~2545ms" 158 "0~2545ms" 159 "0~2545ms" 160 "0~2545ms" 161 "0~2545ms" 162 "0~2545ms" 163 "0~2545ms" 164 "0~2545ms" 165 "0~2545ms" 166 "0~2545ms" 167 "0~2545ms" 168 "0~2545ms" 169 "0~2545ms" 170 "0~2545ms" 171 "0~2545ms" 172 "0~2545ms" 173 "0~2545ms" 174 "0~2545ms" 175 "0~2545ms" 176 "0~2545ms" 177 "0~2545ms" 178 "0~2545ms" 179 "0~2545ms" 180 "0~2545ms" 181 "0~2545ms" 182 "0~2545ms" 183 "0~2545ms" 184 "0~2545ms" 185 "0~2545ms" 186 "0~2545ms" 187 "0~2545ms" 188 "0~2545ms" 189 "0~2545ms" 190 "0~2545ms" 191 "0~2545ms" 192 "0~2545ms" 193 "0~2545ms" 194 "0~2545ms" 195 "0~2545ms" 196 "0~2545ms" 197 "0~2545ms" 198 "0~2545ms" 199 "0~2545ms" 200 "0~2545ms" 201 "0~2545ms" 202 "0~2545ms" 203 "0~2545ms" 204 "0~2545ms" 205 "0~2545ms" 206 "0~2545ms" 207 "0~2545ms" 208 "0~2545ms" 209 "0~2545ms" 210 "0~2545ms" 211 "0~2545ms" 212 "0~2545ms" 213 "0~2545ms" 214 "0~2545ms" 215 "0~2545ms" 216 "0~2545ms" 217 "0~2545ms" 218 "0~2545ms" 219 "0~2545ms" 220 "0~2545ms" 221 "0~2545ms" 222 "0~2545ms" 223 "0~2545ms" 224 "0~2545ms" 225 "0~2545ms" 226 "0~2545ms" 227 "0~2545ms" 228 "0~2545ms" 229 "0~2545ms" 230 "0~2545ms" 231 "0~2545ms" 232 "0~2545ms" 233 "0~2545ms" 234 "0~2545ms" 235 "0~2545ms" 236 "0~2545ms" 237 "0~2545ms" 238 "0~2545ms" 239 "0~2545ms" 240 "0~2545ms" 241 "0~2545ms" 242 "0~2545ms" 243 "0~2545ms" 244 "0~2545ms" 245 "0~2545ms" 246 "0~2545ms" 247 "0~2545ms" 248 "0~2545ms" 249 "0~2545ms" 250 "0~2545ms" 251 "0~2545ms" 252 "0~2545ms" 253 "0~2545ms" 254 "0~2545ms" 255 "0~2545ms" 256 "0~2545ms" 257 "0~2545ms" 258 "0~2545ms" 259 "0~2545ms" 260 "0~2545ms" 261 "0~2545ms" 262 "0~2545ms" 263 "0~2545ms" 264 "0~2545ms" 265 "0~2545ms" 266 "0~2545ms" 267 "0~2545ms" 268 "0~2545ms" 269 "0~2545ms" 270 "0~2545ms" 271 "0~2545ms" 272 "0~2545ms" 273 "0~2545ms" 274 "0~2545ms" 275 "0~2545ms" 276 "0~2545ms" 277 "0~2545ms" 278 "0~2545ms" 279 "0~2545ms" 280 "0~2545ms" 281 "0~2545ms" 282 "0~2545ms" 283 "0~2545ms" 284 "0~2545ms" 285 "0~2545ms" 286 "0~2545ms" 287 "0~2545ms" 288 "0~2545ms" 289 "0~2545ms" 290 "0~2545ms" 291 "0~2545ms" 292 "0~2545ms" 293 "0~2545ms" 294 "0~2545ms" 295 "0~2545ms" 296 "0~2545ms" 297 "0~2545ms" 298 "0~2545ms" 299 "0~2545ms" 300 "0~2545ms" 301 "0~2545ms" 302 "0~2545ms" 303 "0~2545ms" 304 "0~2545ms" 305 "0~2545ms" 306 "0~2545ms" 307 "0~2545ms" 308 "0~2545ms" 309 "0~2545ms" 310 "0~2545ms" 311 "0~2545ms" 312 "0~2545ms" 313 "0~2545ms" 314 "0~2545ms" 315 "0~2545ms" 316 "0~2545ms" 317 "0~2545ms" 318 "0~2545ms" 319 "0~2545ms" 320 "0~2545ms" 321 "0~2545ms" 322 "0~2545ms" 323 "0~2545ms" 324 "0~2545ms" 325 "0~2545ms" 326 "0~2545ms" 327 "0~2545ms" 328 "0~2545ms" 329 "0~2545ms" 330 "0~2545ms" 331 "0~2545ms" 332 "0~2545ms" 333 "0~2545ms" 334 "0~2545ms" 335 "0~2545ms" 336 "0~2545ms" 337 "0~2545ms" 338 "0~2545ms" 339 "0~2545ms" 340 "0~2545ms" 341 "0~2545ms" 342 "0~2545ms" 343 "0~2545ms" 344 "0~2545ms" 345 "0~2545ms" 346 "0~2545ms" 347 "0~2545ms" 348 "0~2545ms" 349 "0~2545ms" 350 "0~2545ms" 351 "0~2545ms" 352 "0~2545ms" 353 "0~2545ms" 354 "0~2545ms" 355 "0~2545ms" 356 "0~2545ms" 357 "0~2545ms" 358 "0~2545ms" 359 "0~2545ms" 360 "0~2545ms" 361 "0~2545ms" 362 "0~2545ms" 363 "0~2545ms" 364 "0~2545ms" 365 "0~2545ms" 366 "0~2545ms" 367 "0~2545ms" 368 "0~2545ms" 369 "0~2545ms" 370 "0~2545ms" 371 "0~2545ms" 372 "0~2545ms" 373 "0~2545ms" 374 "0~2545ms" 375 "0~2545ms" 376 "0~2545ms" 377 "0~2545ms" 378 "0~2545ms" 379 "0~2545ms" 380 "0~2545ms" 381 "0~2545ms" 382 "0~2545ms" 383 "0~2545ms" 384 "0~2545ms" 385 "0~2545ms" 386 "0~2545ms" 387 "0~2545ms" 388 "0~2545ms" 389 "0~2545ms" 390 "0~2545ms" 391 "0~2545ms" 392 "0~2545ms" 393 "0~2545ms" 394 "0~2545ms" 395 "0~2545ms" 396 "0~2545ms" 397 "0~2545ms" 398 "0~2545ms" 399 "0~2545ms" 400 "0~2545ms" 401 "0~2545ms" 402 "0~2545ms" 403 "0~2545ms" 404 "0~2545ms" 405 "0~2545ms" 406 "0~2545ms" 407 "0~2545ms" 408 "0~2545ms" 409 "0~2545ms" 410 "0~2545ms" 411 "0~2545ms" 412 "0~2545ms" 413 "0~2545ms" 414 "0~2545ms" 415 "0~2545ms" 416 "0~2545ms" 417 "0~2545ms" 418 "0~2545ms" 419 "0~2545ms" 420 "0~2545ms" 421 "0~2545ms" 422 "0~2545ms" 423 "0~2545ms" 424 "0~2545ms" 425 "0~2545ms" 426 "0~2545ms" 427 "0~2545ms" 428 "0~2545ms" 429 "0~2545ms" 430 "0~2545ms" 431 "0~2545ms" 432 "0~2545ms" 433 "0~2545ms" 434 "0~2545ms" 435 "0~2545ms" 436 "0~2545ms" 437 "0~2545ms" 438 "0~2545ms" 439 "0~2545ms" 440 "0~2545ms" 441 "0~2545ms" 442 "0~2545ms" 443 "0~2545ms" 444 "0~2545ms" 445 "0~2545ms" 446 "0~2545ms" 447 "0~2545ms" 448 "0~2545ms" 449 "0~2545ms" 450 "0~2545ms" 451 "0~2545ms" 452 "0~2545ms" 453 "0~2545ms" 454 "0~2545ms" 455 "0~2545ms" 456 "0~2545ms" 457 "0~2545ms" 458 "0~2545ms" 459 "0~2545ms" 460 "0~2545ms" 461 "0~2545ms" 462 "0~2545ms" 463 "0~2545ms" 464 "0~2545ms" 465 "0~2545ms" 466 "0~2545ms" 467 "0~2545ms" 468 "0~2545ms" 469 "0~2545ms" 470 "0~2545ms" 471 "0~2545ms" 472 "0~2545ms" 473 "0~2545ms" 474 "0~2545ms" 475 "0~2545ms" 476 "0~2545ms" 477 "0~2545ms" 478 "0~2545ms" 479 "0~2545ms" 480 "0~2545ms" 481 "0~2545ms" 482 "0~2545ms" 483 "0~2545ms" 484 "0~2545ms" 485 "0~2545ms" 486 "0~2545ms" 487 "0~2545ms" 488 "0~2545ms" 489 "0~2545ms" 490 "0~2545ms" 491 "0~2545ms" 492 "0~2545ms" 493 "0~2545ms" 494 "0~2545ms" 495 "0~2545ms" 496 "0~2545ms" 497 "0~2545ms" 498 "0~2545ms" 499 "0~2545ms" 500 "0~2545ms" 501 "0~2545ms" 502 "0~2545ms" 503 "0~2545ms" 504 "0~2545ms" 505 "0~2545ms" 506 "0~2545ms" 507 "0~2545ms" 508 "0~2545ms" 509 "0~2545ms" 510 ">2545ms" 511 "Invalid" ;
+VAL_ 865 ICC_PosnPosProbb 0 "unknown" 31 "Invalid" ;
+VAL_ 865 ICC_PosnSpd 0 "ï¿½ï¿½_-12.8_m/s_?" 1 "-12.6_-0.2_m/s" 2 "-12.6_-0.2_m/s" 3 "-12.6_-0.2_m/s" 4 "-12.6_-0.2_m/s" 5 "-12.6_-0.2_m/s" 6 "-12.6_-0.2_m/s" 7 "-12.6_-0.2_m/s" 8 "-12.6_-0.2_m/s" 9 "-12.6_-0.2_m/s" 10 "-12.6_-0.2_m/s" 11 "-12.6_-0.2_m/s" 12 "-12.6_-0.2_m/s" 13 "-12.6_-0.2_m/s" 14 "-12.6_-0.2_m/s" 15 "-12.6_-0.2_m/s" 16 "-12.6_-0.2_m/s" 17 "-12.6_-0.2_m/s" 18 "-12.6_-0.2_m/s" 19 "-12.6_-0.2_m/s" 20 "-12.6_-0.2_m/s" 21 "-12.6_-0.2_m/s" 22 "-12.6_-0.2_m/s" 23 "-12.6_-0.2_m/s" 24 "-12.6_-0.2_m/s" 25 "-12.6_-0.2_m/s" 26 "-12.6_-0.2_m/s" 27 "-12.6_-0.2_m/s" 28 "-12.6_-0.2_m/s" 29 "-12.6_-0.2_m/s" 30 "-12.6_-0.2_m/s" 31 "-12.6_-0.2_m/s" 32 "-12.6_-0.2_m/s" 33 "-12.6_-0.2_m/s" 34 "-12.6_-0.2_m/s" 35 "-12.6_-0.2_m/s" 36 "-12.6_-0.2_m/s" 37 "-12.6_-0.2_m/s" 38 "-12.6_-0.2_m/s" 39 "-12.6_-0.2_m/s" 40 "-12.6_-0.2_m/s" 41 "-12.6_-0.2_m/s" 42 "-12.6_-0.2_m/s" 43 "-12.6_-0.2_m/s" 44 "-12.6_-0.2_m/s" 45 "-12.6_-0.2_m/s" 46 "-12.6_-0.2_m/s" 47 "-12.6_-0.2_m/s" 48 "-12.6_-0.2_m/s" 49 "-12.6_-0.2_m/s" 50 "-12.6_-0.2_m/s" 51 "-12.6_-0.2_m/s" 52 "-12.6_-0.2_m/s" 53 "-12.6_-0.2_m/s" 54 "-12.6_-0.2_m/s" 55 "-12.6_-0.2_m/s" 56 "-12.6_-0.2_m/s" 57 "-12.6_-0.2_m/s" 58 "-12.6_-0.2_m/s" 59 "-12.6_-0.2_m/s" 60 "-12.6_-0.2_m/s" 61 "-12.6_-0.2_m/s" 62 "-12.6_-0.2_m/s" 63 "-12.6_-0.2_m/s" 64 "Standing_still" 65 "+0.2+89.0_m/s_?" 66 "+0.2+89.0_m/s_?" 67 "+0.2+89.0_m/s_?" 68 "+0.2+89.0_m/s_?" 69 "+0.2+89.0_m/s_?" 70 "+0.2+89.0_m/s_?" 71 "+0.2+89.0_m/s_?" 72 "+0.2+89.0_m/s_?" 73 "+0.2+89.0_m/s_?" 74 "+0.2+89.0_m/s_?" 75 "+0.2+89.0_m/s_?" 76 "+0.2+89.0_m/s_?" 77 "+0.2+89.0_m/s_?" 78 "+0.2+89.0_m/s_?" 79 "+0.2+89.0_m/s_?" 80 "+0.2+89.0_m/s_?" 81 "+0.2+89.0_m/s_?" 82 "+0.2+89.0_m/s_?" 83 "+0.2+89.0_m/s_?" 84 "+0.2+89.0_m/s_?" 85 "+0.2+89.0_m/s_?" 86 "+0.2+89.0_m/s_?" 87 "+0.2+89.0_m/s_?" 88 "+0.2+89.0_m/s_?" 89 "+0.2+89.0_m/s_?" 90 "+0.2+89.0_m/s_?" 91 "+0.2+89.0_m/s_?" 92 "+0.2+89.0_m/s_?" 93 "+0.2+89.0_m/s_?" 94 "+0.2+89.0_m/s_?" 95 "+0.2+89.0_m/s_?" 96 "+0.2+89.0_m/s_?" 97 "+0.2+89.0_m/s_?" 98 "+0.2+89.0_m/s_?" 99 "+0.2+89.0_m/s_?" 100 "+0.2+89.0_m/s_?" 101 "+0.2+89.0_m/s_?" 102 "+0.2+89.0_m/s_?" 103 "+0.2+89.0_m/s_?" 104 "+0.2+89.0_m/s_?" 105 "+0.2+89.0_m/s_?" 106 "+0.2+89.0_m/s_?" 107 "+0.2+89.0_m/s_?" 108 "+0.2+89.0_m/s_?" 109 "+0.2+89.0_m/s_?" 110 "+0.2+89.0_m/s_?" 111 "+0.2+89.0_m/s_?" 112 "+0.2+89.0_m/s_?" 113 "+0.2+89.0_m/s_?" 114 "+0.2+89.0_m/s_?" 115 "+0.2+89.0_m/s_?" 116 "+0.2+89.0_m/s_?" 117 "+0.2+89.0_m/s_?" 118 "+0.2+89.0_m/s_?" 119 "+0.2+89.0_m/s_?" 120 "+0.2+89.0_m/s_?" 121 "+0.2+89.0_m/s_?" 122 "+0.2+89.0_m/s_?" 123 "+0.2+89.0_m/s_?" 124 "+0.2+89.0_m/s_?" 125 "+0.2+89.0_m/s_?" 126 "+0.2+89.0_m/s_?" 127 "+0.2+89.0_m/s_?" 128 "+0.2+89.0_m/s_?" 129 "+0.2+89.0_m/s_?" 130 "+0.2+89.0_m/s_?" 131 "+0.2+89.0_m/s_?" 132 "+0.2+89.0_m/s_?" 133 "+0.2+89.0_m/s_?" 134 "+0.2+89.0_m/s_?" 135 "+0.2+89.0_m/s_?" 136 "+0.2+89.0_m/s_?" 137 "+0.2+89.0_m/s_?" 138 "+0.2+89.0_m/s_?" 139 "+0.2+89.0_m/s_?" 140 "+0.2+89.0_m/s_?" 141 "+0.2+89.0_m/s_?" 142 "+0.2+89.0_m/s_?" 143 "+0.2+89.0_m/s_?" 144 "+0.2+89.0_m/s_?" 145 "+0.2+89.0_m/s_?" 146 "+0.2+89.0_m/s_?" 147 "+0.2+89.0_m/s_?" 148 "+0.2+89.0_m/s_?" 149 "+0.2+89.0_m/s_?" 150 "+0.2+89.0_m/s_?" 151 "+0.2+89.0_m/s_?" 152 "+0.2+89.0_m/s_?" 153 "+0.2+89.0_m/s_?" 154 "+0.2+89.0_m/s_?" 155 "+0.2+89.0_m/s_?" 156 "+0.2+89.0_m/s_?" 157 "+0.2+89.0_m/s_?" 158 "+0.2+89.0_m/s_?" 159 "+0.2+89.0_m/s_?" 160 "+0.2+89.0_m/s_?" 161 "+0.2+89.0_m/s_?" 162 "+0.2+89.0_m/s_?" 163 "+0.2+89.0_m/s_?" 164 "+0.2+89.0_m/s_?" 165 "+0.2+89.0_m/s_?" 166 "+0.2+89.0_m/s_?" 167 "+0.2+89.0_m/s_?" 168 "+0.2+89.0_m/s_?" 169 "+0.2+89.0_m/s_?" 170 "+0.2+89.0_m/s_?" 171 "+0.2+89.0_m/s_?" 172 "+0.2+89.0_m/s_?" 173 "+0.2+89.0_m/s_?" 174 "+0.2+89.0_m/s_?" 175 "+0.2+89.0_m/s_?" 176 "+0.2+89.0_m/s_?" 177 "+0.2+89.0_m/s_?" 178 "+0.2+89.0_m/s_?" 179 "+0.2+89.0_m/s_?" 180 "+0.2+89.0_m/s_?" 181 "+0.2+89.0_m/s_?" 182 "+0.2+89.0_m/s_?" 183 "+0.2+89.0_m/s_?" 184 "+0.2+89.0_m/s_?" 185 "+0.2+89.0_m/s_?" 186 "+0.2+89.0_m/s_?" 187 "+0.2+89.0_m/s_?" 188 "+0.2+89.0_m/s_?" 189 "+0.2+89.0_m/s_?" 190 "+0.2+89.0_m/s_?" 191 "+0.2+89.0_m/s_?" 192 "+0.2+89.0_m/s_?" 193 "+0.2+89.0_m/s_?" 194 "+0.2+89.0_m/s_?" 195 "+0.2+89.0_m/s_?" 196 "+0.2+89.0_m/s_?" 197 "+0.2+89.0_m/s_?" 198 "+0.2+89.0_m/s_?" 199 "+0.2+89.0_m/s_?" 200 "+0.2+89.0_m/s_?" 201 "+0.2+89.0_m/s_?" 202 "+0.2+89.0_m/s_?" 203 "+0.2+89.0_m/s_?" 204 "+0.2+89.0_m/s_?" 205 "+0.2+89.0_m/s_?" 206 "+0.2+89.0_m/s_?" 207 "+0.2+89.0_m/s_?" 208 "+0.2+89.0_m/s_?" 209 "+0.2+89.0_m/s_?" 210 "+0.2+89.0_m/s_?" 211 "+0.2+89.0_m/s_?" 212 "+0.2+89.0_m/s_?" 213 "+0.2+89.0_m/s_?" 214 "+0.2+89.0_m/s_?" 215 "+0.2+89.0_m/s_?" 216 "+0.2+89.0_m/s_?" 217 "+0.2+89.0_m/s_?" 218 "+0.2+89.0_m/s_?" 219 "+0.2+89.0_m/s_?" 220 "+0.2+89.0_m/s_?" 221 "+0.2+89.0_m/s_?" 222 "+0.2+89.0_m/s_?" 223 "+0.2+89.0_m/s_?" 224 "+0.2+89.0_m/s_?" 225 "+0.2+89.0_m/s_?" 226 "+0.2+89.0_m/s_?" 227 "+0.2+89.0_m/s_?" 228 "+0.2+89.0_m/s_?" 229 "+0.2+89.0_m/s_?" 230 "+0.2+89.0_m/s_?" 231 "+0.2+89.0_m/s_?" 232 "+0.2+89.0_m/s_?" 233 "+0.2+89.0_m/s_?" 234 "+0.2+89.0_m/s_?" 235 "+0.2+89.0_m/s_?" 236 "+0.2+89.0_m/s_?" 237 "+0.2+89.0_m/s_?" 238 "+0.2+89.0_m/s_?" 239 "+0.2+89.0_m/s_?" 240 "+0.2+89.0_m/s_?" 241 "+0.2+89.0_m/s_?" 242 "+0.2+89.0_m/s_?" 243 "+0.2+89.0_m/s_?" 244 "+0.2+89.0_m/s_?" 245 "+0.2+89.0_m/s_?" 246 "+0.2+89.0_m/s_?" 247 "+0.2+89.0_m/s_?" 248 "+0.2+89.0_m/s_?" 249 "+0.2+89.0_m/s_?" 250 "+0.2+89.0_m/s_?" 251 "+0.2+89.0_m/s_?" 252 "+0.2+89.0_m/s_?" 253 "+0.2+89.0_m/s_?" 254 "+0.2+89.0_m/s_?" 255 "+0.2+89.0_m/s_?" 256 "+0.2+89.0_m/s_?" 257 "+0.2+89.0_m/s_?" 258 "+0.2+89.0_m/s_?" 259 "+0.2+89.0_m/s_?" 260 "+0.2+89.0_m/s_?" 261 "+0.2+89.0_m/s_?" 262 "+0.2+89.0_m/s_?" 263 "+0.2+89.0_m/s_?" 264 "+0.2+89.0_m/s_?" 265 "+0.2+89.0_m/s_?" 266 "+0.2+89.0_m/s_?" 267 "+0.2+89.0_m/s_?" 268 "+0.2+89.0_m/s_?" 269 "+0.2+89.0_m/s_?" 270 "+0.2+89.0_m/s_?" 271 "+0.2+89.0_m/s_?" 272 "+0.2+89.0_m/s_?" 273 "+0.2+89.0_m/s_?" 274 "+0.2+89.0_m/s_?" 275 "+0.2+89.0_m/s_?" 276 "+0.2+89.0_m/s_?" 277 "+0.2+89.0_m/s_?" 278 "+0.2+89.0_m/s_?" 279 "+0.2+89.0_m/s_?" 280 "+0.2+89.0_m/s_?" 281 "+0.2+89.0_m/s_?" 282 "+0.2+89.0_m/s_?" 283 "+0.2+89.0_m/s_?" 284 "+0.2+89.0_m/s_?" 285 "+0.2+89.0_m/s_?" 286 "+0.2+89.0_m/s_?" 287 "+0.2+89.0_m/s_?" 288 "+0.2+89.0_m/s_?" 289 "+0.2+89.0_m/s_?" 290 "+0.2+89.0_m/s_?" 291 "+0.2+89.0_m/s_?" 292 "+0.2+89.0_m/s_?" 293 "+0.2+89.0_m/s_?" 294 "+0.2+89.0_m/s_?" 295 "+0.2+89.0_m/s_?" 296 "+0.2+89.0_m/s_?" 297 "+0.2+89.0_m/s_?" 298 "+0.2+89.0_m/s_?" 299 "+0.2+89.0_m/s_?" 300 "+0.2+89.0_m/s_?" 301 "+0.2+89.0_m/s_?" 302 "+0.2+89.0_m/s_?" 303 "+0.2+89.0_m/s_?" 304 "+0.2+89.0_m/s_?" 305 "+0.2+89.0_m/s_?" 306 "+0.2+89.0_m/s_?" 307 "+0.2+89.0_m/s_?" 308 "+0.2+89.0_m/s_?" 309 "+0.2+89.0_m/s_?" 310 "+0.2+89.0_m/s_?" 311 "+0.2+89.0_m/s_?" 312 "+0.2+89.0_m/s_?" 313 "+0.2+89.0_m/s_?" 314 "+0.2+89.0_m/s_?" 315 "+0.2+89.0_m/s_?" 316 "+0.2+89.0_m/s_?" 317 "+0.2+89.0_m/s_?" 318 "+0.2+89.0_m/s_?" 319 "+0.2+89.0_m/s_?" 320 "+0.2+89.0_m/s_?" 321 "+0.2+89.0_m/s_?" 322 "+0.2+89.0_m/s_?" 323 "+0.2+89.0_m/s_?" 324 "+0.2+89.0_m/s_?" 325 "+0.2+89.0_m/s_?" 326 "+0.2+89.0_m/s_?" 327 "+0.2+89.0_m/s_?" 328 "+0.2+89.0_m/s_?" 329 "+0.2+89.0_m/s_?" 330 "+0.2+89.0_m/s_?" 331 "+0.2+89.0_m/s_?" 332 "+0.2+89.0_m/s_?" 333 "+0.2+89.0_m/s_?" 334 "+0.2+89.0_m/s_?" 335 "+0.2+89.0_m/s_?" 336 "+0.2+89.0_m/s_?" 337 "+0.2+89.0_m/s_?" 338 "+0.2+89.0_m/s_?" 339 "+0.2+89.0_m/s_?" 340 "+0.2+89.0_m/s_?" 341 "+0.2+89.0_m/s_?" 342 "+0.2+89.0_m/s_?" 343 "+0.2+89.0_m/s_?" 344 "+0.2+89.0_m/s_?" 345 "+0.2+89.0_m/s_?" 346 "+0.2+89.0_m/s_?" 347 "+0.2+89.0_m/s_?" 348 "+0.2+89.0_m/s_?" 349 "+0.2+89.0_m/s_?" 350 "+0.2+89.0_m/s_?" 351 "+0.2+89.0_m/s_?" 352 "+0.2+89.0_m/s_?" 353 "+0.2+89.0_m/s_?" 354 "+0.2+89.0_m/s_?" 355 "+0.2+89.0_m/s_?" 356 "+0.2+89.0_m/s_?" 357 "+0.2+89.0_m/s_?" 358 "+0.2+89.0_m/s_?" 359 "+0.2+89.0_m/s_?" 360 "+0.2+89.0_m/s_?" 361 "+0.2+89.0_m/s_?" 362 "+0.2+89.0_m/s_?" 363 "+0.2+89.0_m/s_?" 364 "+0.2+89.0_m/s_?" 365 "+0.2+89.0_m/s_?" 366 "+0.2+89.0_m/s_?" 367 "+0.2+89.0_m/s_?" 368 "+0.2+89.0_m/s_?" 369 "+0.2+89.0_m/s_?" 370 "+0.2+89.0_m/s_?" 371 "+0.2+89.0_m/s_?" 372 "+0.2+89.0_m/s_?" 373 "+0.2+89.0_m/s_?" 374 "+0.2+89.0_m/s_?" 375 "+0.2+89.0_m/s_?" 376 "+0.2+89.0_m/s_?" 377 "+0.2+89.0_m/s_?" 378 "+0.2+89.0_m/s_?" 379 "+0.2+89.0_m/s_?" 380 "+0.2+89.0_m/s_?" 381 "+0.2+89.0_m/s_?" 382 "+0.2+89.0_m/s_?" 383 "+0.2+89.0_m/s_?" 384 "+0.2+89.0_m/s_?" 385 "+0.2+89.0_m/s_?" 386 "+0.2+89.0_m/s_?" 387 "+0.2+89.0_m/s_?" 388 "+0.2+89.0_m/s_?" 389 "+0.2+89.0_m/s_?" 390 "+0.2+89.0_m/s_?" 391 "+0.2+89.0_m/s_?" 392 "+0.2+89.0_m/s_?" 393 "+0.2+89.0_m/s_?" 394 "+0.2+89.0_m/s_?" 395 "+0.2+89.0_m/s_?" 396 "+0.2+89.0_m/s_?" 397 "+0.2+89.0_m/s_?" 398 "+0.2+89.0_m/s_?" 399 "+0.2+89.0_m/s_?" 400 "+0.2+89.0_m/s_?" 401 "+0.2+89.0_m/s_?" 402 "+0.2+89.0_m/s_?" 403 "+0.2+89.0_m/s_?" 404 "+0.2+89.0_m/s_?" 405 "+0.2+89.0_m/s_?" 406 "+0.2+89.0_m/s_?" 407 "+0.2+89.0_m/s_?" 408 "+0.2+89.0_m/s_?" 409 "+0.2+89.0_m/s_?" 410 "+0.2+89.0_m/s_?" 411 "+0.2+89.0_m/s_?" 412 "+0.2+89.0_m/s_?" 413 "+0.2+89.0_m/s_?" 414 "+0.2+89.0_m/s_?" 415 "+0.2+89.0_m/s_?" 416 "+0.2+89.0_m/s_?" 417 "+0.2+89.0_m/s_?" 418 "+0.2+89.0_m/s_?" 419 "+0.2+89.0_m/s_?" 420 "+0.2+89.0_m/s_?" 421 "+0.2+89.0_m/s_?" 422 "+0.2+89.0_m/s_?" 423 "+0.2+89.0_m/s_?" 424 "+0.2+89.0_m/s_?" 425 "+0.2+89.0_m/s_?" 426 "+0.2+89.0_m/s_?" 427 "+0.2+89.0_m/s_?" 428 "+0.2+89.0_m/s_?" 429 "+0.2+89.0_m/s_?" 430 "+0.2+89.0_m/s_?" 431 "+0.2+89.0_m/s_?" 432 "+0.2+89.0_m/s_?" 433 "+0.2+89.0_m/s_?" 434 "+0.2+89.0_m/s_?" 435 "+0.2+89.0_m/s_?" 436 "+0.2+89.0_m/s_?" 437 "+0.2+89.0_m/s_?" 438 "+0.2+89.0_m/s_?" 439 "+0.2+89.0_m/s_?" 440 "+0.2+89.0_m/s_?" 441 "+0.2+89.0_m/s_?" 442 "+0.2+89.0_m/s_?" 443 "+0.2+89.0_m/s_?" 444 "+0.2+89.0_m/s_?" 445 "+0.2+89.0_m/s_?" 446 "+0.2+89.0_m/s_?" 447 "+0.2+89.0_m/s_?" 448 "+0.2+89.0_m/s_?" 449 "+0.2+89.0_m/s_?" 450 "+0.2+89.0_m/s_?" 451 "+0.2+89.0_m/s_?" 452 "+0.2+89.0_m/s_?" 453 "+0.2+89.0_m/s_?" 454 "+0.2+89.0_m/s_?" 455 "+0.2+89.0_m/s_?" 456 "+0.2+89.0_m/s_?" 457 "+0.2+89.0_m/s_?" 458 "+0.2+89.0_m/s_?" 459 "+0.2+89.0_m/s_?" 460 "+0.2+89.0_m/s_?" 461 "+0.2+89.0_m/s_?" 462 "+0.2+89.0_m/s_?" 463 "+0.2+89.0_m/s_?" 464 "+0.2+89.0_m/s_?" 465 "+0.2+89.0_m/s_?" 466 "+0.2+89.0_m/s_?" 467 "+0.2+89.0_m/s_?" 468 "+0.2+89.0_m/s_?" 469 "+0.2+89.0_m/s_?" 470 "+0.2+89.0_m/s_?" 471 "+0.2+89.0_m/s_?" 472 "+0.2+89.0_m/s_?" 473 "+0.2+89.0_m/s_?" 474 "+0.2+89.0_m/s_?" 475 "+0.2+89.0_m/s_?" 476 "+0.2+89.0_m/s_?" 477 "+0.2+89.0_m/s_?" 478 "+0.2+89.0_m/s_?" 479 "+0.2+89.0_m/s_?" 480 "+0.2+89.0_m/s_?" 481 "+0.2+89.0_m/s_?" 482 "+0.2+89.0_m/s_?" 483 "+0.2+89.0_m/s_?" 484 "+0.2+89.0_m/s_?" 485 "+0.2+89.0_m/s_?" 486 "+0.2+89.0_m/s_?" 487 "+0.2+89.0_m/s_?" 488 "+0.2+89.0_m/s_?" 489 "+0.2+89.0_m/s_?" 490 "+0.2+89.0_m/s_?" 491 "+0.2+89.0_m/s_?" 492 "+0.2+89.0_m/s_?" 493 "+0.2+89.0_m/s_?" 494 "+0.2+89.0_m/s_?" 495 "+0.2+89.0_m/s_?" 496 "+0.2+89.0_m/s_?" 497 "+0.2+89.0_m/s_?" 498 "+0.2+89.0_m/s_?" 499 "+0.2+89.0_m/s_?" 500 "+0.2+89.0_m/s_?" 501 "+0.2+89.0_m/s_?" 502 "+0.2+89.0_m/s_?" 503 "+0.2+89.0_m/s_?" 504 "+0.2+89.0_m/s_?" 505 "+0.2+89.0_m/s_?" 506 "+0.2+89.0_m/s_?" 507 "+0.2+89.0_m/s_?" 508 "+0.2+89.0_m/s_?" 509 "+0.2+89.0_m/s_?" 510 "ï¿½ï¿½_+89.2_m/s_?" 511 "Invalid" ;
+VAL_ 865 ICC_PosnCurLane 0 "Unknown" 1 "Emergency_lane" 2 "Single-lane_road" 3 "Left-most_lane" 4 "Right-most_lane" 5 "One_of_middle_lanes_on_road_with_three_or_more_lanes" 6 "Reserved" 7 "Invalid" ;
+VAL_ 865 ICC_PosnPosConfdc 7 "Invalid" ;
+VAL_ 865 ICC_PosnRehead 0 "In_Path_Direction" 1 "1.417_Degrees_Right" 2 "Right_From_Path_Direction" 3 "Right_From_Path_Direction" 4 "Right_From_Path_Direction" 5 "Right_From_Path_Direction" 6 "Right_From_Path_Direction" 7 "Right_From_Path_Direction" 8 "Right_From_Path_Direction" 9 "Right_From_Path_Direction" 10 "Right_From_Path_Direction" 11 "Right_From_Path_Direction" 12 "Right_From_Path_Direction" 13 "Right_From_Path_Direction" 14 "Right_From_Path_Direction" 15 "Right_From_Path_Direction" 16 "Right_From_Path_Direction" 17 "Right_From_Path_Direction" 18 "Right_From_Path_Direction" 19 "Right_From_Path_Direction" 20 "Right_From_Path_Direction" 21 "Right_From_Path_Direction" 22 "Right_From_Path_Direction" 23 "Right_From_Path_Direction" 24 "Right_From_Path_Direction" 25 "Right_From_Path_Direction" 26 "Right_From_Path_Direction" 27 "Right_From_Path_Direction" 28 "Right_From_Path_Direction" 29 "Right_From_Path_Direction" 30 "Right_From_Path_Direction" 31 "Right_From_Path_Direction" 32 "Right_From_Path_Direction" 33 "Right_From_Path_Direction" 34 "Right_From_Path_Direction" 35 "Right_From_Path_Direction" 36 "Right_From_Path_Direction" 37 "Right_From_Path_Direction" 38 "Right_From_Path_Direction" 39 "Right_From_Path_Direction" 40 "Right_From_Path_Direction" 41 "Right_From_Path_Direction" 42 "Right_From_Path_Direction" 43 "Right_From_Path_Direction" 44 "Right_From_Path_Direction" 45 "Right_From_Path_Direction" 46 "Right_From_Path_Direction" 47 "Right_From_Path_Direction" 48 "Right_From_Path_Direction" 49 "Right_From_Path_Direction" 50 "Right_From_Path_Direction" 51 "Right_From_Path_Direction" 52 "Right_From_Path_Direction" 53 "Right_From_Path_Direction" 54 "Right_From_Path_Direction" 55 "Right_From_Path_Direction" 56 "Right_From_Path_Direction" 57 "Right_From_Path_Direction" 58 "Right_From_Path_Direction" 59 "Right_From_Path_Direction" 60 "Right_From_Path_Direction" 61 "Right_From_Path_Direction" 62 "Right_From_Path_Direction" 63 "Right_From_Path_Direction" 64 "Right_From_Path_Direction" 65 "Right_From_Path_Direction" 66 "Right_From_Path_Direction" 67 "Right_From_Path_Direction" 68 "Right_From_Path_Direction" 69 "Right_From_Path_Direction" 70 "Right_From_Path_Direction" 71 "Right_From_Path_Direction" 72 "Right_From_Path_Direction" 73 "Right_From_Path_Direction" 74 "Right_From_Path_Direction" 75 "Right_From_Path_Direction" 76 "Right_From_Path_Direction" 77 "Right_From_Path_Direction" 78 "Right_From_Path_Direction" 79 "Right_From_Path_Direction" 80 "Right_From_Path_Direction" 81 "Right_From_Path_Direction" 82 "Right_From_Path_Direction" 83 "Right_From_Path_Direction" 84 "Right_From_Path_Direction" 85 "Right_From_Path_Direction" 86 "Right_From_Path_Direction" 87 "Right_From_Path_Direction" 88 "Right_From_Path_Direction" 89 "Right_From_Path_Direction" 90 "Right_From_Path_Direction" 91 "Right_From_Path_Direction" 92 "Right_From_Path_Direction" 93 "Right_From_Path_Direction" 94 "Right_From_Path_Direction" 95 "Right_From_Path_Direction" 96 "Right_From_Path_Direction" 97 "Right_From_Path_Direction" 98 "Right_From_Path_Direction" 99 "Right_From_Path_Direction" 100 "Right_From_Path_Direction" 101 "Right_From_Path_Direction" 102 "Right_From_Path_Direction" 103 "Right_From_Path_Direction" 104 "Right_From_Path_Direction" 105 "Right_From_Path_Direction" 106 "Right_From_Path_Direction" 107 "Right_From_Path_Direction" 108 "Right_From_Path_Direction" 109 "Right_From_Path_Direction" 110 "Right_From_Path_Direction" 111 "Right_From_Path_Direction" 112 "Right_From_Path_Direction" 113 "Right_From_Path_Direction" 114 "Right_From_Path_Direction" 115 "Right_From_Path_Direction" 116 "Right_From_Path_Direction" 117 "Right_From_Path_Direction" 118 "Right_From_Path_Direction" 119 "Right_From_Path_Direction" 120 "Right_From_Path_Direction" 121 "Right_From_Path_Direction" 122 "Right_From_Path_Direction" 123 "Right_From_Path_Direction" 124 "Right_From_Path_Direction" 125 "Right_From_Path_Direction" 126 "178.583_Degrees_Right" 127 "Opposite_Direction" 128 "178.583_Degrees_Left_(181.417_Degrees_Right)+R[6]C" 129 "Left_From_Path_Direction" 130 "Left_From_Path_Direction" 131 "Left_From_Path_Direction" 132 "Left_From_Path_Direction" 133 "Left_From_Path_Direction" 134 "Left_From_Path_Direction" 135 "Left_From_Path_Direction" 136 "Left_From_Path_Direction" 137 "Left_From_Path_Direction" 138 "Left_From_Path_Direction" 139 "Left_From_Path_Direction" 140 "Left_From_Path_Direction" 141 "Left_From_Path_Direction" 142 "Left_From_Path_Direction" 143 "Left_From_Path_Direction" 144 "Left_From_Path_Direction" 145 "Left_From_Path_Direction" 146 "Left_From_Path_Direction" 147 "Left_From_Path_Direction" 148 "Left_From_Path_Direction" 149 "Left_From_Path_Direction" 150 "Left_From_Path_Direction" 151 "Left_From_Path_Direction" 152 "Left_From_Path_Direction" 153 "Left_From_Path_Direction" 154 "Left_From_Path_Direction" 155 "Left_From_Path_Direction" 156 "Left_From_Path_Direction" 157 "Left_From_Path_Direction" 158 "Left_From_Path_Direction" 159 "Left_From_Path_Direction" 160 "Left_From_Path_Direction" 161 "Left_From_Path_Direction" 162 "Left_From_Path_Direction" 163 "Left_From_Path_Direction" 164 "Left_From_Path_Direction" 165 "Left_From_Path_Direction" 166 "Left_From_Path_Direction" 167 "Left_From_Path_Direction" 168 "Left_From_Path_Direction" 169 "Left_From_Path_Direction" 170 "Left_From_Path_Direction" 171 "Left_From_Path_Direction" 172 "Left_From_Path_Direction" 173 "Left_From_Path_Direction" 174 "Left_From_Path_Direction" 175 "Left_From_Path_Direction" 176 "Left_From_Path_Direction" 177 "Left_From_Path_Direction" 178 "Left_From_Path_Direction" 179 "Left_From_Path_Direction" 180 "Left_From_Path_Direction" 181 "Left_From_Path_Direction" 182 "Left_From_Path_Direction" 183 "Left_From_Path_Direction" 184 "Left_From_Path_Direction" 185 "Left_From_Path_Direction" 186 "Left_From_Path_Direction" 187 "Left_From_Path_Direction" 188 "Left_From_Path_Direction" 189 "Left_From_Path_Direction" 190 "Left_From_Path_Direction" 191 "Left_From_Path_Direction" 192 "Left_From_Path_Direction" 193 "Left_From_Path_Direction" 194 "Left_From_Path_Direction" 195 "Left_From_Path_Direction" 196 "Left_From_Path_Direction" 197 "Left_From_Path_Direction" 198 "Left_From_Path_Direction" 199 "Left_From_Path_Direction" 200 "Left_From_Path_Direction" 201 "Left_From_Path_Direction" 202 "Left_From_Path_Direction" 203 "Left_From_Path_Direction" 204 "Left_From_Path_Direction" 205 "Left_From_Path_Direction" 206 "Left_From_Path_Direction" 207 "Left_From_Path_Direction" 208 "Left_From_Path_Direction" 209 "Left_From_Path_Direction" 210 "Left_From_Path_Direction" 211 "Left_From_Path_Direction" 212 "Left_From_Path_Direction" 213 "Left_From_Path_Direction" 214 "Left_From_Path_Direction" 215 "Left_From_Path_Direction" 216 "Left_From_Path_Direction" 217 "Left_From_Path_Direction" 218 "Left_From_Path_Direction" 219 "Left_From_Path_Direction" 220 "Left_From_Path_Direction" 221 "Left_From_Path_Direction" 222 "Left_From_Path_Direction" 223 "Left_From_Path_Direction" 224 "Left_From_Path_Direction" 225 "Left_From_Path_Direction" 226 "Left_From_Path_Direction" 227 "Left_From_Path_Direction" 228 "Left_From_Path_Direction" 229 "Left_From_Path_Direction" 230 "Left_From_Path_Direction" 231 "Left_From_Path_Direction" 232 "Left_From_Path_Direction" 233 "Left_From_Path_Direction" 234 "Left_From_Path_Direction" 235 "Left_From_Path_Direction" 236 "Left_From_Path_Direction" 237 "Left_From_Path_Direction" 238 "Left_From_Path_Direction" 239 "Left_From_Path_Direction" 240 "Left_From_Path_Direction" 241 "Left_From_Path_Direction" 242 "Left_From_Path_Direction" 243 "Left_From_Path_Direction" 244 "Left_From_Path_Direction" 245 "Left_From_Path_Direction" 246 "Left_From_Path_Direction" 247 "Left_From_Path_Direction" 248 "Left_From_Path_Direction" 249 "Left_From_Path_Direction" 250 "Left_From_Path_Direction" 251 "Left_From_Path_Direction" 252 "Left_From_Path_Direction" 253 "1.417_Degrees_left_(358.583_Degrees_Right)" 254 "Unknown" 255 "Invalid" ;
+VAL_ 866 ICC_MetaMapProvider 0 "Unknown" 1 "Nokia_HERE_(NAVTEQ)" 2 "TomTom_(Tele_Atlas)" 3 "Zenrin" 4 "IPC" 5 "NavInfo" 6 "Other" 7 "N/A" ;
+VAL_ 866 ICC_MetaMsgType 0 "System_Specific" 1 "Position" 2 "Segment" 3 "Stub" 4 "Profile_Short" 5 "Profile_Long" 6 "Meta-data" 7 "Reserved" ;
+VAL_ 866 ICC_MetaHwVer 0 "Unknown" ;
+VAL_ 866 ICC_MetaDrvSide 0 "Driving_Side_Left" 1 "Driving_Side_Right_Default_is_0x1" ;
+VAL_ 866 ICC_MetaSpdUnits 0 "Kilometers_Per_Hour_(km/h)" 1 "Miles_Per_Hour_(mph)_Default_is_0" ;
 VAL_ 868 BCM_OTARdy_Fb 0 "Initial" 1 "Ready" 2 "Not_Ready" 3 "Invalid" ;
 VAL_ 868 BCM_OTAInhbRdy 0 "Initial" 1 "Inhibit" 2 "Not_Inhibit" 3 "Invalid" ;
 VAL_ 868 BCM_SBRMatStPass 0 "Seat_not_occupied" 1 "Seat_occupied" 2 "Fault" 3 "Invalid" ;
@@ -3591,6 +3914,9 @@ VAL_ 1300 MFS_RiRollDwn 0 "No_Pressed_Not_pressed" 1 "Focus_1_unit_down" 2 "Focu
 VAL_ 1300 MFS_RiRollPress 0 "No_Pressed" 1 "Pressed" 2 "Reserved" 3 "Reserved" ;
 VAL_ 1300 MFS_Ri_Fail 0 "No_failure" 1 "Connection_failure" 2 "Button_stuck" 3 "Reserved" ;
 VAL_ 1300 MFS_Le_Fail 0 "No_failure" 1 "Controller_failure" 2 "Button_stuck" 3 "Reserved" ;
+VAL_ 1317 TBOX_GPSHei 1401 "Invalid" ;
+VAL_ 1318 TBOX_GPSLongi -1 "Invalid" ;
+VAL_ 1318 TBOX_GPSLati -1 "Invalid" ;
 VAL_ 1319 ADAS_DrvrAttention_Zone 0 "UNKNOWN" 1 "ON_ROAD_CENTER" 2 "ON_ROAD_RIGHT" 3 "INSTRUMENT_CLUSTER" 4 "CENTER_CONSOLE" 5 "REAR_MIRROR" 6 "DRIVER_MIRROR" 7 "PASSENGER_MIRROR" 8 "DRIVER_LAP" 9 "PASSENGER_FOOTWELL" 10 "CUSTOM" 11 "OTHER" 12 "Not_Used_1" 13 "Not_Used_2" 14 "Not_Used_3" 15 "FAULTY" ;
 VAL_ 1319 ADAS_DrvrAlert_State 0 "UNKNOWN" 1 "EYES_OPEN_ON_ROAD" 2 "EYES_OPEN_OFF_ROAD" 3 "EYES_CLOSED_OFF_ROAD" 4 "FAULTY" 5 "reserved" 6 "reserved" 7 "reserved" ;
 VAL_ 1319 ADAS_DMS_Camera_Blockage_Status 0 "UNKNOWN" 1 "OK" 2 "BLOCKED" 3 "FAULTY" ;

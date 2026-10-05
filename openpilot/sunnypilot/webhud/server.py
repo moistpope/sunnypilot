@@ -42,6 +42,7 @@ from openpilot.sunnypilot.webhud.paths import STATIC_DIR, STATIC_FILES, STATIC_R
 from openpilot.sunnypilot.webhud.sources import LiveSource, ReplaySource, list_routes
 from openpilot.sunnypilot.webhud.state import StreamBuilder, merge_ticks
 from openpilot.sunnypilot.webhud.websocket import WebSocket, accept_key
+from openpilot.sunnypilot.webhud.maptiles import MapTiles, parse_tile_path
 
 VERSION = "1.0"
 DEFAULT_PORT = int(os.getenv("WEBHUD_PORT", "8088"))
@@ -356,6 +357,9 @@ class HudServer(ThreadingHTTPServer):
   mdns: MdnsPublisher | None
 
 
+MAP_TILES = MapTiles()
+
+
 class HudHandler(BaseHTTPRequestHandler):
   protocol_version = "HTTP/1.1"
   server: HudServer
@@ -429,6 +433,8 @@ class HudHandler(BaseHTTPRequestHandler):
         return
       if path == "/ws" and method == "GET":
         return self._websocket()
+      if path.startswith("/map/tile/") and method == "GET":
+        return self._map_tile(path)
       route = ROUTES.get((method, path))
       if route is not None:
         return route(self, query)
@@ -440,6 +446,32 @@ class HudHandler(BaseHTTPRequestHandler):
     except Exception as e:
       cloudlog.exception(f"webhud: {method} {path} failed")
       self._error(500, f"{type(e).__name__}: {e}")
+
+  # the OSM road tiles the page's map matcher reads (maptiles.py): long-lived, so cached hard
+  def _map_tile(self, path: str) -> None:
+    lat, lon, name = parse_tile_path(unquote(path))
+    full = MAP_TILES.tile_path(lat, lon, name)
+    if full is None:
+      return self._error(404, "no such map tile")
+    st = os.stat(full)
+    etag = f'"{st.st_mtime_ns // 1_000_000:x}-{st.st_size:x}"'
+    headers = {"Cache-Control": "max-age=604800", "ETag": etag, "Last-Modified": formatdate(st.st_mtime, usegmt=True)}
+    if self._not_modified(int(st.st_mtime), (etag,)):
+      self.send_response(304)
+      for k, v in headers.items():
+        self.send_header(k, v)
+      self.end_headers()
+      return
+    with open(full, "rb") as f:
+      body = f.read()
+    self.send_response(200)
+    self.send_header("Content-Type", "application/octet-stream")
+    self.send_header("Content-Length", str(len(body)))
+    for k, v in headers.items():
+      self.send_header(k, v)
+    self.end_headers()
+    if self.command != "HEAD":
+      self.wfile.write(body)
 
   # static -----------------------------------------------------------------------
   def _not_modified(self, mtime: int, etags: tuple[str, ...]) -> bool:
@@ -787,7 +819,10 @@ def main(argv: list[str] | None = None) -> None:
   parser.add_argument("--no-mdns", action="store_true")
   parser.add_argument("--replay", help="rlog file or segment/route directory to play on start")
   parser.add_argument("--demo", action="store_true", help="start with the synthetic demo drive")
+  parser.add_argument("--map-root", default=None, help="directory of OSM tile cells for the page's map matcher (default: mapd's <media>/osm/offline)")
   args = parser.parse_args(argv if argv is not None else [])
+  if args.map_root:
+    MAP_TILES.root = args.map_root
 
   try:
     os.nice(10)  # never compete with the driving stack

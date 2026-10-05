@@ -33,6 +33,12 @@ except ImportError:
 
 from openpilot.sunnypilot.webhud.tools.gen_world_dbc import CORRECTIONS   # what the matrix gets wrong, checked on the car
 
+# Start bits the matrix gets wrong (the signal's least significant bit, Motorola numbering as the matrix gives it):
+# the IBUS2 matrix puts the ADASIS header of 0x255 three bits off the other horizon messages; the car sends the
+# standard layout (message type in the top 3 bits of byte 0, offset in the rest of byte 0 and byte 1), which is also
+# what the ADASBUS matrix says and what the recordings decode to.
+LSB_CORRECTIONS = {"ICC_ProfShortMsgType": 5, "ICC_ProfShortOffset": 8}
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEBHUD = os.path.dirname(HERE)
 OPENPILOT = os.path.dirname(os.path.dirname(WEBHUD))
@@ -45,8 +51,12 @@ KT_OUT = os.path.join(WEBHUD, "android", "app", "src", "main", "java", "ai", "su
 # odometer; IBUS1 the body, chassis, climate, seats, lamps, gear and drive.
 RX = {
   "IBUS1": [0x112, 0x113, 0x114, 0x115, 0x150, 0x151, 0x1B8, 0x1C2, 0x234, 0x2F4, 0x2F5, 0x318, 0x333, 0x335, 0x343, 0x358, 0x364,
-            0x373, 0x378, 0x471, 0x4F3, 0x4F5, 0x4F9, 0x512, 0x518, 0x554, 0x5EA],
+            0x373, 0x378, 0x471, 0x4F3, 0x4F5, 0x4F9, 0x512, 0x518, 0x554, 0x5EA,
+            # the telematics box's fused heading and GPS fix quality (pose.js)
+            0x179, 0x46B, 0x46D, 0x46F, 0x472, 0x473],
   "IBUS2": [0xE9, 0x236, 0x321, 0x363, 0x369, 0x503, 0x504, 0x505, 0x580, 0x5A4, 0x630, 0x634, 0x641, 0x35B, 0x52A,
+            # the telematics box's GPS position and altitude, and the head unit's ADASIS map horizon (pose.js, map matching)
+            0x525, 0x526, 0x250, 0x251, 0x252, 0x255, 0x361, 0x362,
             # the ADAS mirror: lanes, objects, ACC, assist, warnings, signs and lights, parking, driver monitoring
             0x117, 0x118, 0x1C0, 0x20A, 0x20B, 0x20C, 0x20D, 0x20E, 0x20F, 0x210, 0x2C7, 0x2CA, 0x2CD, 0x2D0, 0x2D3, 0x2D6, 0x2D9, 0x2DC,
             0x2DF, 0x2E2, 0x2E5, 0x2E8, 0x2E9, 0x2EA, 0x311, 0x313, 0x314, 0x315, 0x316, 0x317, 0x31A, 0x31B, 0x31C, 0x32B, 0x32D, 0x32F,
@@ -150,7 +160,7 @@ def read_matrix(path: str, bus: str) -> list[dict]:
       if name in CORRECTIONS:
         res, off, lo, hi = CORRECTIONS[name][:4]
       cur["signals"].append({
-        "name": name, "desc": " ".join(str(r[8] or "").split()).replace('"', "'"), "lsb": int(r[11]), "len": int(r[13]),
+        "name": name, "desc": " ".join(str(r[8] or "").split()).replace('"', "'"), "lsb": LSB_CORRECTIONS.get(name, int(r[11])), "len": int(r[13]),
         "intel": order.lower().startswith("intel"), "signed": str(r[14] or "").lower().startswith("signed"),
         "res": res, "off": off, "min": lo, "max": hi,
         "init": int(str(r[21]), 16) if r[21] not in (None, "") else 0, "unit": str(r[24] or ""), "values": values_of(r[25]),
