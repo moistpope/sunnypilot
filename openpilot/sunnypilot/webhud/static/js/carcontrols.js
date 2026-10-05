@@ -492,6 +492,7 @@ export class CarControls {
       return;
     }
     let changed = false;
+    const mode = this.liveIds.has('drive.mode') ? this.v['drive.mode'] : null;   // the mode the car reported last
     const take = (id, v) => {
       this.liveIds.add(id);
       const prev = this.v[id];
@@ -504,6 +505,9 @@ export class CarControls {
       else this.liveIds.delete(id);
     }
     for (const [id, v] of Object.entries(liveExtras(cs))) take(id, v);
+    // the car changed its drive mode (its own button): the same ring out from the car as a change here, in
+    // any view; not on its first report, which is only the mode it was already in
+    if (mode && this.liveIds.has('drive.mode') && this.v['drive.mode'] !== mode) this.pulseMode();
     // what the car says follows on the model whether or not the controls are open
     if (changed) {
       if (this.isOpen) { this.apply(); this.notify(); }
@@ -548,7 +552,7 @@ export class CarControls {
     }
     const prev = this.v[id];
     this.v[id] = value;
-    if (id === 'drive.mode' && value !== prev) this.cut.pulse(DRIVE_MODES.find(m => m[0] === value)[3]);
+    if (id === 'drive.mode' && value !== prev) this.pulseMode();
     if ((id === 'light.ahb' || id === 'light.adb') && value) this.flash = { until: performance.now() + 1600, lamps: { high: true } };
     if (id === 'light.welcome' && value) this.flash = { until: performance.now() + 1600, lamps: { drl: true, position: true, low: true } };
     if (id === 'light.home' && value) this.flash = { until: performance.now() + 1400, lamps: { low: true, position: true } };
@@ -562,6 +566,12 @@ export class CarControls {
     if (id === 'doors.locked' && value && this.v['doors.closeWin']) this.closeAll(false);   // BCM_ArmedClsWinSetSts
     this.apply();
     this.notify();
+  }
+
+  // a ring of particles out from the car in the drive mode's color
+  pulseMode() {
+    const mode = DRIVE_MODES.find(m => m[0] === this.v['drive.mode']);
+    if (mode && this.cut) this.cut.pulse(mode[3]);
   }
 
   // the panels' buttons that do something rather than set something
