@@ -1,13 +1,15 @@
 /* Fisker Ocean car-controls design language ("fo"): tokens and components.
  *
- * Specified for the Ocean's portrait center screen, a 1080 × 1920 frame. Every size is in rem, and the
- * root font size is tied to the viewport width in portrait (below), so 1 rem = 16 frame px whatever
- * pixel ratio the WebView reports: 4.5rem is 72 frame px on the car, on the AVD and in a 1080-wide
- * browser alike. Comments give the frame-px value for each token.
+ * Specified for the Ocean's portrait 1080 × 1920 frame. Every size is in rem, and in portrait the root
+ * font size is tied to the viewport width (below), so 1 rem = 16 frame px whatever pixel ratio the
+ * WebView reports. Comments give frame px.
  *
- * The reference is Tesla's in-car interface (Controls, Climate and Energy screens): flat surfaces, one
- * accent, big thin numerals, segmented controls for choices, tiles for things you do while driving, rows
- * with switches for preferences you set once. See DESIGN.md for the rules; design.html shows them.
+ * The reference is Tesla's in-car interface. What makes it look the way it does, and what this file
+ * copies: a flat ground (near-black at night, warm light grey by day), cells drawn with a hairline
+ * border rather than a fill, small radii (8), regular-weight type with the hierarchy in size and grey,
+ * icons as thin line drawings, and color used almost nowhere: a chosen thing turns its glyph blue, a
+ * segmented control lifts a pale pill, and there is one blue-filled button per screen at most.
+ * See DESIGN.md for the rules; design.html shows them.
  */
 
 /* ---------- scale ---------- */
@@ -16,341 +18,395 @@ html.fo { font-size: 16px; }
 
 /* ---------- tokens: day ---------- */
 .fo, :root.fo {
-  /* surfaces (light to dark): the stage behind the car is the HUD's own; these are the sheet's */
-  --fo-bg: #e9eaed;                 /* page behind sheets when there is no 3D view */
-  --fo-surface: #ffffff;            /* sheet, dock, chips */
-  --fo-surface-2: #f2f3f5;          /* groups, segmented tracks, tiles at rest */
-  --fo-surface-3: #e3e5e9;          /* pressed, slider tracks */
-  --fo-ink: #171a20;                /* primary text and icons */
-  --fo-ink-2: #5c5e62;              /* secondary text, resting icons */
-  --fo-ink-3: #a3a5a9;              /* disabled, tertiary */
-  --fo-line: rgba(23, 26, 32, 0.08);
-  --fo-shadow: 0 1.5rem 3.5rem rgba(23, 26, 32, 0.14), 0 0.125rem 0.375rem rgba(23, 26, 32, 0.06);
-  --fo-scrim: rgba(23, 26, 32, 0.28);
-  /* one accent */
-  --fo-accent: #3e6ae1;
+  --fo-ground: #f4f4f4;             /* the sheet and the dock */
+  --fo-cell: #ffffff;               /* a cell: tile, button, slider thumb, a chosen segment */
+  --fo-cell-2: #e8e8e8;             /* pressed; a segmented track */
+  --fo-line: rgba(0, 0, 0, 0.10);   /* hairlines: cell borders, row dividers */
+  --fo-line-2: rgba(0, 0, 0, 0.20); /* a chosen cell's border */
+  --fo-ink: #393c41;                /* Tesla's text grey */
+  --fo-ink-2: #8a8d91;              /* secondary text, resting glyphs */
+  --fo-ink-3: #c2c4c7;              /* disabled */
+  --fo-accent: #3e6ae1;             /* one blue */
   --fo-accent-ink: #ffffff;
-  --fo-accent-soft: rgba(62, 106, 225, 0.12);
-  /* semantic */
-  --fo-heat: #e8542f;               /* seat and wheel heat; Hyper */
-  --fo-cool: #2f8fe6;               /* cooling, defog */
-  --fo-ok: #2fa84f;                 /* charging, locked, live */
-  --fo-warn: #f0a020;
-  --fo-bad: #e5413a;
-  --fo-earth: #2fa84f; --fo-fun: #3e8bff; --fo-hyper: #ff5a2a;
-  /* type (frame px): display 112, hero 64, title 36, heading 28, body 26, label 22, caption 19, overline 18 */
+  --fo-accent-tint: rgba(62, 106, 225, 0.07);
+  --fo-heat: #e0452c; --fo-cool: #2f8fe6; --fo-ok: #2e9e4f; --fo-warn: #e8a317; --fo-bad: #d93a2f;
+  --fo-earth: #2e9e4f; --fo-fun: #3e6ae1; --fo-hyper: #e8582c;
+  --fo-on-stage: rgba(20, 20, 22, 0.72);   /* a chip's ground over the 3D view */
+  --fo-on-stage-ink: #f2f2f2;
+  /* type (frame px): display 72, hero 48, title 32, heading 24, body 24, label 22, caption 18. Weights 300, 400, 500 only. */
   --fo-font: -apple-system, BlinkMacSystemFont, Roboto, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  --fo-display: 300 7rem/1 var(--fo-font);
-  --fo-hero: 300 4rem/1 var(--fo-font);
-  --fo-title: 600 2.25rem/1.2 var(--fo-font);
-  --fo-heading: 600 1.75rem/1.25 var(--fo-font);
-  --fo-body: 500 1.625rem/1.3 var(--fo-font);
-  --fo-label: 600 1.375rem/1.25 var(--fo-font);
-  --fo-caption: 500 1.1875rem/1.3 var(--fo-font);
-  --fo-overline: 700 1.125rem/1.2 var(--fo-font);
-  /* space (frame px): 8 16 24 32 48 */
+  --fo-display: 300 4.5rem/1 var(--fo-font);
+  --fo-hero: 300 3rem/1.1 var(--fo-font);
+  --fo-title: 500 2rem/1.2 var(--fo-font);
+  --fo-heading: 400 1.5rem/1.3 var(--fo-font);
+  --fo-body: 400 1.5rem/1.35 var(--fo-font);
+  --fo-label: 400 1.375rem/1.25 var(--fo-font);
+  --fo-caption: 400 1.125rem/1.35 var(--fo-font);
+  --fo-track: .02em;                /* Tesla's labels sit a little open */
+  /* space (frame px): 8 16 24 32 48; gutter 40 */
   --fo-s1: .5rem; --fo-s2: 1rem; --fo-s3: 1.5rem; --fo-s4: 2rem; --fo-s6: 3rem;
-  --fo-gutter: 2rem;                /* 32: sheet and dock inset from the screen edge and inside the sheet */
-  /* radius (frame px): control 16, tile 20, sheet 36, pill */
-  --fo-r-control: 1rem; --fo-r-tile: 1.25rem; --fo-r-sheet: 2.25rem; --fo-r-pill: 999px;
-  /* hit sizes (frame px): min 72, row 88, tile 144, dock 112, switch 80 × 44 */
-  --fo-hit: 4.5rem; --fo-row: 5.5rem; --fo-tile: 9rem; --fo-dock: 7rem;
-  /* icons (frame px): 32 in rows and segments, 40 in tiles, 36 in the dock */
-  --fo-icon: 2rem; --fo-icon-tile: 2.5rem; --fo-icon-dock: 2.25rem;
-  /* motion */
+  --fo-gutter: 2.5rem;
+  /* radius (frame px): 8 cells, 12 sheet top */
+  --fo-r: .5rem; --fo-r-sheet: .75rem;
+  /* hit sizes (frame px): min 72, row 80, tile 120, dock 112 */
+  --fo-hit: 4.5rem; --fo-row: 5rem; --fo-tile: 7.5rem; --fo-dock: 7rem;
+  --fo-icon: 2rem;                  /* 32 everywhere, 28 inside a segment, 24 in rows */
   --fo-ease: cubic-bezier(.2, .8, .2, 1);
-  --fo-t-press: 80ms; --fo-t-state: 200ms; --fo-t-sheet: 380ms;
+  --fo-t-press: 80ms; --fo-t-state: 180ms; --fo-t-sheet: 380ms;
   color-scheme: light;
 }
 
 /* ---------- tokens: night ---------- */
 :root[data-theme="dark"] .fo, :root[data-theme="dark"].fo, .fo[data-theme="dark"] {
-  --fo-bg: #000000;
-  --fo-surface: #121316;
-  --fo-surface-2: #1d1f23;
-  --fo-surface-3: #282b31;
-  --fo-ink: #f5f5f7;
-  --fo-ink-2: #9a9ca3;
-  --fo-ink-3: #5a5d64;
-  --fo-line: rgba(255, 255, 255, 0.08);
-  --fo-shadow: 0 1.5rem 3.5rem rgba(0, 0, 0, 0.55);
-  --fo-scrim: rgba(0, 0, 0, 0.45);
-  --fo-accent: #4f7df5;
-  --fo-accent-soft: rgba(79, 125, 245, 0.2);
+  --fo-ground: #171717;
+  --fo-cell: #1f1f1f;
+  --fo-cell-2: #303030;
+  --fo-line: rgba(255, 255, 255, 0.12);
+  --fo-line-2: rgba(255, 255, 255, 0.30);
+  --fo-ink: #f0f0f0;
+  --fo-ink-2: #9a9a9a;
+  --fo-ink-3: #5a5a5a;
+  --fo-accent: #4d7ff0;
+  --fo-accent-tint: rgba(77, 127, 240, 0.10);
+  --fo-on-stage: rgba(28, 28, 30, 0.82);
+  --fo-seg-on: #454545;             /* a chosen segment at night: lighter grey, no shadow */
   color-scheme: dark;
 }
 
 /* ---------- base ---------- */
 .fo, .fo * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-.fo { font: var(--fo-body); color: var(--fo-ink); -webkit-user-select: none; user-select: none; }
-.fo button, .fo input, .fo select { font: inherit; color: inherit; }
-.fo button { border: 0; background: none; padding: 0; cursor: pointer; }
-.fo button:active { transition-duration: var(--fo-t-press); }
+.fo { font: var(--fo-body); color: var(--fo-ink); -webkit-user-select: none; user-select: none; -webkit-font-smoothing: antialiased; }
+/* :where() keeps these at single-class specificity, so a component's own font and color win over them */
+.fo :where(button, input, select) { font: inherit; color: inherit; letter-spacing: inherit; }
+.fo :where(button) { border: 0; background: none; padding: 0; cursor: pointer; }
 .fo svg { display: block; }
-.fo .fo-icon { width: var(--fo-icon); height: var(--fo-icon); flex: none; }
+.fo .fo-icon { width: var(--fo-icon); height: var(--fo-icon); flex: none; color: var(--fo-ink-2); transition: color var(--fo-t-state); }
 .fo .fo-icon svg { width: 100%; height: 100%; }
+.fo .fo-icon svg[stroke-width] { stroke-width: 1.6; }   /* thinner than the HUD's own icons, as Tesla's are */
 .fo [disabled], .fo .off { pointer-events: none; }
-.fo .off { color: var(--fo-ink-3); }
-.fo .off .fo-row__sub, .fo .off .fo-tile__sub { color: var(--fo-ink-3); }
+.fo .off, .fo .off .fo-icon, .fo .off .fo-row__sub, .fo .off b { color: var(--fo-ink-3); }
 
-/* ---------- status strip: top of the screen in car mode (gear, speed, telltales; time, outside, link) ---------- */
-.fo-status { display: flex; align-items: center; gap: var(--fo-s3); height: 6rem; padding: 0 var(--fo-gutter); color: var(--fo-ink); }
-.fo-status__gear { display: flex; gap: .5rem; font: var(--fo-label); letter-spacing: .06em; color: var(--fo-ink-3); }
+/* a cell: the one surface every control is made of */
+.fo-cell { background: var(--fo-cell); border: .0625rem solid var(--fo-line); border-radius: var(--fo-r); }
+
+/* ---------- status strip ---------- */
+.fo-status { display: flex; align-items: center; gap: var(--fo-s3); height: 6rem; padding: 0 var(--fo-gutter); color: var(--fo-ink); font: var(--fo-label); }
+.fo-status__gear { display: flex; gap: .75rem; letter-spacing: .14em; color: var(--fo-ink-3); font-weight: 500; }
 .fo-status__gear .on { color: var(--fo-ink); }
-.fo-status__speed { font: 300 3rem/1 var(--fo-font); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
-.fo-status__speed small { font: var(--fo-caption); color: var(--fo-ink-2); margin-left: .25rem; text-transform: uppercase; letter-spacing: .08em; }
-.fo-status__right { margin-left: auto; display: flex; align-items: center; gap: var(--fo-s3); font: var(--fo-label); color: var(--fo-ink-2); }
-.fo-status__right b { color: var(--fo-ink); font-weight: 600; }
-.fo-pill { display: inline-flex; align-items: center; gap: .5rem; height: 2.5rem; padding: 0 1rem; border-radius: var(--fo-r-pill); background: var(--fo-surface-2); color: var(--fo-ink-2); font: var(--fo-overline); letter-spacing: .08em; text-transform: uppercase; }
-.fo-pill.ok { color: var(--fo-ok); } .fo-pill.warn { color: var(--fo-warn); } .fo-pill.accent { background: var(--fo-accent); color: var(--fo-accent-ink); }
-.fo-dot { width: .625rem; height: .625rem; border-radius: 50%; background: currentColor; }
+.fo-status__speed { font: 300 2.5rem/1 var(--fo-font); font-variant-numeric: tabular-nums; }
+.fo-status__speed small { font: var(--fo-caption); color: var(--fo-ink-2); margin-left: .375rem; }
+.fo-status__right { margin-left: auto; display: flex; align-items: center; gap: var(--fo-s3); color: var(--fo-ink-2); }
+.fo-status__right b { color: var(--fo-ink); font-weight: 500; }
+.fo-tag { display: inline-flex; align-items: center; gap: .5rem; font: var(--fo-caption); color: var(--fo-ink-2); letter-spacing: var(--fo-track); }
+.fo-tag.ok { color: var(--fo-ok); } .fo-tag.warn { color: var(--fo-warn); }
+.fo-dot { width: .5rem; height: .5rem; border-radius: 50%; background: currentColor; }
 
-/* ---------- the sheet: a bottom sheet with a handle, over the 3D stage ---------- */
-.fo-sheet { position: relative; display: flex; flex-direction: column; background: var(--fo-surface); color: var(--fo-ink);
-  border-radius: var(--fo-r-sheet) var(--fo-r-sheet) 0 0; box-shadow: var(--fo-shadow); overflow: hidden; }
-.fo-sheet__handle { flex: none; display: flex; justify-content: center; padding: .75rem 0 .25rem; }
-.fo-sheet__handle i { width: 4rem; height: .375rem; border-radius: var(--fo-r-pill); background: var(--fo-ink-3); opacity: .6; }
-.fo-sheet__head { flex: none; display: flex; align-items: center; gap: var(--fo-s2); height: 5.5rem; padding: 0 var(--fo-s3) 0 var(--fo-s2); }
-.fo-sheet__head h2 { flex: 1; margin: 0; display: flex; align-items: center; gap: var(--fo-s2); font: var(--fo-title); }
-.fo-sheet__head h2 .fo-icon { color: var(--fo-accent); width: 2.25rem; height: 2.25rem; }
-.fo-sheet__body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--fo-gutter) var(--fo-s6); -webkit-overflow-scrolling: touch; }
+/* ---------- sheet ---------- */
+.fo-sheet { display: flex; flex-direction: column; background: var(--fo-ground); color: var(--fo-ink);
+  border-radius: var(--fo-r-sheet) var(--fo-r-sheet) 0 0; border-top: .0625rem solid var(--fo-line); overflow: hidden; }
+.fo-sheet__handle { flex: none; display: flex; justify-content: center; padding: .625rem 0 0; }
+.fo-sheet__handle i { width: 3rem; height: .25rem; border-radius: .125rem; background: var(--fo-ink-3); }
+.fo-sheet__head { flex: none; display: flex; align-items: center; gap: var(--fo-s2); height: 5rem; padding: 0 var(--fo-s3) 0 var(--fo-s2); }
+.fo-sheet__head h2 { flex: 1; margin: 0; display: flex; align-items: center; gap: .875rem; font: var(--fo-title); letter-spacing: var(--fo-track); }
+.fo-sheet__head h2 .fo-icon { color: var(--fo-ink); }
+.fo-sheet__body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: .5rem var(--fo-gutter) var(--fo-s6); -webkit-overflow-scrolling: touch; }
 .fo-sheet__body > * + * { margin-top: var(--fo-s4); }
 
-/* round icon button: back, close, steppers */
-.fo-round { display: inline-flex; align-items: center; justify-content: center; width: var(--fo-hit); height: var(--fo-hit); border-radius: 50%;
-  background: var(--fo-surface-2); color: var(--fo-ink); transition: background var(--fo-t-state); }
-.fo-round:active { background: var(--fo-surface-3); }
-.fo-round.plain { background: transparent; color: var(--fo-ink-2); }
-.fo-round .fo-icon { width: 1.75rem; height: 1.75rem; }
+/* plain icon button: back, close, steppers. No circle; the glyph is the button. */
+.fo-ib { display: inline-flex; align-items: center; justify-content: center; width: var(--fo-hit); height: var(--fo-hit); border-radius: var(--fo-r); color: var(--fo-ink); transition: background var(--fo-t-press); }
+.fo-ib .fo-icon { color: inherit; }
+.fo-ib:active { background: var(--fo-cell-2); }
 
-/* ---------- groups: an overline title, then its content ---------- */
-.fo-group > h3 { margin: 0 0 var(--fo-s2) .25rem; font: var(--fo-overline); letter-spacing: .1em; text-transform: uppercase; color: var(--fo-ink-2); }
-.fo-group > h3 small { font: var(--fo-caption); text-transform: none; letter-spacing: 0; margin-left: .75rem; font-weight: 500; }
-.fo-group > * + * { margin-top: var(--fo-s2); }
-.fo-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--fo-s3); align-items: start; }
+/* ---------- groups: a heading like Tesla's "Exterior Lights" (a small icon, regular text), then the control ---------- */
+.fo-group > h3 { display: flex; align-items: center; gap: .75rem; margin: 0 0 .875rem .125rem; font: var(--fo-heading); color: var(--fo-ink); letter-spacing: var(--fo-track); }
+.fo-group > h3 .fo-icon { width: 1.625rem; height: 1.625rem; color: var(--fo-ink-2); }
+.fo-group > h3 small { font: var(--fo-caption); color: var(--fo-ink-2); margin-left: auto; letter-spacing: 0; }
+.fo-group > * + * { margin-top: .75rem; }
+.fo-cols { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; align-items: start; }
 
-/* ---------- segmented control: one choice from two to five ---------- */
-.fo-seg { display: flex; padding: .375rem; gap: .25rem; border-radius: var(--fo-r-control); background: var(--fo-surface-2); }
-.fo-seg > button { flex: 1 1 0; min-width: 0; height: calc(var(--fo-hit) - .75rem); padding: 0 1rem; border-radius: calc(var(--fo-r-control) - .375rem);
-  display: inline-flex; align-items: center; justify-content: center; gap: .5rem; font: var(--fo-label); color: var(--fo-ink-2); white-space: nowrap;
+/* ---------- segmented control: a grey track, the chosen segment a lifted white pill ---------- */
+.fo-seg { display: flex; padding: .25rem; gap: .125rem; border-radius: var(--fo-r); background: var(--fo-cell-2); }
+.fo-seg > button { flex: 1 1 0; min-width: 0; height: calc(var(--fo-hit) - .5rem); padding: 0 .75rem; border-radius: calc(var(--fo-r) - .125rem);
+  display: inline-flex; align-items: center; justify-content: center; gap: .5rem; font: var(--fo-label); letter-spacing: var(--fo-track); color: var(--fo-ink-2); white-space: nowrap;
   transition: background var(--fo-t-state), color var(--fo-t-state), box-shadow var(--fo-t-state); }
-.fo-seg > button .fo-icon { width: 1.75rem; height: 1.75rem; }
-.fo-seg > button.on { background: var(--fo-surface); color: var(--fo-ink); box-shadow: 0 .125rem .5rem rgba(0, 0, 0, .14); }
-.fo-seg > button:active:not(.on) { background: var(--fo-surface-3); }
-.fo-seg.accent > button.on { background: var(--fo-accent); color: var(--fo-accent-ink); box-shadow: none; }
-.fo-seg.icons > button { padding: 0 .5rem; }
-.fo-seg.icons > button span { display: none; }   /* icon-only segments: the choice reads from the glyph */
-.fo-seg.stack > button { flex-direction: column; gap: .25rem; height: calc(var(--fo-tile) * .7); font: var(--fo-caption); font-weight: 600; }
+.fo-seg > button .fo-icon { width: 1.75rem; height: 1.75rem; color: inherit; }
+.fo-seg > button.on { background: var(--fo-seg-on, var(--fo-cell)); color: var(--fo-ink); font-weight: 500; box-shadow: 0 .0625rem .1875rem rgba(0, 0, 0, .16); }
+.fo-seg > button:active:not(.on) { color: var(--fo-ink); }
+.fo-seg.stack > button { flex-direction: column; gap: .375rem; height: calc(var(--fo-tile) - .5rem); padding: 0 .375rem; font: var(--fo-caption); white-space: normal; line-height: 1.15; text-align: center; }
 .fo-seg.stack > button .fo-icon { width: var(--fo-icon); height: var(--fo-icon); }
+.fo-seg > button i.dot { width: .625rem; height: .625rem; border-radius: 50%; background: var(--c, var(--fo-ink-3)); opacity: .5; }   /* the drive modes' colors */
+.fo-seg > button.on i.dot { opacity: 1; }
 
-/* ---------- tiles: things you do while driving; tap toggles or acts ---------- */
-.fo-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem; }
+/* ---------- tiles: a grid of equal cells, icon over label ---------- */
+.fo-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; }
 .fo-tiles.cols-3 { grid-template-columns: repeat(3, 1fr); }
 .fo-tiles.cols-2 { grid-template-columns: repeat(2, 1fr); }
-.fo-tile { min-height: var(--fo-tile); padding: 1.25rem 1rem 1rem; border-radius: var(--fo-r-tile); background: var(--fo-surface-2); color: var(--fo-ink);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .625rem; text-align: center;
-  transition: background var(--fo-t-state), color var(--fo-t-state), transform var(--fo-t-press); }
-.fo-tile:active { transform: scale(.97); background: var(--fo-surface-3); }
-.fo-tile .fo-icon { width: var(--fo-icon-tile); height: var(--fo-icon-tile); color: var(--fo-ink-2); transition: color var(--fo-t-state); }
-.fo-tile__label { font: var(--fo-label); }
-.fo-tile__sub { font: var(--fo-caption); color: var(--fo-ink-2); margin-top: -.25rem; }
-.fo-tile.on { background: var(--fo-accent); color: var(--fo-accent-ink); }
-.fo-tile.on .fo-icon, .fo-tile.on .fo-tile__sub { color: inherit; }
-.fo-tile.heat.on { background: var(--fo-heat); } .fo-tile.cool.on { background: var(--fo-cool); } .fo-tile.ok.on { background: var(--fo-ok); }
-.fo-tile.wide { grid-column: span 2; flex-direction: row; justify-content: flex-start; gap: 1rem; min-height: var(--fo-hit); padding: 0 1.5rem; text-align: left; }
-.fo-tile.wide .fo-icon { width: var(--fo-icon); height: var(--fo-icon); }
-.fo-tile.off { background: var(--fo-surface-2); color: var(--fo-ink-3); }
-.fo-tile.off .fo-icon { color: var(--fo-ink-3); }
-/* a tile that is an action, not a state: outlined so it doesn't read as "off" */
-.fo-tile.action { background: transparent; box-shadow: inset 0 0 0 .125rem var(--fo-line); }
-.fo-tile.action:active { background: var(--fo-surface-2); }
-.fo-tile.action .fo-icon { color: var(--fo-accent); }
+.fo-tile { min-height: var(--fo-tile); padding: 1rem .75rem .875rem; background: var(--fo-cell); border: .0625rem solid var(--fo-line); border-radius: var(--fo-r); color: var(--fo-ink);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .625rem; text-align: center; font: var(--fo-label); letter-spacing: var(--fo-track);
+  transition: background var(--fo-t-state), color var(--fo-t-state), border-color var(--fo-t-state); }
+.fo-tile:active { background: var(--fo-cell-2); }
+.fo-tile.wide { grid-column: span 2; flex-direction: row; gap: .875rem; min-height: var(--fo-hit); padding: 0 1.25rem; }
+/* on: the glyph goes blue, the label firms up, the border darkens a touch; no fill */
+.fo-tile.on { border-color: var(--fo-line-2); font-weight: 500; }
+.fo-tile.on .fo-icon { color: var(--fo-accent); }
+.fo-tile.heat.on .fo-icon { color: var(--fo-heat); } .fo-tile.cool.on .fo-icon { color: var(--fo-cool); }
+/* primary: the one filled button a screen may have (Tesla's FRONT FOG) */
+.fo-tile.primary { background: var(--fo-accent); border-color: var(--fo-accent); color: var(--fo-accent-ink); font-weight: 500; }
+.fo-tile.primary .fo-icon { color: inherit; }
+.fo-tile.off { color: var(--fo-ink-3); }
 
-/* ---------- rows: preferences you set once; label, sub, control at the end ---------- */
-.fo-rows { border-radius: var(--fo-r-tile); background: var(--fo-surface-2); overflow: hidden; }
-.fo-row { display: flex; align-items: center; gap: var(--fo-s3); min-height: var(--fo-row); padding: .75rem 1.25rem .75rem 1.5rem; }
-.fo-row + .fo-row { border-top: .0625rem solid var(--fo-line); }
+/* ---------- rows: a list with hairline dividers, nothing filled ---------- */
+.fo-rows { border-top: .0625rem solid var(--fo-line); }
+.fo-row { display: flex; align-items: center; gap: var(--fo-s3); min-height: var(--fo-row); padding: .625rem .125rem; border-bottom: .0625rem solid var(--fo-line); }
 .fo-row__lbl { flex: 1; min-width: 0; }
-.fo-row__lbl b { display: block; font: var(--fo-body); font-weight: 500; }
+.fo-row__lbl b { display: block; font: var(--fo-body); letter-spacing: var(--fo-track); }
 .fo-row__sub { display: block; font: var(--fo-caption); color: var(--fo-ink-2); margin-top: .125rem; }
 .fo-row__val { font: var(--fo-body); color: var(--fo-ink-2); font-variant-numeric: tabular-nums; }
-.fo-row .fo-seg { flex: 0 1 28rem; }
-.fo-row.stack { flex-direction: column; align-items: stretch; gap: .75rem; padding-bottom: 1.25rem; }
+.fo-row .fo-seg { flex: 0 1 26rem; }
+.fo-row.stack { flex-direction: column; align-items: stretch; gap: .75rem; padding-bottom: 1rem; }
 .fo-row.stack .fo-seg { flex: none; }
-.fo-row .fo-icon { color: var(--fo-ink-2); }
-.fo-row.off .fo-icon { color: var(--fo-ink-3); }
-.fo-why { display: inline-flex; align-items: center; gap: .375rem; font: var(--fo-caption); color: var(--fo-ink-3); }
+.fo-row .fo-icon { color: var(--fo-ink-3); width: 1.5rem; height: 1.5rem; }
 
-/* switch: 80 × 44 on a 72 hit */
-.fo-switch { position: relative; flex: none; width: 5rem; height: 2.75rem; }
-.fo-switch input { position: absolute; inset: -.875rem 0; width: 100%; height: var(--fo-hit); margin: 0; opacity: 0; cursor: pointer; }
-.fo-switch span { position: absolute; inset: 0; border-radius: var(--fo-r-pill); background: var(--fo-ink-3); transition: background var(--fo-t-state); }
-.fo-switch span::after { content: ""; position: absolute; left: .25rem; top: .25rem; width: 2.25rem; height: 2.25rem; border-radius: 50%; background: #fff;
-  box-shadow: 0 .125rem .375rem rgba(0, 0, 0, .3); transition: transform var(--fo-t-state) var(--fo-ease); }
+/* switch: slim */
+.fo-switch { position: relative; flex: none; width: 4rem; height: 2.25rem; }
+.fo-switch input { position: absolute; inset: -1.125rem 0; width: 100%; height: var(--fo-hit); margin: 0; opacity: 0; cursor: pointer; }
+.fo-switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--fo-ink-3); transition: background var(--fo-t-state); }
+.fo-switch span::after { content: ""; position: absolute; left: .1875rem; top: .1875rem; width: 1.875rem; height: 1.875rem; border-radius: 50%; background: #fff;
+  box-shadow: 0 .0625rem .25rem rgba(0, 0, 0, .3); transition: transform var(--fo-t-state) var(--fo-ease); }
 .fo-switch input:checked + span { background: var(--fo-accent); }
-.fo-switch input:checked + span::after { transform: translateX(2.25rem); }
-.fo-switch input:disabled + span { opacity: .4; }
+.fo-switch input:checked + span::after { transform: translateX(1.75rem); }
+.fo-switch input:disabled + span { opacity: .35; }
 
-/* ---------- slider: a rail you can hit with a thumb, value in the label row; steps for discrete values ---------- */
-.fo-slider { display: flex; flex-direction: column; gap: .25rem; padding: .75rem 1.5rem 1rem; border-radius: var(--fo-r-tile); background: var(--fo-surface-2); }
-.fo-slider__head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; font: var(--fo-body); font-weight: 500; }
-.fo-slider__head em { font-style: normal; font: var(--fo-heading); color: var(--fo-accent); font-variant-numeric: tabular-nums; }
-.fo-slider__head small { font: var(--fo-caption); color: var(--fo-ink-2); margin-left: .5rem; }
-.fo-slider__rail { display: flex; align-items: center; gap: 1rem; height: var(--fo-hit); }
-.fo-slider__rail .fo-icon { color: var(--fo-ink-2); width: 1.75rem; height: 1.75rem; }
-.fo-slider input[type=range] { -webkit-appearance: none; appearance: none; flex: 1; width: 100%; height: var(--fo-hit); margin: 0; background: transparent; }
-.fo-slider input[type=range]::-webkit-slider-runnable-track { height: .75rem; border-radius: .375rem;
-  background: linear-gradient(to right, var(--fo-accent) var(--p, 0%), var(--fo-surface-3) var(--p, 0%)); }
-.fo-slider input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 3rem; height: 3rem; margin-top: -1.125rem; border-radius: 50%; background: #fff;
-  box-shadow: 0 .125rem .5rem rgba(0, 0, 0, .35); }
-.fo-slider input[type=range]::-moz-range-track { height: .75rem; border-radius: .375rem; background: var(--fo-surface-3); }
-.fo-slider input[type=range]::-moz-range-progress { height: .75rem; border-radius: .375rem; background: var(--fo-accent); }
-.fo-slider input[type=range]::-moz-range-thumb { width: 3rem; height: 3rem; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 .125rem .5rem rgba(0, 0, 0, .35); }
-.fo-slider.heat input[type=range]::-webkit-slider-runnable-track { background: linear-gradient(to right, var(--fo-heat) var(--p, 0%), var(--fo-surface-3) var(--p, 0%)); }
-.fo-slider.ok input[type=range]::-webkit-slider-runnable-track { background: linear-gradient(to right, var(--fo-ok) var(--p, 0%), var(--fo-surface-3) var(--p, 0%)); }
-/* discrete steps as buttons: fan 1–7, EQ bands */
-.fo-steps { display: flex; gap: .375rem; height: var(--fo-hit); }
-.fo-steps > button { flex: 1 1 0; border-radius: .75rem; background: var(--fo-surface-3); color: var(--fo-ink-2); font: var(--fo-label); font-variant-numeric: tabular-nums;
-  transition: background var(--fo-t-state), color var(--fo-t-state); }
-.fo-steps > button.on { background: var(--fo-accent); color: var(--fo-accent-ink); }
-.fo-steps > button.lit { background: var(--fo-accent-soft); color: var(--fo-accent); }   /* steps below the chosen one */
+/* ---------- slider: a hairline track and a pill thumb that carries the value (Tesla's brightness slider) ---------- */
+.fo-slider { display: flex; flex-direction: column; gap: 0; }
+.fo-slider__head { display: flex; align-items: center; gap: .75rem; font: var(--fo-body); letter-spacing: var(--fo-track); }
+.fo-slider__head .fo-icon { width: 1.625rem; height: 1.625rem; }
+.fo-slider__head small { font: var(--fo-caption); color: var(--fo-ink-2); margin-left: auto; }
+.fo-slider__rail { position: relative; display: flex; align-items: center; gap: 1rem; height: var(--fo-hit); }
+.fo-slider__rail > .fo-icon { width: 1.5rem; height: 1.5rem; }
+.fo-slider__track { position: relative; flex: 1; height: var(--fo-hit); }
+.fo-slider__track::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: .25rem; margin-top: -.125rem; border-radius: .125rem;
+  background: linear-gradient(to right, var(--fo-fill, var(--fo-ink-2)) var(--p, 0%), var(--fo-line) var(--p, 0%)); }
+.fo-slider__thumb { position: absolute; top: 50%; left: var(--p, 0%); transform: translate(-50%, -50%); height: 3.25rem; min-width: 5.5rem; padding: 0 1rem;
+  display: flex; align-items: center; justify-content: center; background: var(--fo-cell); border: .0625rem solid var(--fo-line); border-radius: 999px; box-shadow: 0 .0625rem .25rem rgba(0, 0, 0, .14);
+  font: var(--fo-label); font-weight: 500; font-variant-numeric: tabular-nums; pointer-events: none; white-space: nowrap; }
+.fo-slider__track input[type=range] { -webkit-appearance: none; appearance: none; position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; background: transparent; opacity: 0; cursor: pointer; }
+.fo-slider.ok { --fo-fill: var(--fo-ok); } .fo-slider.heat { --fo-fill: var(--fo-heat); }
+.fo-slider.off .fo-slider__thumb { color: var(--fo-ink-3); }
+/* discrete steps: a segmented track */
+.fo-steps { display: flex; gap: .125rem; padding: .25rem; height: var(--fo-hit); border-radius: var(--fo-r); background: var(--fo-cell-2); }
+.fo-steps > button { flex: 1 1 0; border-radius: calc(var(--fo-r) - .125rem); color: var(--fo-ink-2); font: var(--fo-label); font-variant-numeric: tabular-nums; transition: background var(--fo-t-state), color var(--fo-t-state); }
+.fo-steps > button.on { background: var(--fo-seg-on, var(--fo-cell)); color: var(--fo-ink); font-weight: 500; box-shadow: 0 .0625rem .1875rem rgba(0, 0, 0, .16); }
 
-/* ---------- stepper and the temperature control ---------- */
-.fo-stepper { display: inline-flex; align-items: center; gap: .75rem; }
-.fo-stepper b { min-width: 6rem; text-align: center; font: var(--fo-hero); font-size: 3rem; font-variant-numeric: tabular-nums; }
-.fo-stepper small { font: var(--fo-caption); color: var(--fo-ink-2); }
-.fo-temps { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--fo-s2); padding: 1.25rem 1rem; border-radius: var(--fo-r-tile); background: var(--fo-surface-2); }
-.fo-temp { display: flex; flex-direction: column; align-items: center; gap: .5rem; }
-.fo-temp > small { font: var(--fo-overline); letter-spacing: .1em; text-transform: uppercase; color: var(--fo-ink-2); }
-.fo-temp__ctl { display: flex; align-items: center; gap: .5rem; }
-.fo-temp__ctl b { min-width: 9rem; text-align: center; font: var(--fo-display); font-size: 6rem; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
-.fo-temp__ctl b sup { font: 300 2.25rem/1 var(--fo-font); vertical-align: top; margin-left: .125rem; }
-.fo-temp.synced b { color: var(--fo-ink-2); }   /* the passenger side follows the driver */
-.fo-temps__mid { display: flex; flex-direction: column; align-items: center; gap: .75rem; }
+/* ---------- stepper and the set temperatures ---------- */
+.fo-stepper { display: inline-flex; align-items: center; gap: .25rem; }
+.fo-stepper b { min-width: 5.5rem; text-align: center; font: var(--fo-hero); font-variant-numeric: tabular-nums; }
+.fo-stepper b small { font: var(--fo-caption); color: var(--fo-ink-2); margin-left: .25rem; }
+.fo-temps { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--fo-s2); padding: .5rem 0 .25rem; }
+.fo-temp { display: flex; flex-direction: column; align-items: center; gap: .25rem; }
+.fo-temp > small { font: var(--fo-caption); color: var(--fo-ink-2); letter-spacing: .06em; text-transform: uppercase; }
+.fo-temp__ctl { display: flex; align-items: center; gap: .25rem; }
+.fo-temp__ctl b { min-width: 8rem; text-align: center; font: var(--fo-display); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.fo-temp__ctl b sup { font: 300 1.75rem/1 var(--fo-font); vertical-align: top; margin-left: .125rem; color: var(--fo-ink-2); }
+.fo-temp.synced b { color: var(--fo-ink-2); }
+.fo-temps__mid { display: flex; flex-direction: column; align-items: center; gap: .5rem; }
+.fo-temps__mid .fo-tile { min-height: 0; width: 7.5rem; height: 3.5rem; padding: 0; font: var(--fo-caption); flex-direction: row; gap: .5rem; }
+.fo-temps__mid .fo-tile .fo-icon { width: 1.375rem; height: 1.375rem; }
 
-/* ---------- heat glyph: a seat (or wheel) with three lines that fill in heat color ---------- */
-.fo-heat { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: .375rem; width: var(--fo-tile); min-height: var(--fo-tile);
-  padding: 1rem .5rem; border-radius: var(--fo-r-tile); background: var(--fo-surface-2); color: var(--fo-ink-2); transition: background var(--fo-t-state), color var(--fo-t-state); }
-.fo-heat:active { background: var(--fo-surface-3); }
-.fo-heat svg { width: 3rem; height: 3rem; }
+/* ---------- heat glyph: a seat with three waves that go red by level ---------- */
+.fo-heat { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .5rem; min-height: var(--fo-tile); padding: .875rem .5rem;
+  background: var(--fo-cell); border: .0625rem solid var(--fo-line); border-radius: var(--fo-r); color: var(--fo-ink); font: var(--fo-label); letter-spacing: var(--fo-track);
+  transition: background var(--fo-t-state), border-color var(--fo-t-state); }
+.fo-heat:active { background: var(--fo-cell-2); }
+.fo-heat svg { width: 2.75rem; height: 2.75rem; color: var(--fo-ink-2); }
 .fo-heat svg .w { stroke: var(--fo-ink-3); transition: stroke var(--fo-t-state); }
 .fo-heat.l1 svg .w1, .fo-heat.l2 svg .w1, .fo-heat.l2 svg .w2, .fo-heat.l3 svg .w { stroke: var(--fo-heat); }
-.fo-heat.l1, .fo-heat.l2, .fo-heat.l3 { color: var(--fo-ink); }
-.fo-heat small { font: var(--fo-caption); font-weight: 600; }
-.fo-heat em { font-style: normal; font: var(--fo-overline); color: var(--fo-heat); letter-spacing: .08em; }
-.fo-heat.l0 em { color: var(--fo-ink-3); }
-.fo-heatrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem; }
-.fo-heatrow .fo-heat { width: auto; }
+.fo-heat.l1, .fo-heat.l2, .fo-heat.l3 { border-color: var(--fo-line-2); font-weight: 500; }
+.fo-heat.l1 svg, .fo-heat.l2 svg, .fo-heat.l3 svg { color: var(--fo-ink); }
+.fo-heat em { font-style: normal; font: var(--fo-caption); color: var(--fo-ink-2); }
+.fo-heatrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; }
 
-/* ---------- hero: one number that matters, its unit, a line under it, a bar ---------- */
-.fo-hero { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: .5rem 2rem; padding: 1.5rem 1.75rem; border-radius: var(--fo-r-tile); background: var(--fo-surface-2); }
-.fo-hero__big { font: var(--fo-display); font-size: 6rem; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
-.fo-hero__big small { font: 300 2.25rem/1 var(--fo-font); color: var(--fo-ink-2); margin-left: .25rem; }
-.fo-hero__meta { min-width: 0; display: flex; flex-direction: column; gap: .25rem; }
+/* ---------- hero: the number, a colored line under it, a thin bar; no box ---------- */
+.fo-hero { display: grid; grid-template-columns: auto 1fr; align-items: end; gap: .25rem 1.5rem; padding: .25rem 0 .5rem; }
+.fo-hero__big { font: var(--fo-display); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.fo-hero__big small { font: 300 1.75rem/1 var(--fo-font); color: var(--fo-ink-2); margin-left: .25rem; }
+.fo-hero__meta { min-width: 0; display: flex; flex-direction: column; gap: .25rem; padding-bottom: .375rem; }
 .fo-hero__meta b { font: var(--fo-heading); }
 .fo-hero__meta span { font: var(--fo-caption); color: var(--fo-ink-2); }
-.fo-hero__meta span.ok { color: var(--fo-ok); font-weight: 600; } .fo-hero__meta span.warn { color: var(--fo-warn); font-weight: 600; }
-.fo-hero__bar { grid-column: 1 / -1; position: relative; height: 1rem; border-radius: .5rem; background: var(--fo-surface-3); overflow: visible; }
-.fo-hero__bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: .5rem; background: var(--fo-ok); }
-.fo-hero__bar em { position: absolute; top: -.5rem; bottom: -.5rem; width: .25rem; margin-left: -.125rem; border-radius: .125rem; background: var(--fo-ink); }
-.fo-hero__bar em::after { content: attr(data-label); position: absolute; top: -1.75rem; left: 50%; transform: translateX(-50%); font: var(--fo-overline); color: var(--fo-ink-2); white-space: nowrap; }
-.fo-hero.compact { grid-template-columns: auto 1fr auto; }
-.fo-hero.compact .fo-hero__big { font-size: 4rem; }
+.fo-hero__meta span.ok { color: var(--fo-ok); } .fo-hero__meta span.warn { color: var(--fo-warn); }
+.fo-hero__bar { grid-column: 1 / -1; position: relative; height: .375rem; margin-top: 1.5rem; border-radius: .1875rem; background: var(--fo-line); }
+.fo-hero__bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: .1875rem; background: var(--fo-ok); }
+.fo-hero__bar em { position: absolute; top: -.375rem; bottom: -.375rem; width: .125rem; margin-left: -.0625rem; background: var(--fo-ink); }
+.fo-hero__bar em::after { content: attr(data-label); position: absolute; top: -1.625rem; left: 50%; transform: translateX(-50%); font: var(--fo-caption); color: var(--fo-ink-2); white-space: nowrap; }
+.fo-hero.inline { grid-template-columns: auto 1fr auto; align-items: center; }
+.fo-hero.inline .fo-icon { width: 2.5rem; height: 2.5rem; color: var(--fo-ink); }
 
-/* ---------- hold buttons: windows, liftgate, seat jog ---------- */
+/* ---------- hold buttons ---------- */
 .fo-hold { display: flex; gap: .5rem; align-items: center; }
-.fo-hold > button { height: var(--fo-hit); min-width: 7rem; padding: 0 1.5rem; border-radius: var(--fo-r-control); background: var(--fo-surface-3); color: var(--fo-ink); font: var(--fo-label);
-  display: inline-flex; align-items: center; justify-content: center; gap: .5rem; touch-action: none; transition: background var(--fo-t-press), color var(--fo-t-press); }
-.fo-hold > button:active, .fo-hold > button.held { background: var(--fo-accent); color: var(--fo-accent-ink); }
-.fo-hold > button .fo-icon { width: 1.75rem; height: 1.75rem; }
+.fo-hold > button { height: var(--fo-hit); min-width: 7rem; padding: 0 1.5rem; background: var(--fo-cell); border: .0625rem solid var(--fo-line); border-radius: var(--fo-r); color: var(--fo-ink); font: var(--fo-label); letter-spacing: var(--fo-track);
+  display: inline-flex; align-items: center; justify-content: center; gap: .625rem; touch-action: none; transition: background var(--fo-t-press), color var(--fo-t-press), border-color var(--fo-t-press); }
+.fo-hold > button .fo-icon { width: 1.5rem; height: 1.5rem; }
+.fo-hold > button:active, .fo-hold > button.held { background: var(--fo-accent); border-color: var(--fo-accent); color: var(--fo-accent-ink); }
+.fo-hold > button:active .fo-icon, .fo-hold > button.held .fo-icon { color: inherit; }
 .fo-hold > button.square { min-width: var(--fo-hit); padding: 0; }
-/* a position bar: how far a thing is open */
-.fo-posbar { position: relative; flex: 1; height: .75rem; border-radius: .375rem; background: var(--fo-surface-3); }
-.fo-posbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: .375rem; background: var(--fo-accent); }
+.fo-hold .fo-row__val { margin-left: auto; }
 
-/* ---------- window map: eight openings as tappable bars in the car's plan ---------- */
-.fo-winmap { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(4, auto); gap: .5rem 6rem; padding: 1rem 1.5rem; border-radius: var(--fo-r-tile); background: var(--fo-surface-2); position: relative; }
-.fo-winmap::before { content: ""; position: absolute; left: 50%; top: 1rem; bottom: 1rem; width: 4.5rem; transform: translateX(-50%); border-radius: 2rem 2rem 1.5rem 1.5rem; background: var(--fo-surface-3); }
-.fo-win { display: flex; align-items: center; gap: .75rem; height: var(--fo-hit); padding: 0 .75rem; border-radius: var(--fo-r-control); color: var(--fo-ink-2); font: var(--fo-caption); font-weight: 600; text-align: left; }
-.fo-win:active { background: var(--fo-surface-3); }
-.fo-win .fo-posbar { height: 1.25rem; border-radius: .375rem; background: var(--fo-surface-3); }
-.fo-win .fo-posbar i { border-radius: .375rem; }
-.fo-win.r { flex-direction: row-reverse; text-align: right; }
-.fo-win.r .fo-posbar i { left: auto; right: 0; }
-.fo-win b { min-width: 5.5rem; color: var(--fo-ink); font: var(--fo-label); }
-.fo-win small { min-width: 3.5rem; font-variant-numeric: tabular-nums; }
-.fo-win.r small { text-align: left; } .fo-win:not(.r) small { text-align: right; }
-.fo-winmap .mid { grid-column: 1 / -1; justify-self: center; z-index: 1; }
+/* ---------- windows: eight cells laid out like the car's plan ---------- */
+.fo-wins { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; }
+.fo-win { position: relative; min-height: 5.5rem; padding: .875rem 1rem 1rem; background: var(--fo-cell); border: .0625rem solid var(--fo-line); border-radius: var(--fo-r); text-align: left; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: space-between; gap: .25rem; color: var(--fo-ink); }
+.fo-win:active { background: var(--fo-cell-2); }
+.fo-win small { font: var(--fo-caption); color: var(--fo-ink-2); }
+.fo-win b { font: var(--fo-label); font-variant-numeric: tabular-nums; }
+.fo-win.open { border-color: var(--fo-line-2); } .fo-win.open b { color: var(--fo-accent); font-weight: 500; }
+.fo-win i { position: absolute; left: 0; bottom: 0; height: .1875rem; background: var(--fo-accent); }
 
-/* ---------- modes: three cards, each in its color ---------- */
-.fo-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; }
-.fo-mode { min-height: var(--fo-tile); padding: 1.25rem 1.25rem 1rem; border-radius: var(--fo-r-tile); background: var(--fo-surface-2); text-align: left;
-  display: flex; flex-direction: column; justify-content: flex-end; gap: .25rem; box-shadow: inset 0 0 0 0 var(--mode); transition: box-shadow var(--fo-t-state), background var(--fo-t-state); }
-.fo-mode b { font: var(--fo-heading); }
-.fo-mode small { font: var(--fo-caption); color: var(--fo-ink-2); }
-.fo-mode i { width: 1.25rem; height: 1.25rem; border-radius: 50%; background: var(--mode); margin-bottom: auto; opacity: .5; }
-.fo-mode.on { box-shadow: inset 0 0 0 .1875rem var(--mode); background: color-mix(in srgb, var(--mode) 12%, var(--fo-surface-2)); }
-.fo-mode.on b { color: var(--mode); } .fo-mode.on i { opacity: 1; }
-
-/* ---------- equalizer: vertical sliders ---------- */
-.fo-eq { display: grid; grid-template-columns: repeat(5, 1fr); gap: .75rem; padding: 1.25rem 1rem 1rem; border-radius: var(--fo-r-tile); background: var(--fo-surface-2); }
-.fo-band { display: flex; flex-direction: column; align-items: center; gap: .75rem; }
-.fo-band__rail { position: relative; width: 1rem; height: 14rem; border-radius: .5rem; background: var(--fo-surface-3); }
-.fo-band__rail::before { content: ""; position: absolute; left: -.5rem; right: -.5rem; top: 50%; height: .125rem; background: var(--fo-ink-3); }
-.fo-band__rail i { position: absolute; left: 0; right: 0; border-radius: .5rem; background: var(--fo-accent); }
-.fo-band__rail em { position: absolute; left: 50%; width: 3rem; height: 3rem; margin: -1.5rem 0 0 -1.5rem; border-radius: 50%; background: #fff; box-shadow: 0 .125rem .5rem rgba(0, 0, 0, .35); }
-.fo-band b { font: var(--fo-label); color: var(--fo-accent); font-variant-numeric: tabular-nums; }
+/* ---------- equalizer ---------- */
+.fo-eq { display: grid; grid-template-columns: repeat(5, 1fr); gap: .5rem; padding: .5rem 0 0; }
+.fo-band { display: flex; flex-direction: column; align-items: center; gap: .625rem; }
+.fo-band__rail { position: relative; width: .25rem; height: 12rem; border-radius: .125rem; background: var(--fo-line); }
+.fo-band__rail::before { content: ""; position: absolute; left: -.5rem; right: -.5rem; top: 50%; height: .0625rem; background: var(--fo-ink-3); }
+.fo-band__rail i { position: absolute; left: 0; right: 0; border-radius: .125rem; background: var(--fo-ink-2); }
+.fo-band__rail em { position: absolute; left: 50%; width: 2.25rem; height: 2.25rem; margin: -1.125rem 0 0 -1.125rem; border-radius: 50%; background: var(--fo-cell); border: .0625rem solid var(--fo-line); box-shadow: 0 .0625rem .25rem rgba(0, 0, 0, .14); }
+.fo-band b { font: var(--fo-label); font-variant-numeric: tabular-nums; }
 .fo-band small { font: var(--fo-caption); color: var(--fo-ink-2); }
 
-/* ---------- seat adjuster: the seat seen from the side, the jog pairs around it ---------- */
-.fo-seatpos { display: grid; grid-template-columns: auto 1fr; gap: 1rem 1.5rem; align-items: center; padding: 1rem 1.25rem; border-radius: var(--fo-r-tile); background: var(--fo-surface-2); }
+/* ---------- seat adjuster ---------- */
+.fo-seatpos { display: grid; grid-template-columns: auto 1fr; gap: 1rem 1.5rem; align-items: center; padding: 1rem 1.25rem; background: var(--fo-cell); border: .0625rem solid var(--fo-line); border-radius: var(--fo-r); }
 .fo-seatpos svg { width: 9rem; height: 6.5rem; overflow: visible; }
-.fo-seatpos svg .seat { fill: var(--fo-accent-soft); stroke: var(--fo-accent); stroke-width: 2; }
-.fo-seatpos svg .rail { fill: var(--fo-surface-3); }
-.fo-jogs { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem .75rem; }
-.fo-jog { display: flex; align-items: center; gap: .375rem; }
-.fo-jog small { flex: 1; font: var(--fo-caption); font-weight: 600; color: var(--fo-ink-2); }
-.fo-jog button { width: 3.5rem; height: 3.25rem; border-radius: .75rem; background: var(--fo-surface-3); color: var(--fo-ink); font-size: 1.25rem; touch-action: none; }
+.fo-seatpos svg .seat { fill: none; stroke: var(--fo-ink); stroke-width: 1.75; }
+.fo-seatpos svg .rail { fill: var(--fo-line); }
+.fo-seatpos.compact .fo-jogs { grid-template-columns: 1fr; }
+.fo-seatpos.compact svg { width: 7rem; height: 5rem; }
+.fo-jogs { display: grid; grid-template-columns: 1fr 1fr; gap: .375rem .75rem; }
+.fo-jog { display: flex; align-items: center; gap: .25rem; }
+.fo-jog small { flex: 1; font: var(--fo-caption); color: var(--fo-ink-2); }
+.fo-jog button { width: 3.25rem; height: 3rem; border-radius: calc(var(--fo-r) - .125rem); background: var(--fo-cell-2); color: var(--fo-ink); font-size: 1.125rem; touch-action: none; }
 .fo-jog button:active { background: var(--fo-accent); color: var(--fo-accent-ink); }
 
 /* ---------- buttons ---------- */
-.fo-btn { height: var(--fo-hit); padding: 0 2rem; border-radius: var(--fo-r-control); background: var(--fo-surface-2); color: var(--fo-ink); font: var(--fo-label);
+.fo-btn { height: var(--fo-hit); padding: 0 2rem; background: var(--fo-cell); border: .0625rem solid var(--fo-line); border-radius: var(--fo-r); color: var(--fo-ink); font: var(--fo-label); letter-spacing: var(--fo-track);
   display: inline-flex; align-items: center; justify-content: center; gap: .625rem; transition: background var(--fo-t-state); }
-.fo-btn:active { background: var(--fo-surface-3); }
-.fo-btn.primary { background: var(--fo-accent); color: var(--fo-accent-ink); }
+.fo-btn:active { background: var(--fo-cell-2); }
+.fo-btn.primary { background: var(--fo-accent); border-color: var(--fo-accent); color: var(--fo-accent-ink); font-weight: 500; }
+.fo-btn.primary .fo-icon { color: inherit; }
 .fo-btn.danger { color: var(--fo-bad); }
 .fo-btn.block { width: 100%; }
-.fo-btn .fo-icon { width: 1.75rem; height: 1.75rem; }
-.fo-btns { display: flex; gap: .75rem; flex-wrap: wrap; }
+.fo-btn .fo-icon { width: 1.5rem; height: 1.5rem; }
+.fo-btns { display: flex; gap: .5rem; flex-wrap: wrap; }
 .fo-btns > .fo-btn { flex: 1 1 0; }
 
-/* ---------- dock: the categories, bottom of the screen ---------- */
-.fo-dock { display: flex; align-items: center; gap: .25rem; height: var(--fo-dock); padding: .5rem .5rem .5rem 0; border-radius: 2rem; background: var(--fo-surface); box-shadow: var(--fo-shadow); }
-.fo-dock__items { flex: 1; display: flex; gap: .125rem; overflow-x: auto; scrollbar-width: none; }
+/* ---------- dock: a flat bar at the bottom, like Tesla's taskbar ---------- */
+.fo-dock { display: flex; align-items: center; gap: .25rem; height: var(--fo-dock); padding: 0 .75rem 0 .5rem; background: var(--fo-ground); border-top: .0625rem solid var(--fo-line); }
+.fo-dock__items { flex: 1; display: flex; overflow-x: auto; scrollbar-width: none; }
 .fo-dock__items::-webkit-scrollbar { display: none; }
-.fo-dock__item { flex: 1 0 6rem; min-width: 6rem; height: 6rem; border-radius: 1.25rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .375rem;
-  color: var(--fo-ink-2); font: var(--fo-caption); font-weight: 600; white-space: nowrap; transition: background var(--fo-t-state), color var(--fo-t-state); }
-.fo-dock__item .fo-icon { width: var(--fo-icon-dock); height: var(--fo-icon-dock); }
-.fo-dock__item.on { background: var(--fo-accent-soft); color: var(--fo-accent); }
-.fo-dock__sep { flex: none; width: .0625rem; align-self: stretch; margin: 1rem .25rem; background: var(--fo-line); }
-.fo-dock__state { flex: none; writing-mode: vertical-rl; transform: rotate(180deg); font: var(--fo-overline); font-size: .875rem; letter-spacing: .14em; text-transform: uppercase; color: var(--fo-ink-3); padding: 0 .5rem; }
+.fo-dock__item { flex: 1 0 5rem; min-width: 5rem; height: 6rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .5rem;
+  color: var(--fo-ink-2); font: 400 .875rem/1 var(--fo-font); letter-spacing: var(--fo-track); white-space: nowrap; transition: color var(--fo-t-state); }
+.fo-dock__item > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.fo-dock__item .fo-icon { color: inherit; }
+.fo-dock__item.on { color: var(--fo-ink); }
+.fo-dock__item.on .fo-icon { color: var(--fo-accent); }
+.fo-dock__sep { flex: none; width: .0625rem; height: 2.5rem; margin: 0 .5rem; background: var(--fo-line); }
+.fo-dock__state { flex: none; writing-mode: vertical-rl; transform: rotate(180deg); font: 500 .75rem/1 var(--fo-font); letter-spacing: .14em; text-transform: uppercase; color: var(--fo-ink-3); padding: 0 .25rem; }
 .fo-dock__state.ok { color: var(--fo-ok); }
 
-/* ---------- on the car: chips and badges pinned to parts (leader lines come from carcontrols.js) ---------- */
-.fo-chip { display: inline-flex; align-items: center; gap: .625rem; height: 3.5rem; padding: 0 1.25rem 0 .875rem; border-radius: var(--fo-r-pill); background: var(--fo-surface); color: var(--fo-ink);
-  box-shadow: var(--fo-shadow); font: var(--fo-label); white-space: nowrap; transition: background var(--fo-t-state), color var(--fo-t-state); }
-.fo-chip .fo-icon { width: 1.75rem; height: 1.75rem; color: var(--fo-accent); }
-.fo-chip.on { background: var(--fo-accent); color: var(--fo-accent-ink); } .fo-chip.on .fo-icon { color: inherit; }
-.fo-chip.badge { width: 3.5rem; padding: 0; justify-content: center; }
-.fo-chip.pair { gap: .25rem; padding: 0 .375rem; }
-.fo-chip.pair > button { width: 2.75rem; height: 2.75rem; border-radius: 50%; background: var(--fo-surface-2); color: var(--fo-accent); display: inline-flex; align-items: center; justify-content: center; }
-.fo-chip.pair > button.on { background: var(--fo-accent); color: var(--fo-accent-ink); }
-.fo-chip.pair > button .fo-icon { width: 1.5rem; height: 1.5rem; color: inherit; }
-.fo-chip.meter { padding-right: .875rem; } .fo-chip.meter .fo-posbar { width: 4rem; }
+/* ---------- on the car: chips and badges (leader lines come from carcontrols.js) ---------- */
+/* Tesla's "Open Trunk" callouts are text on a thin line. Over a moving 3D view the text needs a ground: a dark translucent cell, square-ish, no shadow. */
+.fo-chip { display: inline-flex; align-items: center; gap: .625rem; height: 3.25rem; padding: 0 1rem 0 .75rem; border-radius: var(--fo-r); background: var(--fo-on-stage); color: var(--fo-on-stage-ink);
+  font: var(--fo-label); letter-spacing: var(--fo-track); white-space: nowrap; transition: background var(--fo-t-state), color var(--fo-t-state); }
+.fo-chip .fo-icon { width: 1.5rem; height: 1.5rem; color: var(--fo-on-stage-ink); opacity: .85; }
+.fo-chip.on .fo-icon { color: var(--fo-accent); opacity: 1; }
+.fo-chip.badge { width: 3.25rem; padding: 0; justify-content: center; }
+.fo-chip.pair { gap: 0; padding: 0; }
+.fo-chip.pair > button { width: 3.25rem; height: 3.25rem; display: inline-flex; align-items: center; justify-content: center; color: var(--fo-on-stage-ink); }
+.fo-chip.pair > button + button { border-left: .0625rem solid rgba(255, 255, 255, .14); }
+.fo-chip.pair > button.on .fo-icon { color: var(--fo-accent); opacity: 1; }
+.fo-chip.text { background: none; padding: 0; height: auto; font: var(--fo-caption); }   /* a plain label on a line, Tesla's way, where the ground is calm */
 
 /* ---------- toast ---------- */
-.fo-toast { display: inline-flex; align-items: center; gap: .75rem; padding: 1rem 1.5rem; border-radius: var(--fo-r-control); background: var(--fo-ink); color: var(--fo-surface); font: var(--fo-label); font-weight: 500; box-shadow: var(--fo-shadow); }
-.fo-toast .fo-icon { width: 1.75rem; height: 1.75rem; }
+.fo-toast { display: inline-flex; align-items: center; gap: .75rem; padding: .875rem 1.25rem; border-radius: var(--fo-r); background: var(--fo-on-stage); color: var(--fo-on-stage-ink); font: var(--fo-label); }
+.fo-toast .fo-icon { width: 1.5rem; height: 1.5rem; color: inherit; }
 
-/* ---------- motion ---------- */
 @media (prefers-reduced-motion: reduce) { .fo *, .fo *::after { transition: none !important; animation: none !important; } }
+
+/* ---------- on the car: a drag control on a window, the sunroof or the liftgate (carcontrols.js winCtl) ---------- */
+/* a knob between two arrows; down opens a window (up opens the liftgate), an arrow lights while there is travel that way */
+.fo-winctl { display: flex; flex-direction: column; align-items: center; gap: 0; filter: drop-shadow(0 .0625rem .25rem rgba(0, 0, 0, .45)); }
+.fo-winctl__arrow { width: 3.5rem; height: 2.25rem; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, .35); transition: color var(--fo-t-state); }
+.fo-winctl__arrow .fo-icon { width: 1.75rem; height: 1.75rem; color: inherit; }
+.fo-winctl__arrow.lit { color: #ffffff; }
+.fo-winctl__knob { width: 3.5rem; height: 3.5rem; border-radius: 50%; background: var(--fo-on-stage); border: .0625rem solid rgba(255, 255, 255, .4);
+  display: flex; align-items: center; justify-content: center; touch-action: none; cursor: grab; transition: background var(--fo-t-state), border-color var(--fo-t-state); }
+.fo-winctl__knob .fo-icon { width: 1.5rem; height: 1.5rem; color: #ffffff; opacity: .85; }
+.fo-winctl.on .fo-winctl__knob { border-color: var(--fo-accent); }
+.fo-winctl.on .fo-winctl__knob .fo-icon { color: var(--fo-accent); opacity: 1; }
+.fo-winctl.drag .fo-winctl__knob { background: var(--fo-accent); border-color: var(--fo-accent); cursor: grabbing; }
+.fo-winctl.drag .fo-winctl__knob .fo-icon { color: #ffffff; opacity: 1; }
+
+/* ---------- climate bar: Tesla's row of borderless buttons under the set temperatures ---------- */
+.fo-cbar { display: flex; align-items: center; justify-content: space-between; gap: .25rem; padding: .25rem 0 .5rem; }
+.fo-cbtn { width: 4.5rem; height: 4.5rem; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--fo-r); color: var(--fo-ink-2); transition: color var(--fo-t-state), background var(--fo-t-press); }
+.fo-cbtn .fo-icon { width: 2.25rem; height: 2.25rem; color: inherit; }
+.fo-cbtn:active { background: var(--fo-cell-2); }
+.fo-cbtn.on { color: var(--fo-accent); }
+.fo-cbtn.heat.on { color: var(--fo-heat); }
+.fo-cbtn.off { color: var(--fo-ink-3); }
+.fo-fan { display: inline-flex; align-items: center; gap: 0; color: var(--fo-ink-2); }
+.fo-fan > .fo-icon { width: 1.75rem; height: 1.75rem; color: inherit; margin-right: .375rem; }
+.fo-fan b { min-width: 2rem; text-align: center; font: var(--fo-label); font-weight: 500; color: var(--fo-ink); font-variant-numeric: tabular-nums; }
+.fo-fan.on { color: var(--fo-accent); }
+.fo-heat.bar { min-height: 0; width: 4.5rem; height: 4.5rem; padding: 0; border: 0; background: none; }
+.fo-heat.bar svg { width: 2.25rem; height: 2.25rem; }
+.fo-heat.bar em { display: none; }
+.fo-heat.inline { flex-direction: row; gap: .5rem; min-height: 4rem; padding: 0 .75rem; border: 0; background: none; }
+.fo-heat.inline svg { width: 2.25rem; height: 2.25rem; }
+.fo-heat.inline em { font: var(--fo-body); color: var(--fo-ink-2); min-width: 2.25rem; text-align: right; }
+.fo-heat.l0.inline em { color: var(--fo-ink-3); }
+
+/* ---------- small things the sheet uses ---------- */
+.fo-note { margin: 0; font: var(--fo-caption); color: var(--fo-ink-2); }
+.fo-status-line { margin: .25rem 0 0; font: var(--fo-body); color: var(--fo-ink-2); }
+.fo-status-line b { color: var(--fo-ink); font-weight: 400; }
+.fo-status-line.ok { color: var(--fo-ok); }
+.fo-row.tap { cursor: pointer; }
+.fo-row__sub.ok { color: var(--fo-ok); }
+.fo-seatpic svg { width: 9rem; height: 6.5rem; display: block; overflow: visible; }
+.fo-seatpic .seat rect { fill: none; stroke: var(--fo-ink); stroke-width: 1.75; }
+.fo-seatpic .rail { fill: var(--fo-line); }
+.fo-jog button.held { background: var(--fo-accent); color: var(--fo-accent-ink); }
+.fo-hero.apa .pmark { width: 3rem; height: 3rem; border-radius: var(--fo-r); background: var(--fo-accent); color: var(--fo-accent-ink); display: flex; align-items: center; justify-content: center; font: var(--fo-heading); font-weight: 500; }
+.fo-hero.apa .fo-hero__meta span { display: block; }
+.fo-dock__state.warn { color: var(--fo-warn); }
+
+/* ---------- HVAC: Tesla's climate screen (carcontrols.js hvac()) ---------- */
+/* Three rows of borderless buttons on a 12-column grid, so every button keeps its place whatever is on.
+   An active glyph is blue (red for heat); nothing has a border or a fill. */
+.fo-hvac { display: grid; grid-template-columns: repeat(12, 1fr); align-items: center; height: 5.5rem; }
+.fo-hvac > * { justify-self: center; }
+.fo-hvac .fo-cbtn, .fo-hvac .fo-heat.bar { width: 5rem; height: 5rem; }
+.fo-hvac .fo-cbtn .fo-icon { width: 2.5rem; height: 2.5rem; }
+.fo-hvac .fo-heat.bar svg { width: 2.5rem; height: 2.5rem; }
+/* a button with a word under its glyph (Auto, A/C, Schedule) */
+.fo-cbtn.worded { flex-direction: column; gap: .25rem; font: var(--fo-caption); letter-spacing: var(--fo-track); }
+.fo-cbtn.worded .fo-icon { width: 2rem; height: 2rem; }
+/* the vents: three toggles side by side, Front / Rear under them */
+.fo-vents { display: flex; flex-direction: column; align-items: center; gap: 0; }
+.fo-vents > div { display: flex; }
+.fo-vents .fo-cbtn { width: 4.5rem; height: 3.75rem; }
+/* Off / Keep / Pet as plain words, the chosen one dark (Tesla's), with Front / Rear under them */
+.fo-words { display: flex; justify-content: center; gap: .25rem; }
+.fo-words > button { height: 2.75rem; padding: 0 1rem; border-radius: var(--fo-r); font: var(--fo-label); letter-spacing: var(--fo-track); color: var(--fo-ink-2); transition: color var(--fo-t-state), background var(--fo-t-state); }
+.fo-words > button.on { color: var(--fo-ink); background: var(--fo-cell-2); }
+.fo-words.small > button { height: 2.25rem; padding: 0 .875rem; font: var(--fo-caption); }
+.fo-words.small > button.on { background: none; color: var(--fo-ink); font-weight: 500; }
+.fo-words.off > button { color: var(--fo-ink-3); }
+/* the fan between its arrows: LO · 2..6 · HI, as Tesla labels it */
+.fo-hvac .fo-fan { gap: .25rem; }
+.fo-hvac .fo-fan b { min-width: 3rem; font: var(--fo-body); }
+/* row 3: the set temperatures as the taskbar shows them, the number light and large, Sync between */
+.fo-hvac.temps { height: 6rem; }
+.fo-hvac .fo-temp__ctl b { min-width: 6rem; font-size: 3.5rem; }
+.fo-hvac .fo-temp__ctl b sup { font-size: 1.375rem; }
+.fo-hvac .fo-temp__ctl .fo-ib .fo-icon { width: 1.5rem; height: 1.5rem; }
+.fo-hvac .fo-temp.synced b { color: var(--fo-ink-2); }
+.fo-hvac .fo-cbtn.off, .fo-hvac .fo-heat.off { color: var(--fo-ink-3); }

@@ -240,32 +240,82 @@ branching off it (offset along, angle, class, name). The match is which road and
 never which lane. On the recorded drives it agreed with mapd's road name 90-100% of the time
 (`tools/map_eval.mjs`).
 
-Drawing it (`static/js/mapsurface.js`, `ground.js`, *Display → Map road*): the map is the road's only
-geometry; nothing of the cameras' lane shape is mixed into it (blending the two produced fans and kinks
-wherever they disagreed). The pose places the car on it: its heading and position bring the horizon into
-the car frame, and the lane model refines the placement sideways, sliding the whole map line so it passes
-through the ego lane's center at the car and turning it by the small angle between the map's direction and
-the lanes' (clamped to 4 deg, smoothed over a second). The ground field takes that polyline as its
-reference instead of the single arc, and the lane lines are parallel offsets of it at the distances the
-cameras measure at the car, so the road keeps the map's bends and goes on to the horizon with the car in
-its lane on it. With no lanes from the cameras the map alone shows the carriageway, as wide as its lane
-count says, with the lane structure it implies (a two-way road's centerline, lane boundaries, edges), and
-on a two-way road the placement leans on "we drive in the right half" rather than the meter-level GPS
-lateral, moving slowly. Junctions are drawn as a map draws them (`mapsurface.js` `junctions`): each road
-leaving or joining ours is a strip of ground in its own width for its first 60 m whose edges curve into
-ours with fillets (tight at a street corner, a long taper at a ramp's gore), our edge line opens across the
-mouth between the fillets, our lane dashes stop inside a crossing with arms on both sides, and the arm gets
-its own centerline or lane boundaries past the mouth. One-way roads that end at a node on our road (on-ramps,
-merging lanes) are included as arms too. The road we're on is named at the bottom center of the screen
-(the match's name and ref, else mapd's road name). At a junction the horizon takes
-a continuation only if it turns less than 55 deg (any turn short of a U-turn when it keeps the name or ref,
-or is the only way on, i.e. a bend OSM split into two ways; drops down the road hierarchy penalized) and
-stops where the road would double back, so a wrong guess at a turn is a road that ends rather than one that
-loops; where the road itself ends the field fades within 12 m. A way the current one leads into takes
-over only when the current one ends within 6 m; any other way must win clearly for 8 snapshots, so a
-ramp running beside the road doesn't pull the horizon onto itself. The head unit's ADASIS horizon
-(`ICC_0x361`, `0x250`, `0x251`, `0x255`) is the same idea from the car's own navigation and serves as the
-cross-check.
+Drawing it (`static/js/mapsurface.js`, `ground.js`, `scene.js` `_road`; *Display → Map road*): two separate
+road sources, never blended. The cameras' road model (`road.js`, the single arc from the lane lines) always
+runs and is what the view draws when there is no map: no tiles, no match, the toggle off. Once the matcher
+has had the road under us for half a second the view switches to the map's road and stays on it until the
+match has been gone for two seconds (the last good match carries it through a short coast). The map is
+then the road's only geometry: its centerline polyline is the ground field's reference instead of the arc,
+with the carriageway as wide as the lane count says, and the lane lines are the map road's own structure
+(edges, a two-way road's centerline, lane boundaries) as parallel offsets of it, opened at the junctions
+along it. What the cameras add is *which lane* the car is drawn in: the map has no lanes and the GPS and
+the OSM centerline are both meter-level, so the car is placed in a lane of the map's road (counted from the
+right) and the whole map slides sideways -- with a 1.5 s time constant, never faster than 0.4 m/s -- so
+that lane's center passes where the cameras see the ego lane's center at the car (lanes 3.6 m wide, the
+map's, since the network's lines are drawn with that). A lane change moves the lane index, not the map. Without lanes
+seen the car keeps the lane it had (or starts in the right lane); only a GPS that insists for five seconds
+that we are 0.8 lane widths over moves the drawn lane by one. The lanes may also turn the map about the
+car by at most 2 deg (3 s time constant). The two structure lines bounding the drawn lane are the ego
+lane's: they take the HMI's blue and red like the cameras' lines did. Junctions are drawn as a map draws
+them (`mapsurface.js` `junctions`): each road leaving or joining ours is a strip of ground in its own
+width for its first 60 m whose edges curve into ours with fillets (tight at a street corner, a long taper
+at a ramp's gore), our edge line opens across the mouth between the fillets, our lane dashes stop inside a
+crossing with arms on both sides, and the arm gets its own centerline or lane boundaries past the mouth.
+One-way roads that end at a node on our road (on-ramps, merging lanes) are included as arms too.
+
+Under all of it lies the map itself: every road within 320 m of the car (`roadnet.js`, from the snapshot's
+`map.roads`, rebuilt by the worker once the car has moved 40 m) as ground-fixed strips in their own widths
+with edges, centerlines and lane boundaries. This is the one source of lane lines for every road, the one
+we're on included (so nothing toggles when the match or the horizon moves from one way to the next); the
+field only highlights the drawn lane's two lines in the HMI's blue or red on top of them, and draws the
+junction fillets. Lines open where roads meet: an edge between the fillets' tangent points (the geometry the
+fillets are drawn with, so they meet), the inner lines across the other road's width; a way that simply
+goes on into the next (the same road split, a shallow end-to-end bend) opens nothing. The map's layers sit
+under a group (`scene.js` `_alignMap`) that takes the same
+slide and turn the lane placement gives the road we're on, so the whole map moves as one with it. And what
+stands along the roads (`mapfeatures.js`, from the layer's `features`): the road tiles hold no point
+features, so the server fetches them from the Overpass API once per 0.05 deg cell (`GET
+/map/features/<klat>/<klon>`, `maptiles.py` `MapFeatures` / `MapFeatures.kt`, kept under
+`<media>/osm/features/`; a busy Overpass is retried, a cell that fails is asked for again later) and the
+worker keeps the ones that sit on a node of a road it knows (state.js `_features`), each with the road
+directions arriving at it. A traffic signal gets a head over the right lane of each arriving direction,
+facing it, with a stop line; the head ahead on our own road takes the camera's light state (`fisker.tlr`),
+so the map says where the light is and the camera what it shows, and the camera's own floating light is
+not drawn then. Stop and give-way signs stand at the right edge of their road 4 m before the node, facing
+the traffic they hold (OSM's `direction`, a stop at a way's end holds the traffic reaching it, one on an
+intersection node the minor roads unless `stop=all`), with a stop line; marked pedestrian crossings are
+striped across the road; level crossings get a crossbuck and a line; traffic calming three stripes; a
+mini-roundabout its ring. Speed limits are left to the camera's read of the real sign (the map's are often
+stale, and two signs for one limit confuse). So the car is placed on the map, and
+the roads around it and what stands along them are there whether or not the matcher has an opinion about
+them.
+
+Nothing of the map is ever dropped from disk, and it is fetched ahead: as the car moves, the worker asks its
+server to download everything within *Display → Map download* (default 25 km; `POST /map/prefetch {lat, lon,
+radius_km}`, every 3 km or 2 min), and the server (`maptiles.py` `MapPrefetch` / `MapPrefetch.kt`) works
+through the 0.25 deg tiles within that radius nearest first, in one background thread: the road tile's 2 x 2
+deg cell if it isn't on disk, then the tile's features in one Overpass request (a tile at a time, split into
+the 0.05 deg cells the page reads; ~0.5 MB and a few seconds for a town, with a pause between requests). `GET
+/map/status` says how far it has got, and the settings panel shows it. A later drive through the area needs
+no network at all. The road we're on is named at the bottom center of the screen (the match's name and ref,
+else mapd's road name). At a junction the horizon takes a continuation only if it turns less than 55 deg (any turn short of
+a U-turn when it keeps the name or ref, or is the only way on, i.e. a bend OSM split into two ways; drops
+down the road hierarchy penalized) and stops where the road would double back, so a wrong guess at a turn
+is a road that ends rather than one that loops; where the road itself ends the field fades within 12 m. A
+way the current one leads into takes over only when the current one ends within 6 m; any other way must
+win clearly for 8 snapshots, so a ramp running beside the road doesn't pull the horizon onto itself. The
+head unit's ADASIS horizon (`ICC_0x361`, `0x250`, `0x251`, `0x255`) is the same idea from the car's own
+navigation and serves as the cross-check.
+
+The pose the map is placed by is the *shown* pose (`pose.js` `SHOW_*`; the snapshot's `pose.x/y/h`, with the
+estimate itself in `pose.est` and the difference in `pose.offset`): the same odometry, so the car's own
+motion is exact and immediate, but the GPS and heading corrections reach it with a 2 s time constant and
+never faster than 0.05 + 0.02 |v| m/s sideways, 0.1 + 0.05 |v| m/s along, 1.5 deg/s in heading. The ground
+never steps under the car; a lane line never jumps with a fix. Only the first fix, the first heading, and a
+disagreement past 10 m or 15 deg (a restart on persistent outliers) move it outright (`pose.snaps` counts
+those). The matcher still uses the estimate. On the recorded drives the shown pose trailed the estimate
+sideways by 0.1-0.8 m typically and up to 3.5 m briefly after a correction; since the lane placement
+absorbs sideways error, that shows as the map gliding under the car, not as the car off its lane.
 
 Loading: static files carry an `ETag`/`Last-Modified`, and the server answers a current copy with
 `304`. In a browser the page's service worker (`static/sw.js`) keeps the car model, three.js and the
@@ -328,6 +378,15 @@ the status card show it.
 The menus follow the Ocean user guide where it shows them. Lighting, locking, windows and driver
 assistance use the option values the head unit sends on CAN (`carcatalog.js` names each list's DBC signal); the rest are
 plausible values for a mockup.
+
+**Design language.** `DESIGN.md` defines the look of the car controls on the Ocean's portrait 1080 × 1920
+screen, with Tesla's in-car interface as the reference: a flat ground, hairline cells, small radii, regular
+type and almost no color; a sheet with three heights over the 3D car and a flat dock of categories; the
+car showing the state (windows, doors, the pack filling with charge) with drag controls pinned to its parts;
+Tesla's climate bar; and a power bar on the status card. `static/design.css` holds the tokens and components
+(in rem against a 1080-wide frame, so one layout serves the Pulse display, the AVD and a browser) and
+`/design.html` on the server renders them, day and night. The HUD uses them: `carcontrols.js` builds the
+sheet, the dock and the on-car controls from them.
 
 The model's roof, sunroof, seats (cushion and back apart), windows, vents, screens and console are meshes
 of their own in `pulse_ocean_v0.10_parts.glb`. `tools/export_ocean_glb.py` splits them out of the Pulse

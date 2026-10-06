@@ -39,6 +39,8 @@ const norm = (s) => (s || '').toLowerCase();
 
 let ticks = 0, withPose = 0, loading = 0, matched = 0, agree = 0, compared = 0, switches = 0, lastWay = null, adasis = 0, adasisCurv = 0;
 const lengths = [], laterals = [], confs = [], branchCounts = [], disagreements = new Map(), ways = new Map();
+const trailLeft = [], trailAlong = [], trailH = [];   // how far the shown pose trails the estimate (pose.js SHOW_*)
+let snaps = 0, features = 0, featureKinds = new Map();
 let roadName = null, roadNameT = -1e9;
 
 const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
@@ -56,7 +58,12 @@ for await (const line of rl) {
   let snap = builder.snapshot(tick.now);
   if (snap.map && snap.map.loading) { await md.settle(); snap = builder.snapshot(tick.now); }   // offline: wait for the tile, as a car would
   ticks++;
-  if (snap.pose && snap.pose.origin) withPose++;
+  if (snap.pose && snap.pose.origin) {
+    withPose++;
+    trailLeft.push(Math.abs(snap.pose.offset.left)); trailAlong.push(Math.abs(snap.pose.offset.along)); trailH.push(Math.abs(snap.pose.offset.h));
+    snaps = snap.pose.snaps;
+  }
+  if (snap.map && snap.map.roads) { features = snap.map.roads.features.length; for (const f of snap.map.roads.features) featureKinds.set(f.kind, (featureKinds.get(f.kind) || 0) + 1); }
   const hz = snap.fisker && snap.fisker.horizon;
   if (hz) { adasis++; adasisCurv += hz.curvature.filter(c => c.ahead > 0).length; }
   const m = snap.map;
@@ -79,6 +86,8 @@ for await (const line of rl) {
 console.log(`${ticks} ticks, ${withPose} with a pose, ${loading} waiting for tiles, ${matched} matched (${(100 * matched / Math.max(1, withPose)).toFixed(0)}% of those with a pose)`);
 console.log(`road name agreement with mapd: ${agree}/${compared} (${(100 * agree / Math.max(1, compared)).toFixed(0)}%), way changes: ${switches}`);
 console.log(`horizon length m: median ${f1(pct(lengths, 0.5))}, p10 ${f1(pct(lengths, 0.1))}; |lateral| m: median ${f1(pct(laterals, 0.5))}, p90 ${f1(pct(laterals, 0.9))}; conf median ${f1(pct(confs, 0.5))}; branches median ${pct(branchCounts, 0.5)}`);
+console.log(`shown pose trails the estimate: left p50 ${f1(pct(trailLeft, 0.5))} p95 ${f1(pct(trailLeft, 0.95))} max ${f1(pct(trailLeft, 1))} m, along p95 ${f1(pct(trailAlong, 0.95))} m, heading p95 ${f1(pct(trailH, 0.95))} deg; snaps ${snaps}`);
+if (featureKinds.size) console.log(`map features in the last layer: ${features} (${[...featureKinds].map(([k, n]) => `${k} ${n}`).join(', ')} over all layers)`);
 console.log(`head unit's ADASIS horizon present in ${adasis} ticks (${(100 * adasis / Math.max(1, ticks)).toFixed(0)}%), ${(adasisCurv / Math.max(1, adasis)).toFixed(1)} curvature points ahead on average`);
 console.log('ways:', [...ways].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n]) => `${k} (${n})`).join(', '));
 if (disagreements.size) { console.log('disagreements:'); for (const [k, n] of [...disagreements].sort((a, b) => b[1] - a[1]).slice(0, 8)) console.log(`  ${String(n).padStart(5)}  ${k}`); }

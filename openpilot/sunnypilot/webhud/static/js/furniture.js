@@ -11,16 +11,19 @@
 // an offset across it (over our lane's center, or beside its outer lane on our side), placed every
 // frame on the road as it's drawn then (road.js `place`). A sign 50 m down a road drawn curving left
 // that turns out to run straight is, 10 m on, 40 m down the straight road and still beside it.
+//
+// The sign and signal-head builders are shared with the map's own furniture (mapfeatures.js), which
+// stands where the map says and is placed on the ground, not the road.
 import * as THREE from '../vendor/three.module.min.js';
 
-const LIGHT_HEIGHT = 3.8;      // m, bottom of the signal head over the road (a bit low, so it stays in view)
-const LIGHT_SCALE = 1.6;       // drawn larger than life so it reads at 60+ m
-const SIGN_SCALE = 1.7;
+export const LIGHT_HEIGHT = 3.8;      // m, bottom of the signal head over the road (a bit low, so it stays in view)
+export const LIGHT_SCALE = 1.6;       // drawn larger than life so it reads at 60+ m
+export const SIGN_SCALE = 1.7;
 const SIGN_AHEAD = 16;         // m: where a just-read sign goes up...
-const SIGN_GAP = 1.3;          // ...this far beyond the outer lane line on our side
-const LAMP = { red: 0xff3b30, amber: 0xffb020, green: 0x34d058 };
+export const SIGN_GAP = 1.3;   // ...this far beyond the outer lane line on our side
+export const LAMP = { red: 0xff3b30, amber: 0xffb020, green: 0x34d058 };
 
-function canvasTexture(w, h, draw) {
+export function canvasTexture(w, h, draw) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   draw(c.getContext('2d'), w, h);
@@ -33,7 +36,7 @@ function canvasTexture(w, h, draw) {
 // ---- traffic light ------------------------------------------------------------------------------
 
 const lampTextures = {};
-function lampTexture(shape) {   // white symbol on transparent; tinted by the material color
+export function lampTexture(shape) {   // white symbol on transparent; tinted by the material color
   if (lampTextures[shape]) return lampTextures[shape];
   lampTextures[shape] = canvasTexture(128, 128, (ctx) => {
     ctx.fillStyle = '#fff';
@@ -55,7 +58,43 @@ function lampTexture(shape) {   // white symbol on transparent; tinted by the ma
   return lampTextures[shape];
 }
 
-class TrafficLight {
+/** A signal head's meshes into `group`: the housing, `spots` lamps (red, amber, green, then arrows) with visors.
+ *  Returns the lamp materials, in order. The group is scaled by LIGHT_SCALE; its lamps face +Z. */
+export function buildSignalHead(group, spots, horizontal, housing) {
+  group.clear();
+  const pitch = 0.32, r = 0.12;
+  const len = spots * pitch + 0.06;
+  const box = new THREE.Mesh(new THREE.BoxGeometry(horizontal ? len : 0.4, horizontal ? 0.4 : len, 0.24), housing);
+  group.add(box);
+  const lamps = [];
+  for (let i = 0; i < spots; i++) {
+    const off = (i - (spots - 1) / 2) * pitch;
+    const mat = new THREE.MeshBasicMaterial({ map: lampTexture('circle'), transparent: true, depthWrite: false, toneMapped: false });
+    const lamp = new THREE.Mesh(new THREE.CircleGeometry(r, 24), mat);
+    // order: red, amber, green, then extra (arrow) lamps; top -> bottom, or left -> right
+    lamp.position.set(horizontal ? off : 0, horizontal ? 0 : -off, 0.125);
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, 0.14), housing);
+    visor.position.set(lamp.position.x, lamp.position.y + r + 0.02, 0.19);
+    group.add(lamp, visor);
+    lamps.push(mat);
+  }
+  group.scale.setScalar(LIGHT_SCALE);
+  return lamps;
+}
+
+/** Light the lamps: `lit` as TrafficLight.lit gives it ([{i, color, shape}]); the others dark glass. */
+export function applyLamps(lamps, lit, alpha = 1) {
+  lamps.forEach((m, i) => {
+    const on = lit.find(l => l.i === i);
+    const base = [LAMP.red, LAMP.amber, LAMP.green][Math.min(i, 2)];
+    const tex = lampTexture(on ? on.shape : 'circle');
+    if (m.map !== tex) m.map = tex;
+    m.color.setHex(on ? LAMP[on.color] : base).multiplyScalar(on ? 1 : 0.035);   // linear: dark glass when off
+    m.opacity = alpha;
+  });
+}
+
+export class TrafficLight {
   constructor() {
     this.group = new THREE.Group();
     this.group.visible = false;
@@ -70,24 +109,7 @@ class TrafficLight {
     const key = `${spots}/${horizontal}`;
     if (key === this.key) return;
     this.key = key;
-    this.group.clear();
-    const pitch = 0.32, r = 0.12;
-    const len = spots * pitch + 0.06;
-    const box = new THREE.Mesh(new THREE.BoxGeometry(horizontal ? len : 0.4, horizontal ? 0.4 : len, 0.24), this.housing);
-    this.group.add(box);
-    this.lamps = [];
-    for (let i = 0; i < spots; i++) {
-      const off = (i - (spots - 1) / 2) * pitch;
-      const mat = new THREE.MeshBasicMaterial({ map: lampTexture('circle'), transparent: true, depthWrite: false, toneMapped: false });
-      const lamp = new THREE.Mesh(new THREE.CircleGeometry(r, 24), mat);
-      // order: red, amber, green, then extra (arrow) lamps; top -> bottom, or left -> right
-      lamp.position.set(horizontal ? off : 0, horizontal ? 0 : -off, 0.125);
-      const visor = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, 0.14), this.housing);
-      visor.position.set(lamp.position.x, lamp.position.y + r + 0.02, 0.19);
-      this.group.add(lamp, visor);
-      this.lamps.push(mat);
-    }
-    this.group.scale.setScalar(LIGHT_SCALE);
+    this.lamps = buildSignalHead(this.group, spots, horizontal, this.housing);
   }
 
   // which lamps are lit: [{i, color, shape}]
@@ -129,14 +151,7 @@ class TrafficLight {
 
     const spots = Math.max(2, Math.min(5, tlr.lights || 3));
     this.build(spots, tlr.orientation === 'Horizontal');
-    const lit = TrafficLight.lit(tlr, spots, clock);
-    this.lamps.forEach((m, i) => {
-      const on = lit.find(l => l.i === i);
-      const base = [LAMP.red, LAMP.amber, LAMP.green][Math.min(i, 2)];
-      m.map = lampTexture(on ? on.shape : 'circle');
-      m.color.setHex(on ? LAMP[on.color] : base).multiplyScalar(on ? 1 : 0.035);   // linear: dark glass when off
-      m.opacity = this.alpha;
-    });
+    applyLamps(this.lamps, TrafficLight.lit(tlr, spots, clock), this.alpha);
     this.housing.opacity = this.alpha;
 
     // over our lane, facing back down the road
@@ -182,12 +197,48 @@ function turnArrow(ctx, w, dir) {   // a turn arrow (dir -1 left, +1 right) or U
 }
 
 const signTextures = new Map();
-// face texture + aspect for a sign spec ({kind:'limit', value, unit, plate} | {kind:'prohibited', name})
-function signFace(spec) {
+// face texture + aspect for a sign spec ({kind:'limit', value, unit, plate} | {kind:'prohibited', name} |
+// {kind:'stop', all} | {kind:'yield'} | {kind:'rail'})
+export function signFace(spec) {
   const key = JSON.stringify(spec);
   if (signTextures.has(key)) return signTextures.get(key);
   let out;
-  if (spec.kind === 'limit' && spec.unit === 'mph') {
+  if (spec.kind === 'stop') {
+    const plate = spec.all ? 0.3 : 0;
+    out = { aspect: 1 / (1 + plate), tex: canvasTexture(256, Math.round(256 * (1 + plate)), (ctx, w) => {
+      const c = w / 2, R = w / 2 - 4;
+      const oct = (r) => { ctx.beginPath(); for (let i = 0; i < 8; i++) { const a = Math.PI / 8 + i * Math.PI / 4; ctx.lineTo(c + r * Math.cos(a) / Math.cos(Math.PI / 8), c + r * Math.sin(a) / Math.cos(Math.PI / 8)); } ctx.closePath(); };
+      ctx.fillStyle = '#fff'; oct(R); ctx.fill();
+      ctx.fillStyle = '#c9201a'; oct(R - 9); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = `700 ${w * 0.3}px Arial, sans-serif`; ctx.fillText('STOP', c, c + 4);
+      if (plate) {
+        ctx.fillStyle = '#fff'; ctx.fillRect(w * 0.1, w + 6, w * 0.8, w * plate - 12);
+        ctx.fillStyle = '#c9201a'; ctx.font = `700 ${w * 0.16}px Arial, sans-serif`; ctx.fillText('ALL WAY', c, w + w * plate / 2 - 2);
+      }
+    }) };
+  } else if (spec.kind === 'yield') {
+    out = { aspect: 1, tex: canvasTexture(256, 256, (ctx, w, h) => {
+      const tri = (inset) => { ctx.beginPath(); ctx.moveTo(inset * 1.2, inset); ctx.lineTo(w - inset * 1.2, inset); ctx.lineTo(w / 2, h - inset * 1.5); ctx.closePath(); };
+      ctx.fillStyle = '#c9201a'; tri(4); ctx.fill();
+      ctx.fillStyle = '#fff'; tri(30); ctx.fill();
+      ctx.fillStyle = '#c9201a'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = `700 ${w * 0.19}px Arial, sans-serif`; ctx.fillText('YIELD', w / 2, h * 0.36);
+    }) };
+  } else if (spec.kind === 'rail') {
+    out = { aspect: 1, tex: canvasTexture(256, 256, (ctx, w, h) => {
+      // a crossbuck: two white boards crossed, lettered
+      ctx.translate(w / 2, h / 2);
+      for (const a of [-Math.PI / 4, Math.PI / 4]) {
+        ctx.save(); ctx.rotate(a);
+        ctx.fillStyle = '#fff'; ctx.fillRect(-w * 0.49, -w * 0.075, w * 0.98, w * 0.15);
+        ctx.strokeStyle = '#111'; ctx.lineWidth = 3; ctx.strokeRect(-w * 0.49, -w * 0.075, w * 0.98, w * 0.15);
+        ctx.fillStyle = '#111'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `700 ${w * 0.1}px Arial, sans-serif`;
+        ctx.fillText(a < 0 ? 'RAILROAD' : 'CROSSING', 0, 1);
+        ctx.restore();
+      }
+    }) };
+  } else if (spec.kind === 'limit' && spec.unit === 'mph') {
     const plate = spec.plate ? 0.32 : 0;
     out = { aspect: 0.8 / (1 + plate), tex: canvasTexture(256, Math.round(320 * (1 + plate)), (ctx, w) => {
       const draw = (y0, h, lines) => {
@@ -231,7 +282,7 @@ function signFace(spec) {
   return out;
 }
 
-function makeSign(spec) {
+export function makeSign(spec) {
   // own materials per sign, so each fades on its own
   const postMaterial = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.5, metalness: 0.5, transparent: true });
   const backMaterial = new THREE.MeshStandardMaterial({ color: 0x8d939b, roughness: 0.6, metalness: 0.4, transparent: true });
@@ -307,14 +358,15 @@ export class RoadFurniture {
     return a.s - road.odo;
   }
 
-  update(state, road, vehicle, settings, dt, clock, toScene) {
+  /** opts.hideLight: the map stands a signal ahead on our road (mapfeatures.js), which takes the camera's light state. */
+  update(state, road, vehicle, settings, dt, clock, toScene, opts = {}) {
     const f = (state && state.fisker) || null;
     const v = vehicle ? vehicle.v : 0;
     this.odo += Math.abs(v) * dt;
     const showSigns = settings.showSigns !== false;
 
     // traffic light
-    this.light.update(showSigns ? f : null, road, vehicle, dt, clock, toScene);
+    this.light.update(showSigns && !opts.hideLight ? f : null, road, vehicle, dt, clock, toScene);
 
     // new signs: the camera's limit changed or was just re-read, or a prohibition sign appeared
     const tsr = (f && f.tsr) || {};

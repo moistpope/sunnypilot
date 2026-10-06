@@ -38,6 +38,17 @@ async function fetchTile(cell, file) {
   if (tileBytes.size > 12) tileBytes.delete(tileBytes.keys().next().value);
   return bytes;
 }
+/** GET /map/features/<klat>/<klon>: the point features of a FEAT_DEG cell (mapdata.js), or null. */
+async function fetchFeatures(klat, klon) {
+  const r = await fetch(`/map/features/${klat}/${klon}`);
+  if (!r.ok) return null;
+  return r.json();
+}
+/** POST /map/prefetch: have the server download the map within km of the point (maptiles.py MapPrefetch). */
+async function fetchPrefetch(lat, lon, km) {
+  await fetch('/map/prefetch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lat, lon, radius_km: km }) });
+}
+let prefetchKm = 25;
 let localT = -1e9;           // when the last IBUS frame came in (page clock, s)
 let rawAddrs = [];
 let rawNext = 0;
@@ -48,10 +59,12 @@ self.onmessage = (ev) => {
   const msg = ev.data;
   try {
     if (msg.type === 'init') {
-      builder = new StateBuilder(new DBC(msg.worldDbc), msg.radarDbc ? new DBC(msg.radarDbc) : null, { mapData: new MapData(fetchTile) });
+      builder = new StateBuilder(new DBC(msg.worldDbc), msg.radarDbc ? new DBC(msg.radarDbc) : null, { mapData: new MapData(fetchTile, fetchFeatures, fetchPrefetch) });
+      builder.map.setPrefetchKm(prefetchKm);
       builder.setCalibration(calibrationOn);
       if (msg.ibusDbc) {
-        local = new StateBuilder(new DBC(msg.ibusDbc), null, { gearMsg: 0x234, mapData: new MapData(fetchTile) });
+        local = new StateBuilder(new DBC(msg.ibusDbc), null, { gearMsg: 0x234, mapData: new MapData(fetchTile, fetchFeatures, fetchPrefetch) });
+        local.map.setPrefetchKm(prefetchKm);
         local.setCalibration(calibrationOn);
         local.setBrand('fisker');
         setInterval(localTick, 1000 / LOCAL_HZ);
@@ -79,6 +92,10 @@ self.onmessage = (ev) => {
       calibrationOn = !!msg.on;
       if (builder) builder.setCalibration(calibrationOn);
       if (local) local.setCalibration(calibrationOn);
+    } else if (msg.type === 'mapPrefetch') {
+      prefetchKm = Number(msg.km) || 0;
+      if (builder && builder.map) builder.map.setPrefetchKm(prefetchKm);
+      if (local && local.map) local.map.setPrefetchKm(prefetchKm);
     }
   } catch (e) {
     self.postMessage({ type: 'error', message: String(e && e.stack || e) });

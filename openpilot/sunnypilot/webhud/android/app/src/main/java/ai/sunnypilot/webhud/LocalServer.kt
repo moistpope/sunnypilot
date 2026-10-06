@@ -14,6 +14,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
 import java.net.URLDecoder
+import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
@@ -32,7 +33,9 @@ import kotlin.concurrent.thread
 class LocalServer(
     private val assets: AssetManager?,
     private val assetVersion: String,
-    private val mapTiles: MapTiles?,
+    private val mapTiles: MapTiles? = null,
+    private val mapFeatures: MapFeatures? = null,
+    private val mapPrefetch: MapPrefetch? = null,
     private val onDeviceUnreachable: () -> Unit,
 ) {
     private val server = bind()
@@ -116,7 +119,12 @@ class LocalServer(
         } else {
             try {
                 client.soTimeout = 0
-                if (path.startsWith("/map/tile/")) serveTile(client, method, path, text) else serveAsset(client, method, path, text)
+                when {
+                    path.startsWith("/map/tile/") -> serveTile(client, method, path, text)
+                    path.startsWith("/map/features/") -> serveFeatures(client, method, path, text)
+                    path == "/map/prefetch" || path == "/map/status" -> servePrefetch(client, method, path, text)
+                    else -> serveAsset(client, method, path, text)
+                }
             } catch (e: IOException) {
                 // the page went away mid-file
             } finally {
@@ -281,6 +289,55 @@ class LocalServer(
         out.flush()
     }
 
+    /** The point features of a map cell (MapFeatures): from Overpass once, then from disk. */
+    private fun serveFeatures(client: Socket, method: String, path: String, head: String) {
+        val out = client.getOutputStream()
+        val parsed = MapFeatures.parsePath(URLDecoder.decode(path, "UTF-8"))
+        val file = if (parsed == null || mapFeatures == null) null else mapFeatures.cell(parsed.first, parsed.second)
+        if (file == null) {
+            respond(out, 404, "Not Found", "text/plain", "no features for this cell".toByteArray(), emptyMap(), method == "HEAD")
+            return
+        }
+        respond(out, 200, "OK", "application/json", file.readBytes(), mapOf("Cache-Control" to "max-age=86400"), method == "HEAD")
+        out.flush()
+    }
+
+    /** POST /map/prefetch {lat, lon, radius_km}: download the map around the car (MapPrefetch); GET /map/status: how far it got. */
+    private fun servePrefetch(client: Socket, method: String, path: String, head: String) {
+        val out = client.getOutputStream()
+        val pf = mapPrefetch
+        if (pf == null) {
+            respond(out, 404, "Not Found", "text/plain", "no map".toByteArray(), emptyMap(), method == "HEAD")
+            return
+        }
+        val status = try {
+            if (path == "/map/prefetch" && method == "POST") {
+                val length = header(head, "Content-Length")?.toIntOrNull() ?: 0
+                if (length <= 0 || length > MAX_BODY) throw IllegalArgumentException("no body")
+                val body = ByteArray(length)
+                val input = client.getInputStream()
+                var got = 0
+                while (got < length) {
+                    val n = input.read(body, got, length - got)
+                    if (n < 0) throw IOException("body ended early")
+                    got += n
+                }
+                val json = JSONObject(String(body, Charsets.UTF_8))
+                pf.request(json.getDouble("lat"), json.getDouble("lon"), json.optDouble("radius_km", 25.0))
+            } else if (path == "/map/status" && method == "GET") {
+                pf.status()
+            } else {
+                respond(out, 405, "Method Not Allowed", "text/plain", "".toByteArray(), emptyMap(), false)
+                return
+            }
+        } catch (e: Exception) {
+            respond(out, 400, "Bad Request", "application/json", JSONObject().put("error", e.message ?: "bad request").toString().toByteArray(), emptyMap(), false)
+            return
+        }
+        respond(out, 200, "OK", "application/json", status.toString().toByteArray(), mapOf("Cache-Control" to "no-store"), method == "HEAD")
+        out.flush()
+    }
+
     private fun exists(rel: String): Boolean = try {
         assets!!.open("$WWW/$rel").close()
         true
@@ -330,6 +387,7 @@ class LocalServer(
         private const val CONNECT_TIMEOUT_MS = 2000
         private const val HEAD_TIMEOUT_MS = 5000
         private const val MAX_HEAD = 64 * 1024
+        private const val MAX_BODY = 64 * 1024
         private const val BUFFER = 64 * 1024
 
         fun contentType(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {

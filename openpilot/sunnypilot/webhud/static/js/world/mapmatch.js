@@ -16,10 +16,10 @@ const SIGMA_H_SLOW = 45 * DEG;    // ...below SLOW_V, where the heading is less 
 const SLOW_V = 3.0;               // m/s
 const MAX_DH = 70 * DEG;          // candidates turned further than this from the car's heading are out
 const PRIOR = 2.0;                // score bonus for staying on the current way (or moving onto one it leads to)
-const SWITCH_TICKS = 8;           // a better way must win this many snapshots in a row to take over...
+const SWITCH_TICKS = 16;          // a better way must win this many snapshots in a row to take over...
 const SWITCH_MARGIN = 0.5;        // ...by at least this much
 const END_M = 6.0;                // ...unless the current way ends within this: then the way it leads into takes over at once
-const COAST_S = 1.5;              // keep the match this long when no road is near
+const COAST_S = 3.0;              // keep the match this long when no road is near (a slow sharp turn, a parking lot's edge)
 const BRANCH_M = 60;              // m of each branching road's geometry carried along
 const BRANCH_POINTS = 8;
 const HORIZON_M = 500;            // ahead
@@ -34,6 +34,20 @@ const BEND_MAX = 110 * DEG;       // ...unless it is the only way on (a bend of 
 const SAME_NAME_BONUS = 35;       // deg-equivalents off a continuation's cost for keeping the ref or name
 const CLASS_DROP_COST = 12;       // ...and on, per class level the road drops (trunk -> residential is not a continuation)
 const LOOP_WINDOW_M = 200, LOOP_TURN = 135 * DEG;   // the horizon stops where the road has turned this much within the window
+// The road behind the car is the path it drove (a trail of matched points), so after a turn it runs back round the
+// corner rather than along the new way's own geometry (which may not exist behind the junction)
+const TRAIL_STEP_M = 3, TRAIL_M = 80;
+const TOUCH_M = 60;               // a switch onto a way sharing a node this near is a turn, and keeps the trail
+// The car turning at the first junction ahead: its indicator, else its yaw rate, says onto which branch, and the
+// horizon bends onto it before the matcher has moved there -- so the road doesn't end at the node mid-turn
+const TURN_M = 45;                // the junction must be within this
+const TURN_W = 0.12;              // rad/s of yaw that counts as turning
+const TURN_LOOKAHEAD_S = 1.5;     // the heading the car will have this much later picks the branch
+const TURN_MATCH = 55 * DEG;      // ...if one lies within this of it
+const TURN_MIN = 25 * DEG;        // a branch turning less than this isn't a turn
+const TURN_HOLD_S = 2.0;          // a choice made is kept this long (the indicator cancels, the yaw eases)
+const INDICATE_MAX_V = 15.0;      // m/s: above this an indicator alone (no yaw yet) means a lane change, not a turn
+const END_TURN_MIN = 30 * DEG;    // a continuation turning more than this at our road's end gets its corner rounded like an arm's
 
 const wrap = (a) => (((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
 const r1 = (v) => Math.round(v * 10) / 10;
@@ -52,12 +66,19 @@ export class MapMatcher {
     this.curT = -1e9;         // when it was last confirmed
     this.challenger = null;   // {tileKey, wi, dir, ticks}
     this.result = null;
+    this.trail = [];          // [x, y] matched points driven, oldest first (TRAIL_*)
+    this.ctx = { h: 0, v: 0, w: 0, turn: 0, now: 0 };
+    this.turnPick = null;     // {key, until}: the branch the car was judged to be turning onto
+    this.passed = new Map();  // branches seen ahead, kept while the junction is within BEHIND_M behind the car
+    this.prevAhead = [];      // the horizon's first nodes ahead at the last update: passed ones go into the trail
   }
 
-  /** pose: [x, y, h] (unrounded), v: speed m/s, now: snapshot time. Returns the match (also kept in .result) or null. */
-  update(pose, v, now) {
+  /** pose: [x, y, h] (unrounded), v: speed m/s, now: snapshot time; opts.w: yaw rate (rad/s, + left), opts.turn: the
+   *  indicator (+1 left, -1 right, 0 none). Returns the match (also kept in .result) or null. */
+  update(pose, v, now, opts = {}) {
     const [x, y, h] = pose;
     const md = this.md;
+    this.ctx = { h, v, w: opts.w || 0, turn: opts.turn || 0, now };
     const cands = this._candidates(x, y, h, v);
     let best = null;
     for (const c of cands) if (best === null || c.score < best.score) best = c;
@@ -81,7 +102,12 @@ export class MapMatcher {
         if (this.challenger && this.challenger.tileKey === best.tileKey && this.challenger.wi === best.wi) this.challenger.ticks++;
         else this.challenger = { tileKey: best.tileKey, wi: best.wi, ticks: 1 };
         chosen = this.challenger.ticks >= SWITCH_TICKS ? best : curC;
-        if (chosen === best) this.challenger = null;
+        if (chosen === best) {
+          this.challenger = null;
+          // onto a road that meets ours near the car (a turn at a junction): the path driven goes on round the corner;
+          // a sideways move to a parallel road would only kink it
+          if (!this._touches(curC, best, x, y)) { this.trail = []; this.passed.clear(); }
+        }
       }
       this.cur = { tileKey: chosen.tileKey, wi: chosen.wi, dir: chosen.dir };
       this.curT = now;
@@ -91,8 +117,60 @@ export class MapMatcher {
       if (w) chosen = this._measure(this.cur.tileKey, this.cur.wi, w, x, y, h, v, this.cur.dir);
     }
     if (chosen === null) { this.cur = null; this.result = null; return null; }
+    // nodes the car has just passed go into the trail as they are (the junction geometry behind hangs off them)
+    for (const q of this.prevAhead) {
+      const dx = q[0] - chosen.px, dy = q[1] - chosen.py;
+      if (dx * Math.cos(h) + dy * Math.sin(h) < 0 && Math.hypot(dx, dy) < 15) this._trailPush(q[0], q[1], true);
+    }
+    this._trailPush(chosen.px, chosen.py);
     this.result = this._describe(chosen, x, y, h, now);
+    this.prevAhead = this.result.horizon.slice(this.result.carIndex + 1, this.result.carIndex + 3);
+    this._carryPassed(this.result, chosen, h);
     return this.result;
+  }
+
+  /** Branches seen ahead stay in the list once passed, with their (negative) distance, while within BEHIND_M. */
+  _carryPassed(result, c, h) {
+    const key = (b) => `${b.x},${b.y}|${b.name}|${b.angle}`;
+    const fresh = new Set();
+    for (const b of result.branches) { const k = key(b); fresh.add(k); this.passed.set(k, b); }
+    for (const [k, b] of this.passed) {
+      if (fresh.has(k)) continue;
+      const dx = b.x - c.px, dy = b.y - c.py, along = dx * Math.cos(h) + dy * Math.sin(h), dist = Math.hypot(dx, dy);
+      if (along > 5 || dist > BEHIND_M) { this.passed.delete(k); continue; }   // ahead again (we turned round), or gone
+      result.branches.push({ ...b, along: r1(-dist) });
+    }
+  }
+
+  _trailPush(x, y, exact = false) {
+    const tr = this.trail, last = tr[tr.length - 1];
+    if (last && Math.hypot(x - last[0], y - last[1]) < (exact ? 0.05 : TRAIL_STEP_M)) return;
+    tr.push([x, y]);
+    let len = 0;
+    for (let k = tr.length - 1; k > 0; k--) { len += Math.hypot(tr[k][0] - tr[k - 1][0], tr[k][1] - tr[k - 1][1]); if (len > TRAIL_M) { tr.splice(0, k); break; } }
+  }
+
+  /** The branch the car is turning onto at the junction ahead, among `fresh` (options with `ang` relative to the arriving
+   *  direction), or null: the indicator's side, else the yaw rate's; the one nearest the heading the car is turning to. */
+  _turning(fresh) {
+    const { h, v, w, turn, now } = this.ctx;
+    if (this.turnPick && now < this.turnPick.until) {
+      const held = fresh.find(o => o.tileKey + ':' + o.wi + ':' + o.odir === this.turnPick.key);
+      if (held) return held;
+    }
+    const yawing = Math.abs(w) > TURN_W && v > 1.0;
+    const want = (turn && v < INDICATE_MAX_V ? turn : 0) || (yawing ? Math.sign(w) : 0);   // at speed an indicator is a lane change
+    if (!want) return null;
+    const hPred = h + Math.sign(w) * Math.min(Math.abs(w) * TURN_LOOKAHEAD_S, 100 * DEG);
+    let best = null, cost = Infinity;
+    for (const o of fresh) {
+      if (Math.sign(o.ang) !== want || Math.abs(o.ang) < TURN_MIN || Math.abs(o.ang) > UTURN) continue;
+      const c = yawing ? Math.abs(wrap(Math.atan2(o.dy, o.dx) - hPred)) : Math.abs(Math.abs(o.ang) - 90 * DEG);
+      if (c < cost) { cost = c; best = o; }
+    }
+    if (!best || (yawing && cost > TURN_MATCH)) return null;
+    this.turnPick = { key: best.tileKey + ':' + best.wi + ':' + best.odir, until: now + TURN_HOLD_S };
+    return best;
   }
 
   // ---- candidates ---------------------------------------------------------------------------------
@@ -115,7 +193,8 @@ export class MapMatcher {
         const dh = wrap(h - (dir > 0 ? hs : hs + Math.PI));
         if (bestDir === null || Math.abs(dh) < Math.abs(bestDir.dh)) bestDir = { dir, dh };
       }
-      if (Math.abs(bestDir.dh) > MAX_DH && v >= SLOW_V) continue;
+      // a way turned far from our heading is out -- unless we are turning (the heading is on its way round) or slow
+      if (Math.abs(bestDir.dh) > MAX_DH && v >= SLOW_V && Math.abs(this.ctx.w) < TURN_W) continue;
       let score = (s.d / SIGMA_D) ** 2 + (bestDir.dh / sigmaH) ** 2;
       const same = this.cur && this.cur.tileKey === s.tileKey && this.cur.wi === s.wi;
       const connected = !same && this._leadsTo(s.tileKey, s.wi);
@@ -140,6 +219,16 @@ export class MapMatcher {
       for (let i = c.si - 1; i >= 0; i--) d += Math.hypot(xy[2 * i + 2] - xy[2 * i], xy[2 * i + 3] - xy[2 * i + 1]);
     }
     return d;
+  }
+
+  /** Whether two ways share a node within TOUCH_M of (x, y). */
+  _touches(a, b, x, y) {
+    const ax = a.xy, bx = b.xy;
+    for (let i = 0; i + 1 < ax.length; i += 2) {
+      if (Math.hypot(ax[i] - x, ax[i + 1] - y) > TOUCH_M) continue;
+      for (let j = 0; j + 1 < bx.length; j += 2) if (bx[j] === ax[i] && bx[j + 1] === ax[i + 1]) return true;
+    }
+    return false;
   }
 
   /** Whether the current way ends (in its travel direction) at a node the given way touches. */
@@ -203,12 +292,21 @@ export class MapMatcher {
     const branches = [];
     const ways = [];      // runs of the horizon by way
     let length = 0;
-    // behind: back along the current way from the matched point
+    // behind: the path driven (the trail), else back along the current way from the matched point
     const back = [];
     {
       let bx = c.px, by = c.py, len = 0;
+      const tr = this.trail;
+      for (let k = tr.length - 1; k >= 0 && len < BEHIND_M; k--) {
+        const [tx, ty] = tr[k], seg = Math.hypot(tx - bx, ty - by);
+        if (seg < 0.5) continue;
+        if (len + seg > BEHIND_M) { const f = (BEHIND_M - len) / seg; back.push([bx + (tx - bx) * f, by + (ty - by) * f]); len = BEHIND_M; break; }
+        len += seg; back.push([tx, ty]); bx = tx; by = ty;
+      }
+      if (back.length < 2) { back.length = 0; bx = c.px; by = c.py; len = 0; }
       let i = c.dir > 0 ? c.si : c.si + 1;   // the node behind the matched point
-      while (len < BEHIND_M && i >= 0 && i * 2 + 1 < c.xy.length) {
+      const walk = back.length === 0;
+      while (walk && len < BEHIND_M && i >= 0 && i * 2 + 1 < c.xy.length) {
         const nx = c.xy[2 * i], ny = c.xy[2 * i + 1];
         const seg = Math.hypot(nx - bx, ny - by);
         if (len + seg > BEHIND_M) {   // stop exactly BEHIND_M back
@@ -266,11 +364,29 @@ export class MapMatcher {
             options.push({ ...o, odir: od.dir, ang, dx: od.dx, dy: od.dy, arriving: !!od.arriving });
           }
         }
+        // the car turning at the first junction ahead takes the horizon onto that branch, even off a way that goes on
+        const nearFirst = hops === 0 && length < TURN_M;
+        const fresh = options.filter(o => !o.arriving && !visited.has(o.tileKey + ':' + o.wi));
+        const turning = nearFirst ? this._turning(fresh) : null;
+        if (turning && !last) {
+          // our own way goes straight on: it becomes a branch, the turn the continuation (which is a branch too, so the
+          // view rounds its corners: `continuation` marks it as the road the horizon takes)
+          const j = i + dir;
+          const sx = xy[2 * j] - nx, sy = xy[2 * j + 1] - ny, L = Math.hypot(sx, sy) || 1;
+          branches.push(this._branch({ tileKey: key, wi, xy, way, nodeIndex: i, odir: dir, ang: wrap(Math.atan2(sy, sx) - Math.atan2(prevDirY, prevDirX)), dx: sx / L, dy: sy / L }, length, nx, ny));
+          branches.push({ ...this._branch(turning, length, nx, ny), continuation: true });
+          for (const o of options) if (o !== turning && (o.arriving || Math.abs(o.ang) < UTURN)) branches.push(this._branch(o, length, nx, ny));
+          visited.add(turning.tileKey + ':' + turning.wi);
+          hops++;
+          key = turning.tileKey; wi = turning.wi; xy = turning.xy; way = turning.way; dir = turning.odir;
+          run(way, pts.length - 1);
+          i = turning.nodeIndex + dir;
+          continue outer;
+        }
         if (last) {
           // also our own way continuing through a mid-way junction isn't a thing: the way ended
-          let next = null, nextCost = Infinity;
-          const fresh = options.filter(o => !o.arriving && !visited.has(o.tileKey + ':' + o.wi));
-          for (const o of fresh) {
+          let next = turning, nextCost = Infinity;
+          for (const o of turning ? [] : fresh) {
             const sameRef = (way.ref && o.way.ref === way.ref) || (way.name && o.way.name === way.name);
             const limit = sameRef ? UTURN : fresh.length === 1 ? BEND_MAX : CONTINUE_MAX;
             if (Math.abs(o.ang) > limit) continue;
@@ -279,7 +395,10 @@ export class MapMatcher {
               + (o.way.className.endsWith('_link') && !way.className.endsWith('_link') ? 25 : 0);
             if (cost < nextCost) { next = o; nextCost = cost; }
           }
-          for (const o of options) if (o !== next && (o.arriving || Math.abs(o.ang) < UTURN)) branches.push(this._branch(o, length, nx, ny));
+          // our road ends here: the roads leaving are arms of a T or a Y (`end`: the corner past the node is not real), and a
+          // continuation that turns is a branch too, so the view rounds the corner we take
+          for (const o of options) if (o !== next && (o.arriving || Math.abs(o.ang) < UTURN)) branches.push({ ...this._branch(o, length, nx, ny), end: true });
+          if (next !== null && Math.abs(next.ang) > END_TURN_MIN) branches.push({ ...this._branch(next, length, nx, ny), end: true, continuation: true });
           if (next === null || ++hops > MAX_HOPS) { ended = true; break outer; }
           visited.add(next.tileKey + ':' + next.wi);
           key = next.tileKey; wi = next.wi; xy = next.xy; way = next.way; dir = next.odir;

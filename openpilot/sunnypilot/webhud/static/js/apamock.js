@@ -462,7 +462,7 @@ export class ApaMock {
   _pins(add) {
     for (const s of this.found) {
       const b = document.createElement('button');
-      b.className = 'callout slotpin';
+      b.className = 'fo-chip slotpin';
       b.textContent = `P${s.id}`;
       b.addEventListener('click', () => this.choose(s.id));
       const v = new THREE.Vector3();

@@ -24,6 +24,7 @@
   }
 </script>
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/design.css">
 </head>
 <body>
 <div id="app">
@@ -48,6 +49,7 @@
       <div id="limit" class="limit hidden" title="Speed limit"></div>
     </div>
     <div id="assist-text" class="assist-text"></div>
+    <div id="econ" class="econ hidden" title="Power: regeneration left, consumption right. Tap for the last minute."><div class="econ-bar"><i class="econ-neg"></i><i class="econ-pos"></i></div><canvas id="econ-graph" width="320" height="72"></canvas></div>
   </section>
 
   <!-- alerts -->
@@ -75,11 +77,11 @@
     <button id="btn-camera" class="icon" title="Camera view" aria-label="Camera view" aria-haspopup="menu"></button>
   </div>
 
-  <!-- car controls mockup (carcontrols.js): badges and cards pinned to the car, the category ribbon and
-       the half-screen panel. Nothing in it is sent to the car. -->
-  <div id="caranchors" class="caranchors"><svg id="carlines" aria-hidden="true"></svg></div>
-  <nav id="carribbon" class="carribbon" aria-label="Car controls"></nav>
-  <aside id="carpanel" class="carpanel" aria-hidden="true"></aside>
+  <!-- car controls (carcontrols.js, DESIGN.md): controls and chips pinned to the car, the dock of categories and
+       the sheet. In a browser nothing is sent to the car. -->
+  <div id="caranchors" class="caranchors fo"><svg id="carlines" aria-hidden="true"></svg></div>
+  <nav id="carribbon" class="carribbon fo fo-dock" aria-label="Car controls"></nav>
+  <aside id="carpanel" class="carpanel fo fo-sheet" aria-hidden="true"></aside>
 
   <!-- replay transport -->
   <div id="replaybar" class="replaybar card hidden">

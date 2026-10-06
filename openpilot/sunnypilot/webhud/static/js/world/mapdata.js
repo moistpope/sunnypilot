@@ -7,26 +7,46 @@
 // page's server (the APK's LocalServer, or server.py on the comma / a PC) answers GET /map/tile/<cell>/<file>
 // from its copy of the cell, downloading the cell from map-data.pfeifer.dev the first time (the comma's
 // mapd already keeps the same files, which it serves directly).
+//
+// The tiles hold roads only. The point features along them -- traffic signals, stop and give-way signs,
+// crossings, level crossings, traffic calming -- come separately as *feature cells* of FEAT_DEG square
+// (GET /map/features/<klat>/<klon>, the cell's south-west corner in units of FEAT_DEG), which the server
+// fills from the Overpass API once and keeps. They are kept here in the same frame; a feature sits on a
+// road where its coordinate is a node of the road's way (the same OSM node), which state.js matches up.
 import { decodeTile, tileFor } from './osmtile.js';
 
 const DEG = Math.PI / 180;
 const EARTH_R = 6378137.0;
 const TILE_DEG = 0.25;
 const PREFETCH_M = 2000;      // start loading the next tile this far before its edge
-const CACHE_TILES = 6;
+const CACHE_TILES = 12;       // decoded tiles kept in memory (the disk keeps everything: the server never drops a tile)
 const GRID_M = 250;           // index cell size
 const RETRY_S = 15;           // after a failed fetch
+export const FEAT_DEG = 0.05; // feature cells: ~5.5 x 4.6 km here
+const FEAT_PREFETCH_M = 1500; // load the feature cells within this of the car
+const FEAT_CACHE = 40;
+// the server is asked to download the whole map within `prefetchKm` of the car (road tiles and features, kept on
+// disk) whenever the car has moved PREFETCH_MOVE_M since the last ask, or PREFETCH_EVERY_S have passed
+const PREFETCH_EVERY_S = 120, PREFETCH_MOVE_M = 3000;
 
 /** Index into the drivable road segments of the loaded tiles, in the frame of `origin`. */
 export class MapData {
-  /** fetchTile(cell, file) resolves to the tile's bytes (Uint8Array) or null when it isn't available. */
-  constructor(fetchTile) {
+  /** fetchTile(cell, file) resolves to the tile's bytes (Uint8Array) or null when it isn't available;
+   *  fetchFeatures(klat, klon) to a feature cell ({nodes: [[id, lat, lon, tags], ...]}) or null, or is omitted;
+   *  prefetch(lat, lon, km) asks the server to download the map within km of the point, or is omitted. */
+  constructor(fetchTile, fetchFeatures = null, prefetch = null) {
     this.fetchTile = fetchTile;
+    this.fetchFeatures = fetchFeatures;
+    this.prefetch = prefetch;
+    this.prefetchKm = 25;
+    this._prefetchAt = null;     // {lat, lon, now} of the last ask
     this.tiles = new Map();      // key -> {key, tile, ways: [{way, xy: Float64Array}], at (last use), loading, failedAt}
     this.grid = new Map();       // "gx,gy" -> [[tileKey, wayIndex, segmentIndex], ...]
     this.origin = null;          // {lat, lon, cosLat, seq}
     this.pending = new Map();    // key -> Promise
     this.version = 0;            // bumps when the index changes
+    this.featureCells = new Map(); // "klat,klon" -> {key, nodes: [{id, lat, lon, tags, x, y}], at, loading, failedAt}
+    this.featVersion = 0;        // bumps when the loaded features change
   }
 
   // ---- frame ------------------------------------------------------------------------------------
@@ -39,6 +59,8 @@ export class MapData {
     this.origin = { lat: origin.lat, lon: origin.lon, cosLat: Math.cos(origin.lat * DEG), seq: origin.seq };
     for (const e of this.tiles.values()) if (e.tile) this._project(e);
     this._reindex();
+    for (const c of this.featureCells.values()) if (c.nodes) this._projectFeatures(c);
+    this.featVersion++;
   }
 
   toLocal(lat, lon) {
@@ -70,7 +92,24 @@ export class MapData {
     for (const t of wanted) this._want(t, now);
     const e = this.tiles.get(keyOf(here));
     if (e) e.at = now;
+    this._wantFeatures(lat, lon, now);
+    this._askPrefetch(lat, lon, now);
     return !!(e && e.tile);
+  }
+
+  /** How far around the car the server should download the map (km; 0 for nothing beyond what is in view). */
+  setPrefetchKm(km) {
+    if (km === this.prefetchKm) return;
+    this.prefetchKm = km;
+    this._prefetchAt = null;
+  }
+
+  _askPrefetch(lat, lon, now) {
+    if (!this.prefetch || !(this.prefetchKm > 0)) return;
+    const a = this._prefetchAt;
+    if (a && now - a.now < PREFETCH_EVERY_S && Math.hypot((lat - a.lat) * DEG * EARTH_R, (lon - a.lon) * DEG * EARTH_R * Math.cos(lat * DEG)) < PREFETCH_MOVE_M) return;
+    this._prefetchAt = { lat, lon, now };
+    Promise.resolve().then(() => this.prefetch(lat, lon, this.prefetchKm)).catch(() => {});
   }
 
   _want(t, now) {
@@ -98,6 +137,67 @@ export class MapData {
     if (this.origin) { this._project(e); this._reindex(); }
   }
 
+  // ---- features ---------------------------------------------------------------------------------
+
+  /** The feature cells within FEAT_PREFETCH_M of the point, loaded or loading. */
+  _wantFeatures(lat, lon, now) {
+    if (!this.fetchFeatures) return;
+    const dLat = FEAT_PREFETCH_M / (DEG * EARTH_R), dLon = FEAT_PREFETCH_M / (DEG * EARTH_R * Math.cos(lat * DEG));
+    const k0 = Math.floor((lat - dLat) / FEAT_DEG), k1 = Math.floor((lat + dLat) / FEAT_DEG);
+    const l0 = Math.floor((lon - dLon) / FEAT_DEG), l1 = Math.floor((lon + dLon) / FEAT_DEG);
+    for (let k = k0; k <= k1; k++) for (let l = l0; l <= l1; l++) {
+      const key = k + ',' + l;
+      let c = this.featureCells.get(key);
+      if (c && (c.nodes || c.loading || (c.failedAt != null && now - c.failedAt < RETRY_S))) { c.at = now; continue; }
+      if (!c) { c = { key, klat: k, klon: l, nodes: null, at: now, loading: false, failedAt: null }; this.featureCells.set(key, c); }
+      c.loading = true;
+      const p = Promise.resolve().then(() => this.fetchFeatures(k, l)).then((cell) => {
+        c.loading = false;
+        if (!cell || !Array.isArray(cell.nodes)) { c.failedAt = now; return; }
+        c.nodes = cell.nodes.map(([id, la, lo, tags]) => ({ id, lat: la, lon: lo, tags: tags || {}, x: 0, y: 0 }));
+        c.failedAt = null;
+        if (this.origin) { this._projectFeatures(c); this.featVersion++; }
+        this._evictFeatures();
+      }, (err) => { c.loading = false; c.failedAt = now; c.error = String(err && err.message || err); });
+      this.pending.set('features:' + key, p);
+      p.finally(() => this.pending.delete('features:' + key));
+    }
+  }
+
+  /** Put a feature cell in directly (tests and tools): nodes as [[id, lat, lon, tags], ...]. */
+  addFeatures(klat, klon, nodes, now = 0) {
+    const key = klat + ',' + klon;
+    const c = { key, klat, klon, nodes: nodes.map(([id, la, lo, tags]) => ({ id, lat: la, lon: lo, tags: tags || {}, x: 0, y: 0 })), at: now, loading: false, failedAt: null };
+    this.featureCells.set(key, c);
+    if (this.origin) { this._projectFeatures(c); this.featVersion++; }
+  }
+
+  _projectFeatures(c) {
+    for (const n of c.nodes) { const [x, y] = this.toLocal(n.lat, n.lon); n.x = x; n.y = y; }
+  }
+
+  _evictFeatures() {
+    while (this.featureCells.size > FEAT_CACHE) {
+      let oldest = null;
+      for (const c of this.featureCells.values()) if (!c.loading && (oldest === null || c.at < oldest.at)) oldest = c;
+      if (oldest === null) return;
+      this.featureCells.delete(oldest.key);
+      this.featVersion++;
+    }
+  }
+
+  /** The point features within r of (x, y): [{id, lat, lon, tags, x, y}]. */
+  featuresNear(x, y, r) {
+    const out = [];
+    for (const c of this.featureCells.values()) {
+      if (!c.nodes) continue;
+      for (const n of c.nodes) if (Math.abs(n.x - x) <= r && Math.abs(n.y - y) <= r) out.push(n);
+    }
+    return out;
+  }
+
+  get featuresLoaded() { return [...this.featureCells.values()].filter(c => c.nodes).length; }
+
   /** Resolves once every tile asked for so far has loaded or failed (for tests and tools). */
   async settle() { while (this.pending.size) await Promise.all([...this.pending.values()]); }
 
@@ -111,16 +211,34 @@ export class MapData {
     }
   }
 
-  /** Project a tile's drivable ways into the frame: ways[i].xy = [x0, y0, x1, y1, ...]. */
+  /** Project a tile's drivable ways into the frame: ways[i].xy = [x0, y0, x1, y1, ...], with its box. */
   _project(e) {
     const ways = [];
     for (const way of e.tile.ways) {
       if (way.cls === 0) continue;   // not a road
       const n = way.nodes, xy = new Float64Array(n.length);
-      for (let i = 0; i < n.length; i += 2) { const [x, y] = this.toLocal(n[i], n[i + 1]); xy[i] = x; xy[i + 1] = y; }
-      ways.push({ way, xy });
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (let i = 0; i < n.length; i += 2) {
+        const [x, y] = this.toLocal(n[i], n[i + 1]);
+        xy[i] = x; xy[i + 1] = y;
+        if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
+      }
+      ways.push({ way, xy, minX, minY, maxX, maxY });
     }
     e.ways = ways;
+  }
+
+  /** Every projected way whose box comes within r of (x, y): [{tileKey, wi, way, xy}]. */
+  waysNear(x, y, r) {
+    const out = [];
+    for (const e of this.tiles.values()) {
+      if (!e.ways) continue;
+      e.ways.forEach((w, wi) => {
+        if (w.maxX < x - r || w.minX > x + r || w.maxY < y - r || w.minY > y + r) return;
+        out.push({ tileKey: e.key, wi, way: w.way, xy: w.xy });
+      });
+    }
+    return out;
   }
 
   _reindex() {

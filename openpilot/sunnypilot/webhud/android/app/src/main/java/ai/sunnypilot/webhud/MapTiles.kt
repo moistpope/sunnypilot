@@ -20,7 +20,7 @@ import java.util.zip.GZIPInputStream
  * a tile not under [root] has its whole cell downloaded from pfeiferj's server (20-50 MB, once) and
  * unpacked there, so the next drive through the area works without the network.
  */
-class MapTiles(private val root: File) {
+class MapTiles(val root: File) {
     private val locks = ConcurrentHashMap<String, Any>()
     private val failedAt = ConcurrentHashMap<String, Long>()
 

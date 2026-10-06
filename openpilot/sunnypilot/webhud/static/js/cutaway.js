@@ -68,6 +68,7 @@ export const ANCHORS = {
   winFL: [-0.8, 1.33, 2.2], winFR: [0.8, 1.33, 2.2], winRL: [-0.79, 1.35, 3.06], winRR: [0.79, 1.35, 3.06],
   winQL: [-0.7, 1.4, 3.78], winQR: [0.7, 1.4, 3.78], winRear: [0, 1.33, 4.43], sunroof: [0, 1.64, 2.6],
   port: [-0.95, 0.98, 1.36], camera: [0, 1.47, 1.82], radar: [0, 0.37, 0.0], amp: [0.55, 0.9, 4.2],
+  liftgate: [0, 1.02, 4.74],   // the liftgate's handle line (rides on the liftgate: carcontrols.js doorPoint)
 };
 
 const SEAT_HEADS = { FL: [-0.39, 1.34, 2.55], FR: [0.39, 1.34, 2.55], RL: [-0.48, 1.18, 3.4], RR: [0.48, 1.18, 3.4] };
@@ -132,9 +133,13 @@ const XRAY_FRAG = `
       float along = 1.0 - u.z;                    // the pack fills from the rear forward
       vec2 cell = fract(vec2(u.x * 2.0, u.z * 12.0));
       float edge = 1.0 - smoothstep(0.0, 0.06, min(min(cell.x, 1.0 - cell.x), min(cell.y, 1.0 - cell.y)));
-      float full = step(along, uFill);
-      float front = exp(-pow((along - uFill) * 30.0, 2.0)) * (0.6 + 0.4 * sin(uTime * 6.0));
-      a = 0.08 + 0.35 * full + 0.3 * edge + 0.5 * front + 0.4 * rim * rim;
+      // the charge as a liquid in the pack: filled from the rear forward, denser toward the floor, its
+      // front face flat at rest and in waves while charging (uTime runs only then)
+      float wave = 0.012 * sin(u.x * 11.0 + uTime * 2.6) + 0.007 * sin(u.x * 29.0 - uTime * 4.1) + 0.004 * sin(u.y * 9.0 + uTime * 6.0);
+      float f = uFill + (uTime > 0.0 ? wave : 0.0);
+      float full = step(along, f);
+      float front = exp(-pow((along - f) * 60.0, 2.0));
+      a = 0.05 + full * (0.42 + 0.25 * (1.0 - u.y)) + 0.1 * edge * (1.0 - 0.6 * full) + 0.7 * front + 0.3 * rim * rim;
     }
     a *= uLevel;
     if (a < 0.003) discard;
@@ -806,7 +811,7 @@ export class Cutaway {
           vGlow = step(0.9, fract(aPhase * 17.0));
           vColor = vec4(mix(uColorL, uColorR, aSide), uLevel * sin(3.14159 * t) * (vGlow > 0.5 ? 0.12 : 0.75));
           vec4 mv = modelViewMatrix * vec4(p, 1.0);
-          gl_PointSize = max(1.5, (vGlow > 0.5 ? 0.05 : 0.012) * uScale / max(0.3, -mv.z));
+          gl_PointSize = min(vGlow > 0.5 ? 22.0 : 9.0, max(1.5, (vGlow > 0.5 ? 0.05 : 0.012) * uScale / max(0.3, -mv.z)));   // capped: the climate view is close
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: SPECK_FRAGMENT, transparent: true, depthWrite: false,

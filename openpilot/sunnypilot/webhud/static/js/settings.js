@@ -304,11 +304,31 @@ export class Settings {
     this.showLaneConf();
     body.append(this.toggleRows([
       ['showRoad', 'Inferred road', 'Fill in the road and lanes the cameras don\'t report, following the last known lanes and your path.'],
-      ['mapRoad', 'Map road', 'Shape the road from the map beyond the cameras\' reach: its bends, branches and the way ahead, from where the GPS and the car\'s own motion place you.'],
+      ['mapRoad', 'Map road', 'Draw the road from the map: the roads around you, their junctions, and what stands along them, placed by the car\'s own motion with the GPS and heading eased in. The cameras\' lanes only pick the lane you\'re drawn in. Off, or without a map, the road is the cameras\' alone.'],
       ['showGround', 'Ground texture', 'Fine textured ground that moves under the car with its speed and steering.'],
-      ['showSigns', 'Traffic lights & signs', 'Lights, signs and stop lines the car\'s camera reports, placed where they most likely are.'],
+      ['showSigns', 'Traffic lights & signs', 'The map\'s signals, stop and yield signs, limits and crossings where the map has them (the signal ahead shows the camera\'s light), and the lights, signs and stop lines the car\'s camera reports, placed where they most likely are.'],
       ['showPath', 'Planned path', 'Blue band along openpilot\'s path while steering is engaged.'],
     ]));
+    // the map around the car is downloaded ahead and kept (maptiles.py MapPrefetch)
+    this.mapStatus = el('small.cur', '');
+    body.append(el('div.section', el('h3', 'Map download'),
+      el('p.desc', 'The map within this distance of the car -- the road tiles and what stands along the roads -- is downloaded in the ' +
+        'background and kept for good, so the next drive through the area needs no network. Off downloads only what is in view.'),
+      this.app.segmented([['0', 'Off'], ['10', '10 km'], ['25', '25 km'], ['50', '50 km'], ['100', '100 km']], String(s.mapPrefetchKm ?? 25), v => set('mapPrefetchKm', Number(v))),
+      this.mapStatus));
+    this.showMapStatus();
+  }
+
+  /** What the server has of the map around the car (GET /map/status). */
+  showMapStatus() {
+    const out = this.mapStatus;
+    if (!out) return;
+    fetch('/map/status').then(r => (r.ok ? r.json() : null)).then((st) => {
+      if (!st || out !== this.mapStatus) return;
+      if (!st.center) { out.textContent = 'Waiting for a position.'; return; }
+      out.textContent = `Within ${st.radius_km} km: ${st.roads_ready}/${st.tiles} road tiles, ${st.features_ready}/${st.tiles} feature tiles` +
+        (st.busy ? ', downloading' : '') + (st.errors ? `, ${st.errors} failed` : '');
+    }).catch(() => { out.textContent = ''; });
   }
 
   displayObjects() {

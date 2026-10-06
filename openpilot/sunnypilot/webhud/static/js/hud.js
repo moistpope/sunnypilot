@@ -7,8 +7,65 @@ const GEAR_LETTER = {
 };
 const PERSONALITY_BARS = { aggressive: 1, standard: 2, relaxed: 3 };
 
+
+// The power bar at the bottom of the status card: Tesla's bar without the graduations. Its origin is the
+// middle; regeneration draws to the left in green, consumption to the right in the text color. The value is
+// the motors' electrical power from the Fisker bus (fisker_world.js power: kw actual, demandKw asked), eased
+// so it reads. A tap opens the last minute as a trace on a canvas: consumption above the line, regen below.
+const ECON_DRIVE_KW = 180;   // full scale to the right
+const ECON_REGEN_KW = 60;    // ...and to the left (the Ocean regenerates far less than it drives)
+const ECON_SECONDS = 60;
+class Econ {
+  constructor() {
+    this.box = $('#econ');
+    this.pos = $('.econ-pos', this.box);
+    this.neg = $('.econ-neg', this.box);
+    this.canvas = $('#econ-graph');
+    this.kw = 0;
+    this.hist = [];   // [t, kw]
+    this.lastAt = 0;
+    this.box.addEventListener('click', () => this.box.classList.toggle('open'));
+  }
+  update(kw, t) {
+    const have = kw != null && isFinite(kw);
+    setClass(this.box, 'hidden', !have && t - this.lastAt > 3);
+    if (!have) return;
+    this.lastAt = t;
+    this.kw += (kw - this.kw) * 0.25;
+    const v = Math.abs(this.kw) < 0.3 ? 0 : this.kw;
+    this.pos.style.width = `${Math.min(50, Math.max(0, v) / ECON_DRIVE_KW * 50).toFixed(1)}%`;
+    this.neg.style.width = `${Math.min(50, Math.max(0, -v) / ECON_REGEN_KW * 50).toFixed(1)}%`;
+    this.hist.push([t, kw]);
+    while (this.hist.length && t - this.hist[0][0] > ECON_SECONDS) this.hist.shift();
+    if (this.box.classList.contains('open')) this.draw(t);
+  }
+  draw(t) {
+    const c = this.canvas, ctx = c.getContext('2d');
+    if (!ctx) return;
+    const w = c.width, h = c.height, mid = h * 0.65;   // more room above the line: consumption is the bigger number
+    ctx.clearRect(0, 0, w, h);
+    const style = getComputedStyle(this.box);
+    const x = (tt) => w - (t - tt) / ECON_SECONDS * w;
+    const y = (kw) => kw >= 0 ? mid - Math.min(1, kw / ECON_DRIVE_KW) * mid : mid + Math.min(1, -kw / ECON_REGEN_KW) * (h - mid);
+    for (const [sign, color] of [[1, style.getPropertyValue('--text')], [-1, style.getPropertyValue('--green')]]) {
+      ctx.beginPath();
+      ctx.moveTo(x(this.hist[0]?.[0] ?? t), mid);
+      for (const [tt, kw] of this.hist) ctx.lineTo(x(tt), y(sign > 0 ? Math.max(0, kw) : Math.min(0, kw)));
+      ctx.lineTo(w, mid);
+      ctx.closePath();
+      ctx.fillStyle = color.trim() || '#888';
+      ctx.globalAlpha = 0.85;
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = (style.getPropertyValue('--muted') || '#888').trim();
+    ctx.fillRect(0, mid - 0.5, w, 1);
+  }
+}
+
 export class Hud {
   constructor() {
+    this.econ = new Econ();
     this.speed = $('#speed');
     this.unit = $('#speed-unit');
     this.latIcon = $('#lat-icon');
@@ -52,6 +109,10 @@ export class Hud {
     const cs = op.carState;
     const unit = this.unitFor(settings, f);
     const conv = unit === 'kmh' ? MS_TO_KPH : MS_TO_MPH;
+
+    // power: the motors' electrical power from the Fisker bus, when it's there
+    const pw = f && f.power ? (f.power.kw != null ? f.power.kw : f.power.demandKw) : null;
+    this.econ.update(pw, performance.now() / 1000);
 
     // speed: what the cluster shows (ICC display speed via carState.vEgoCluster), else Fisker CAN
     let v = null;

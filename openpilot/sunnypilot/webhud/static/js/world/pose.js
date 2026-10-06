@@ -14,6 +14,10 @@
 // Frame: x east, y north, meters from the origin (the first fix); heading h in radians counter-
 // clockwise from east, so the car frame (x forward, y left) keeps its handedness. A compass bearing
 // b (clockwise from north) is h = pi/2 - b. Without any fix the pose is plain odometry from (0, 0, 0).
+//
+// Two poses come out: the estimate, and the *shown* pose the view places the map by. The shown one
+// drives on the same odometry (so the car's own motion is always exact and immediate) and takes the
+// corrections in slowly, rate-limited, so the map never steps under the car (SHOW_* below).
 
 const DEG = Math.PI / 180;
 const EARTH_R = 6378137.0;
@@ -54,6 +58,15 @@ const LAG_ALPHA = 0.15;
 const LAG_DEADBAND = 0.02;            // s: a measurement this close to the current lag leaves it alone
 const REBASE_M = 20000.0;             // move the origin when the car is this far from it
 const EXTRAPOLATE_MAX_S = 0.5;
+// The shown pose: what the view places the map by. It runs on the same odometry, but the GPS and heading
+// corrections reach it slowly and never faster than a rate, so the ground glides under the car rather than
+// stepping, and a lane line never jumps. Only a gross disagreement (the first fix, a restart on persistent
+// outliers) moves it outright.
+const SHOW_TAU_S = 2.0;                // s: it closes on the estimate with this time constant...
+const SHOW_RATE_LAT = [0.05, 0.02];    // m/s: ...but sideways no faster than a + b * |v|
+const SHOW_RATE_LON = [0.10, 0.05];    // m/s: along the road (invisible on a straight road, so quicker)
+const SHOW_RATE_H = 1.5 * DEG;         // rad/s: in heading
+const SHOW_SNAP_M = 10.0, SHOW_SNAP_RAD = 15 * DEG;
 
 const wrap = (a) => (((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -93,6 +106,9 @@ export class PoseEstimator {
     this.pb = P_BIAS0;                // bias variance ((rad/s)^2)
     this.phb = 0.0;                   // their covariance
     this.lag = this.lag0;
+    // the shown pose (see SHOW_*): the estimate, followed slowly
+    this.sx = this.sy = this.sh = 0.0;
+    this.snaps = 0;
     // history of poses after each odometry step: time, position, heading, scaled speed, distance driven
     this.ts = []; this.xs = []; this.ys = []; this.hs = []; this.vs = []; this.ds = [];
     this.dist = 0.0;
@@ -133,6 +149,12 @@ export class PoseEstimator {
         this.y += ds * Math.sin(hm);
         this.h = wrap(this.h + wc * dt);
         this.dist += Math.abs(ds);
+        // the shown pose: the same step on its own heading, then a little of the way toward the estimate
+        const hs = this.sh + 0.5 * wc * dt;
+        this.sx += ds * Math.cos(hs);
+        this.sy += ds * Math.sin(hs);
+        this.sh = wrap(this.sh + wc * dt);
+        this._follow(dt, Math.abs(v));
         this.p += Q_DIST * Math.abs(ds) + ds * ds * Math.min(this.ph, 1.0);
         // heading += (gyro + bias) dt: the bias uncertainty feeds the heading's
         this.ph += 2 * dt * this.phb + dt * dt * this.pb + Q_YAW * Q_YAW * dt;
@@ -211,6 +233,7 @@ export class PoseEstimator {
     const k = this.fixes === 0 ? 1.0 : Math.max(K_MIN, this.p / (this.p + r));
     this._shift(k * dx, k * dy);
     this.p = Math.max(0.01, (1 - k) * this.p);
+    if (this.fixes === 0) this._snap();   // the first fix places the frame: nothing to glide from
     this.fixes++;
     this.lastFixT = tFix;
 
@@ -281,6 +304,7 @@ export class PoseEstimator {
     if (!this.headingInit) {   // the first observation sets the heading outright
       this._rotate(e);
       this.ph = sigma * sigma; this.phb = 0.0;
+      this._snap();
     } else {
       const S = this.ph + sigma * sigma;
       const k0 = this.ph / S, k1 = this.phb / S;
@@ -319,7 +343,36 @@ export class PoseEstimator {
     const dx = -this.x, dy = -this.y;
     this._setOrigin(lat, lon);
     this._shift(dx, dy);
+    this.sx += dx; this.sy += dy;   // the frame moved, not the car
     for (const f of this.fixHist) { f[1] += dx; f[2] += dy; }
+  }
+
+  // ---- the shown pose ---------------------------------------------------------------------------------
+
+  /** Move the shown pose a step of the way toward the estimate: exponentially, within the rates (SHOW_*). */
+  _follow(dt, v) {
+    const ex = this.x - this.sx, ey = this.y - this.sy, eh = wrap(this.h - this.sh);
+    if (Math.hypot(ex, ey) > SHOW_SNAP_M || Math.abs(eh) > SHOW_SNAP_RAD) { this._snap(); return; }
+    const c = Math.cos(this.sh), s = Math.sin(this.sh);
+    const along = c * ex + s * ey, lat = -s * ex + c * ey;
+    const g = Math.min(1, dt / SHOW_TAU_S);
+    const capLon = (SHOW_RATE_LON[0] + SHOW_RATE_LON[1] * v) * dt, capLat = (SHOW_RATE_LAT[0] + SHOW_RATE_LAT[1] * v) * dt;
+    const dLon = clamp(along * g, -capLon, capLon), dLat = clamp(lat * g, -capLat, capLat);
+    this.sx += c * dLon - s * dLat;
+    this.sy += s * dLon + c * dLat;
+    this.sh = wrap(this.sh + clamp(eh * g, -SHOW_RATE_H * dt, SHOW_RATE_H * dt));
+  }
+
+  _snap() {
+    this.sx = this.x; this.sy = this.y; this.sh = this.h;
+    this.snaps++;
+  }
+
+  /** [x, y, h] of the shown pose at t (extrapolated briefly past the last step, like poseAt). */
+  shownAt(t) {
+    const dt = this.t === null ? 0 : clamp(t - this.t, 0, EXTRAPOLATE_MAX_S);
+    const hm = this.sh + 0.5 * this.w * dt;
+    return [this.sx + this.v * Math.cos(hm) * dt, this.sy + this.v * Math.sin(hm) * dt, wrap(this.sh + this.w * dt)];
   }
 
   // ---- the GPS lag, from the speeds -----------------------------------------------------------------
@@ -352,17 +405,23 @@ export class PoseEstimator {
 
   // ---- output -----------------------------------------------------------------------------------------
 
-  /** The pose at `now` (briefly extrapolated), for the snapshot. */
+  /** The pose at `now` (briefly extrapolated), for the snapshot: x, y, h are the shown pose (what the view places
+   *  the map by), `est` the estimate itself, `offset` how far the shown one trails it (car frame: along, left, heading). */
   state(now = null) {
     now = now == null ? this.t : now;
     if (this.t === null || now == null) return null;
-    const [x, y, h] = this.poseAt(now);
+    const [ex, ey, eh] = this.poseAt(now);
+    const [x, y, h] = this.shownAt(now);
     const gpsAge = this.fixes ? now - this.lastFixT : null;
     const headingAge = this.headingInit ? now - this.lastHeadingT : null;
     let geo = null;
-    if (this.origin) geo = this.toGeodetic(x, y);
+    if (this.origin) geo = this.toGeodetic(ex, ey);
+    const c = Math.cos(h), s = Math.sin(h), dx = x - ex, dy = y - ey;
     return {
       x: round(x, 2), y: round(y, 2), h: round(h, 4),
+      est: { x: round(ex, 2), y: round(ey, 2), h: round(eh, 4) },
+      offset: { along: round(c * dx + s * dy, 2), left: round(-s * dx + c * dy, 2), h: round(wrap(h - eh) / DEG, 2) },
+      snaps: this.snaps,
       lat: geo ? round(geo[0], 7) : null, lon: geo ? round(geo[1], 7) : null,
       v: round(this.v, 2), w: round(this.w, 4),
       speedScale: round(this.scale, 4), gyroBias: round(this.bias / DEG, 3),

@@ -13,7 +13,9 @@ import { PowerTrails, motorLoad } from './tracks.js';
 import { ObjectLabels } from './labels.js';
 import { Cutaway } from './cutaway.js';
 import { NavArrow } from './navarrow.js';
-import { mapReference, lineAlong, junctions, cutByStations } from './mapsurface.js';
+import { mapReference, mapRoadFrame, mapAlignMatrix, freshPlacement, lineAlong, junctions, cutByStations } from './mapsurface.js';
+import { RoadNetwork } from './roadnet.js';
+import { MapFeatures } from './mapfeatures.js';
 import { STEER_RATIO } from './vehicle.js';
 
 const EGO_LEN = 4.775;
@@ -29,6 +31,9 @@ const GROUND_SIZE = 10 * TILE;    // textured plane under the car; fog hides its
 const REAR_AXLE_Z = EGO_LEN - 0.93;   // until the model reports its own
 const POSE_FOLLOW_S = 0.4;        // the ground frame eases onto the worker's GPS-corrected pose over this long
 const POSE_JUMP_M = 10, POSE_JUMP_RAD = 20 * Math.PI / 180;   // beyond this it jumps instead (first fix, seek, new origin)
+// which road is drawn (see _road): the map's once the matcher has had the road under us this long with at least this
+// confidence, the cameras' again once it hasn't for MAP_OFF_S; the map road fades in over MAP_FADE_S
+const MAP_CONF_MIN = 0.5, MAP_ON_S = 0.5, MAP_OFF_S = 3.0, MAP_FADE_S = 0.6;
 const wrapAngle = (a) => (((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
 const RADAR_OPACITY = 0.5;            // radar view: see-through cars...
 const RADAR_CAR = { w: 2.0, l: 4.8, hgt: 1.6 };   // ...a touch bigger than most cars, so a matching camera car sits inside
@@ -320,6 +325,20 @@ export class CarScene {
     this.world.add(this.ground);
     this.scene.add(this.world);
     this.pose = { x: 0, y: 0, h: 0 };   // rear axle: m, m, rad; x forward / y left at h = 0
+    // The map's own layers: the roads around the car (roadnet.js) and the signals, signs and crossings along them
+    // (mapfeatures.js), ground-fixed in the pose frame, under a group that takes the same slide and turn the lane
+    // placement gives the road we're on (mapsurface.js), so the whole map moves as one with it (_alignMap)
+    this.mapGroup = new THREE.Group();
+    this.mapGroup.matrixAutoUpdate = false;
+    this.world.add(this.mapGroup);
+    this.roadnet = new RoadNetwork(this.mapGroup);
+    this.mapFeatures = new MapFeatures(this.mapGroup);
+    this.roadSrc = { mode: 'camera', pending: 0, lost: 0, fade: 0 };   // whose road is drawn: the map's or the cameras' (_road)
+    this.place = freshPlacement();   // where the car is drawn across the map's road (mapsurface.js)
+    this.lastMap = null;             // the last usable map match (kept through a short coast)
+    this.mapRef = null;              // this frame's map reference (mapsurface.js), null in camera mode
+    this.mapFrame = null;            // ...and the road frame furniture anchors to on it
+    this.ourSignal = null;           // the map's signal ahead on our road, if one (mapfeatures.js)
 
     this.headBeam = lightPool(0xfff1cf, beamTex());
     this.field.mask(this.headBeam.material, 'ground');
@@ -356,6 +375,8 @@ export class CarScene {
       // edges, centerlines and lane boundaries (not masked by the road field: they lie outside our road)
       branch: lineMaterial(0x181b20, 1.0), branchEdge: lineMaterial(0x6c727b, 0.7), branchCenter: lineMaterial(0xdcaa2e, 0.55), branchLane: lineMaterial(0x8e949d, 0.5),
     };
+    // the arm strips lie on the network's strips (roadnet.js): over them by polygon offset, under the tires by height
+    Object.assign(this.mats.branch, { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -3 });
     // lane lines show with the road, stop lines wherever there's ground
     for (const k of ['line', 'lineBlue', 'lineYellow', 'lineRed', 'edge', 'lineSoft', 'lineYellowSoft', 'lineBlueSoft']) this.field.mask(this.mats[k], 'road');
     this.field.mask(this.mats.marking, 'ground');
@@ -440,6 +461,8 @@ export class CarScene {
     this.mats.line.color.set(t.line);
     this.mats.lineSoft.color.set(t.line);
     this.mats.branch.color.set(t.ground).lerp(new THREE.Color(t.road), dark ? 0.35 : 0.07);   // the lanes' tint (ground.js), so arms match our road
+    this.roadnet.setTheme(t, dark);
+    this.mapFeatures.setTheme(t, dark);
     this.mats.branchEdge.color.set(t.edge);
     this.mats.branchCenter.color.set(t.yellow);
     this.mats.branchLane.color.set(t.line);
@@ -642,61 +665,22 @@ export class CarScene {
     const latActive = !!((op.carControl && op.carControl.latActive) || (op.selfdriveStateSP && op.selfdriveStateSP.mads && op.selfdriveStateSP.mads.active));
     const hmi = f && f.lanes ? f.lanes.hmi : null;
     const pieces = { line: [], lineBlue: [], lineYellow: [], lineRed: [], lineSoft: [], lineYellowSoft: [], lineBlueSoft: [], edge: [], model: [], modelEdge: [] };
-    const xTo = 130, xFrom = -30;
-
-    // smoothed + procedurally completed road (road.js, updated in _road); the lines are cut to the road's
-    // shape by the road field, so they only show, and grow and fade, with it
-    const road = this.roadOut, ref = this.mapRef;
-    const anchor = linePoints(road.anchor.c, xFrom, xTo, 2);
-    const fromCenter = (d) => (ref ? lineAlong(ref, null, d) : offsetLine(anchor, d - road.anchor.offset));
-    const measured = (c) => (ref ? lineAlong(ref, c) : linePoints(c, xFrom, xTo, 2));
-    // the junctions along the map's road (mapsurface.js): our half widths on each side, from the lanes or the map
-    const lanesShown = road.surface.reveal > 0.2;
-    const hm = ref ? { left: lanesShown ? Math.max(1.8, road.surface.left) : ref.lanes * 3.6 / 2, right: lanesShown ? Math.max(1.8, -road.surface.right) : ref.lanes * 3.6 / 2 } : null;
-    const jn = ref && s.mapRoad !== false ? junctions(ref, hm) : { arms: [], cuts: { left: [], right: [], all: [] } };
-    // a line's pieces outside the junction mouths: its edge opens across an arm, everything across a crossing
-    const cut = (pts, d) => {
-      if (!ref) return [pts];
-      const iv = [...jn.cuts.all];
-      if (d != null && d >= hm.left - 0.6) iv.push(...jn.cuts.left);
-      if (d != null && d <= -(hm.right - 0.6)) iv.push(...jn.cuts.right);
-      return iv.length ? cutByStations(pts, ref.dense.st, iv) : [pts];
-    };
-    for (const line of road.surface.reveal > 0.001 ? road.lines : []) {
-      if (line.inferred && s.showRoad === false) continue;
-      const d = line.inferred ? line.offset : (ref ? line.c.y0 - ref.centerY0 : null);
-      const parts = cut(line.inferred ? fromCenter(line.offset) : measured(line.c), d);
-      if (line.edge) { pieces.edge.push(...parts); continue; }
-      const ego = line.id === 'L1' || line.id === 'R1';
-      let key = line.color === 'yellow' ? 'lineYellow' : 'line';
-      const side = line.id === 'L1' ? hmi && hmi.left : line.id === 'R1' ? hmi && hmi.right : null;
+    // the material a line is drawn with: the ego lane's two lines take the HMI's colors (blue while steering, red for
+    // a departure), the rest their marking's; inferred lines the soft variants
+    const keyOf = (id, color, inferred) => {
+      const ego = id === 'L1' || id === 'R1';
+      let key = color === 'yellow' ? 'lineYellow' : 'line';
+      const side = id === 'L1' ? hmi && hmi.left : id === 'R1' ? hmi && hmi.right : null;
       if (ego && (latActive || (side && side.color === 'blue'))) key = 'lineBlue';
       if (ego && side && (side.color === 'red' || (side.flash && this.clock % 0.6 < 0.3))) key = 'lineRed';
-      if (line.inferred) key = { line: 'lineSoft', lineYellow: 'lineYellowSoft', lineBlue: 'lineBlueSoft', lineRed: 'lineRed' }[key];
-      const t = line.type;   // 2 dashed, 3 Botts dots, 4..7 double lines
-      const solid = (p) => pieces[key].push(p);
-      const dash = (p) => dashed(p, phase).forEach(d => pieces[key].push(d));
-      for (const pts of parts) {
-        if (t === 2 || t === 3) dash(pts);
-        else if (t >= 4 && t <= 7) {
-          const a = offsetLine(pts, 0.11), b = offsetLine(pts, -0.11);
-          (t === 5 || t === 6 ? dash : solid)(a);
-          (t === 4 || t === 5 ? dash : solid)(b);
-        } else solid(pts);
-      }
-    }
-    // no lanes from the cameras: the lane structure the map implies (mapsurface.js), soft, along the reference
-    if (ref && !lanesShown && ref.reveal > 0) {
-      for (const l of ref.structure) {
-        for (const pts of cut(lineAlong(ref, null, l.d), l.d)) {
-          if (l.kind === 'edge') pieces.edge.push(pts);
-          else if (l.kind === 'center') { pieces.lineYellowSoft.push(offsetLine(pts, 0.11), offsetLine(pts, -0.11)); }
-          else dashed(pts, phase).forEach(d => pieces.lineSoft.push(d));
-        }
-      }
-    }
+      if (inferred) key = { line: 'lineSoft', lineYellow: 'lineYellowSoft', lineBlue: 'lineBlueSoft', lineRed: 'lineRed' }[key];
+      return key;
+    };
+    // the two road sources are drawn by separate code: the map's road when the car is placed on it, else the cameras'
+    const road = this.roadOut, ref = this.mapRef;
+    const jn = ref ? this._mapLines(pieces, ref, phase, keyOf) : this._cameraLines(pieces, road, phase, keyOf, s);
     // stop line / crosswalk the ADAS reports, across the road at its distance
-    const mk = this.furniture.markings(this.road);
+    const mk = this.furniture.markings(this.mapFrame || this.road);
     this.ribbons.marking.set(mk.stop, 0.5, 0.025);
     this.ribbons.zebra.set(mk.zebra, 0.55, 0.025);
     // 'both': openpilot's raw lane lines on top, thin
@@ -728,18 +712,14 @@ export class CarScene {
       this.ribbons.path.set([densify(path.map(([x, y]) => [x + modelXOffset(st), y]), 2).filter(p => p[0] > -2)], 1.9, 0.01);
     } else this.ribbons.path.set([], 0);
 
-    // the roads leaving (or joining) the map's road: each arm as a strip between its filleted edges, the fillets
-    // and edges as lines, its centerline or lane boundaries past the mouth
-    const armEdges = [], armCenters = [], armLanes = [];
-    for (const arm of jn.arms) {
-      armEdges.push(...arm.arcs, ...arm.edges);
-      if (arm.center) armCenters.push(offsetLine(arm.center, 0.11), offsetLine(arm.center, -0.11));
-      for (const l of arm.lanes) dashed(l, phase).forEach(d => armLanes.push(d));
-    }
-    this.ribbons.branch.setPairs(jn.arms.map(a => a.strip), 0.006);
-    this.ribbons.branchEdge.set(armEdges, 0.25, 0.012);
-    this.ribbons.branchCenter.set(armCenters, 0.14, 0.012);
-    this.ribbons.branchLane.set(armLanes, 0.13, 0.012);
+    // the roads leaving (or joining) the map's road: each arm as a strip between its filleted edges (the corners
+    // the network's plain strips lack) and the fillets as lines; the arm's own lines are the network's
+    const armArcs = [];
+    for (const arm of jn.arms) armArcs.push(...arm.arcs);
+    this.ribbons.branch.setPairs(jn.arms.map(a => a.strip), 0.002);
+    this.ribbons.branchEdge.set(armArcs, 0.25, 0.012);
+    this.ribbons.branchCenter.set([], 0.14, 0.012);
+    this.ribbons.branchLane.set([], 0.13, 0.012);
 
     // blind-spot glow beside the car
     const bsd = [];
@@ -749,6 +729,60 @@ export class CarScene {
     if (left || cs.leftBlindspot) bsd.push([[-8, 3.0], [2, 3.0]]);
     if (right || cs.rightBlindspot) bsd.push([[-8, -3.0], [2, -3.0]]);
     this.ribbons.bsd.set(bsd, 2.6, 0.012);
+  }
+
+  /** A line's pieces into the material by its marking type (2 dashed, 3 Botts dots, 4..7 double lines, else solid). */
+  _styled(pieces, key, type, parts, phase) {
+    const solid = (p) => pieces[key].push(p);
+    const dash = (p) => dashed(p, phase).forEach(d => pieces[key].push(d));
+    for (const pts of parts) {
+      if (type === 2 || type === 3) dash(pts);
+      else if (type >= 4 && type <= 7) {
+        const a = offsetLine(pts, 0.11), b = offsetLine(pts, -0.11);
+        (type === 5 || type === 6 ? dash : solid)(a);
+        (type === 4 || type === 5 ? dash : solid)(b);
+      } else solid(pts);
+    }
+  }
+
+  // The cameras' road (road.js, the fallback without a map): the measured lines as their quadratics, the inferred
+  // ones parallel to the anchor line; the lines are cut to the road's shape by the road field, so they only show,
+  // and grow and fade, with it.
+  _cameraLines(pieces, road, phase, keyOf, s) {
+    const xTo = 130, xFrom = -30;
+    const anchor = linePoints(road.anchor.c, xFrom, xTo, 2);
+    for (const line of road.surface.reveal > 0.001 ? road.lines : []) {
+      if (line.inferred && s.showRoad === false) continue;
+      const pts = line.inferred ? offsetLine(anchor, line.offset - road.anchor.offset) : linePoints(line.c, xFrom, xTo, 2);
+      if (line.edge) { pieces.edge.push(pts); continue; }
+      this._styled(pieces, keyOf(line.id, line.color, line.inferred), line.type, [pts], phase);
+    }
+    return { arms: [], cuts: { left: [], right: [], all: [] } };
+  }
+
+  // The map's road (mapsurface.js): its lines are the network's (roadnet.js), the same for every road; here only the
+  // two lines bounding the lane the car is drawn in, when the HMI colors them (blue while steering, red for a
+  // departure), solid over the network's, opened at the junctions along it. Returns the junction geometry (its
+  // arms are drawn by the caller).
+  _mapLines(pieces, ref, phase, keyOf) {
+    const hm = { left: ref.width[1], right: -ref.width[0] };
+    const jn = junctions(ref, hm);
+    // a line's pieces outside the junction mouths: its edge opens across an arm, everything across a crossing
+    const cut = (pts, d) => {
+      const iv = [...jn.cuts.all];
+      if (d >= hm.left - 0.6) iv.push(...jn.cuts.left);
+      if (d <= -(hm.right - 0.6)) iv.push(...jn.cuts.right);
+      return iv.length ? cutByStations(pts, ref.dense.st, iv) : [pts];
+    };
+    if (ref.reveal > 0) {
+      for (const l of ref.structure) {
+        if (!l.ego) continue;
+        const key = keyOf(l.ego, l.kind === 'center' ? 'yellow' : 'white', false);
+        if (key !== 'lineBlue' && key !== 'lineRed') continue;
+        this._styled(pieces, key, l.kind === 'center' ? 7 : 1, cut(lineAlong(ref, null, l.d), l.d), phase);
+      }
+    }
+    return jn;
   }
 
   _uss() {
@@ -1260,9 +1294,10 @@ export class CarScene {
       if (w.front) w.steer.rotation.y += (steer - w.steer.rotation.y) * k;
     }
 
-    // headlight throw on the road ahead (low/high beam only)
+    // headlight throw on the road ahead (low/high beam only). Not on the map's road: there the ground is black where
+    // there is no road, and a light pool on it reads as a road that isn't there
     const beam = L.high ? 28 : 15;
-    this.headBeam.visible = L.low || L.high;
+    this.headBeam.visible = (L.low || L.high) && !this.mapRef;
     this.headBeam.scale.set(L.high ? 4.2 : 3.6, 1, beam);
     this.headBeam.position.z = -beam / 2 - 0.3;
   }
@@ -1343,13 +1378,59 @@ export class CarScene {
     this.controls.update();
   }
 
-  // the road model, then the road field the ground and lines are drawn through (ground.js)
+  // The road: the cameras' road model always runs (it is the fallback, and it places the car in its lane on the map);
+  // the map's road is drawn instead once the matcher has the road under us, and the field the ground and lines are
+  // drawn through (ground.js) takes whichever is drawn. Switching waits (MAP_ON_S / MAP_OFF_S) so a tile loading or
+  // a short coast doesn't flip it, and the last usable match carries the map through the coast.
   _road(dt) {
     this.roadOut = this.road.update(this.state || {}, this.vehicle, this.settings, dt);
-    // the map's road (mapsurface.js) shapes the field and the lines beyond the cameras' reach, when there is one
-    this.mapAlign = this.mapAlign || { dh: 0, shift: 0 };   // the lanes' smoothed turn and slide of the map (mapsurface.js)
-    this.mapRef = mapReference(this.state && this.state.map, this.pose, this.roadOut, this.settings, this.ego.userData.rearAxleZ ?? REAR_AXLE_Z, this.mapAlign, dt);
-    this.field.update(this.roadOut, this.ground, this.settings.showRoad === false ? 0 : this.roadTint, this.mapRef);
+    const s = this.settings, map = this.state && this.state.map;
+    // in: a match with some confidence for MAP_ON_S; out: no match at all for MAP_OFF_S (a low-confidence match -- the GPS
+    // off the centerline of a wide road -- is still the road we're on)
+    const matched = !!(map && map.way && map.horizon && map.horizon.length >= 2);
+    if (matched) this.lastMap = map;
+    const src = this.roadSrc;
+    src.lost = matched ? 0 : src.lost + dt;
+    let mode = src.mode;
+    if (s.mapRoad === false) mode = 'camera';
+    else if (src.mode === 'camera') {
+      if (matched && (map.conf ?? 0) >= MAP_CONF_MIN) { src.pending += dt; if (src.pending >= MAP_ON_S) mode = 'map'; } else src.pending = 0;
+    } else if (src.lost >= MAP_OFF_S) mode = 'camera';
+    if (mode !== src.mode) { src.mode = mode; src.pending = 0; }
+    // the placement (which lane, how far the map is slid) lives on through a lost match; it starts over only with the frame
+    const seq = this.state && this.state.pose && this.state.pose.origin ? this.state.pose.origin.seq : null;
+    if (seq !== this.placeSeq) {
+      // a new frame: everything held in the old one goes (the horizon kept through a coast, the map layers' geometry)
+      this.placeSeq = seq;
+      this.place = freshPlacement();
+      this.lastMap = matched ? map : null;
+      this.mapGroup.matrix.identity(); this.mapGroup.matrixWorldNeedsUpdate = true;
+      this.roadnet.clear();
+      this.mapFeatures.clear();
+    }
+    src.fade = Math.max(0, Math.min(1, src.fade + (src.mode === 'map' ? dt : -dt) / MAP_FADE_S));
+    const zr = this.ego.userData.rearAxleZ ?? REAR_AXLE_Z;
+    this.mapRef = src.mode === 'map' && this.lastMap ? mapReference(this.lastMap, this.pose, this.roadOut, s, zr, this.place, dt, src.fade) : null;
+    this.mapFrame = this.mapRef ? mapRoadFrame(this.mapRef, this.road.odo) : null;
+    this.field.update(this.roadOut, this.ground, s.showRoad === false ? 0 : this.roadTint, this.mapRef);
+    // the map around the car: the roads (ground-fixed; a new layer arrives as the car moves) and what stands along them.
+    // They stay up through a lost match (the cameras' road is drawn over them then): a map that blinks is worse than one
+    // the car has strayed from for a moment
+    const showMap = s.mapRoad !== false;
+    this._alignMap(this.mapRef, zr);
+    this.roadnet.update(map, showMap);
+    const f = this.state && this.state.fisker;
+    this.ourSignal = this.mapFeatures.update(map, showMap && s.showSigns !== false, f ? f.tlr : null, this.pose, this.clock);
+  }
+
+  /** Give the map's ground-fixed layers the reference's rigid placement (mapsurface.js mapAlignMatrix). Without a
+   *  reference (no match) the last placement stays, so the map doesn't step when the match goes or comes. */
+  _alignMap(ref, zr) {
+    if (!ref) return;
+    const g = this.mapGroup;
+    const m = mapAlignMatrix(ref, this.pose, zr);
+    if (m) g.matrix.fromArray(m); else g.matrix.identity();
+    g.matrixWorldNeedsUpdate = true;
   }
 
   frame(dt, vehicle) {
@@ -1359,7 +1440,9 @@ export class CarScene {
     this._ground(dt);
     this._camera(dt);
     this._road(dt);
-    this.furniture.update(this.state, this.road, this.vehicle, this.settings, dt, this.clock, toScene);
+    // furniture and the nav arrow anchor to whichever road is drawn
+    this.furniture.update(this.state, this.mapFrame || this.road, this.vehicle, this.settings, dt, this.clock, toScene, { hideLight: !!this.ourSignal });
+    this.navArrow.road = this.mapFrame || this.road;
     this._laneGeometry();
     this._uss();
     this._objects(dt);

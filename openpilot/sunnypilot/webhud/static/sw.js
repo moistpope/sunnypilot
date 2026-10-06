@@ -26,8 +26,9 @@ self.addEventListener('fetch', (event) => {
 });
 
 async function serve(event, req, url) {
-  // every page URL is the app shell (the server falls back to it), so keep one copy of it
-  const key = req.mode === 'navigate' ? '/' : url.pathname + url.search;
+  // every page URL is the app shell (the server falls back to it), so keep one copy of it; a page of
+  // its own (design.html, the style guide) is the exception
+  const key = req.mode === 'navigate' && !url.pathname.endsWith('.html') ? '/' : url.pathname + url.search;
   const cache = await caches.open(CACHE);
   const cached = await cache.match(key);
   const etag = cached && cached.headers.get('ETag');

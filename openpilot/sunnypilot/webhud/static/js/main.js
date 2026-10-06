@@ -24,7 +24,7 @@ const DEFAULTS = {
   showTracks: true, showRadar: false, radarAllTracks: false, showLowConf: false, showObjectStats: false, objectMode: 'world',
   laneHeadingSign: 1, laneCurvatureSign: 1, objectHeadingSign: 1, laneConfThreshold: LANE_CONF_THRESHOLD,
   showFps: true, renderScale: 'auto', showMusic: true, showNav: true, demoInfotainment: false, demoCarState: false,
-  calibration: true,
+  calibration: true, mapPrefetchKm: 25,
 };
 
 function loadSettings() {
@@ -135,6 +135,7 @@ class App {
     if (key === 'showMusic' || key === 'showNav' || key === 'demoInfotainment') this.info.apply();
     if (key === 'demoCarState') this.carState.apply();
     if (key === 'calibration') this.worker.postMessage({ type: 'calibration', on: value });
+    if (key === 'mapPrefetchKm') this.worker.postMessage({ type: 'mapPrefetch', km: Number(value) });
     if (!this.car.apa) this.scene.update(this.state, this.settings);
     if (this.ui.isOpen && this.ui.tab === 'display') this.ui.show('display', true);
   }
@@ -185,6 +186,7 @@ class App {
       if (!this.workerReady && this.worker === w && attempt < 10) { w.terminate(); setTimeout(() => this.startWorker(attempt + 1), 2000); }
     };
     w.postMessage({ type: 'calibration', on: this.settings.calibration !== false });
+    w.postMessage({ type: 'mapPrefetch', km: Number(this.settings.mapPrefetchKm ?? 25) });
     const text = (path, required) => fetch(path, { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error(`${path}: ${r.status}`); return r.text(); })
       .catch(e => { if (required) throw e; return null; });
     const load = () => Promise.all([text('/dbc/fisker_ocean_adas_world.dbc', true), text('/dbc/fisker_ocean_mrr.dbc', false), text('/dbc/fisker_ocean_ibus.dbc', false)])
@@ -296,8 +298,20 @@ class App {
     setClass($('#replaybar'), 'hidden', !replay);
   }
 
+  // The worker sends the map's roads layer (map.roads, state.js `_roadsLayer`) only in the snapshot it was rebuilt in;
+  // every later one carries just its version. A snapshot the view never draws (a missed frame, a hidden tab) must
+  // not lose the layer for the next 40 m, so the last one is carried forward here, per source.
+  _carryRoads(state, source) {
+    const m = state && state.map;
+    if (!m) return;
+    const kept = this.roadsLayers || (this.roadsLayers = {});
+    if (m.roads) kept[source] = m.roads;
+    else if (kept[source] && kept[source].version === m.roadsVersion) m.roads = kept[source];
+  }
+
   // the car's own view from the worker (IBUS through the app): drawn whenever the comma's ticks aren't coming
   onLocal(state) {
+    this._carryRoads(state, 'car');
     this.localState = state;
     this.lastLocalAt = performance.now();
     this.updateSource();
@@ -344,6 +358,7 @@ class App {
 
   onState(state) {
     const prevMode = this.state && this.state.mode;
+    this._carryRoads(state, 'comma');
     this.state = state;
     this.lastStateAt = performance.now();
     this.updateSource();

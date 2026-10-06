@@ -134,3 +134,52 @@ describe('PoseEstimator', () => {
     assert.ok(Math.abs(s.h - Math.PI / 2) < 1e-3);
   });
 });
+
+describe('the shown pose', () => {
+  /** Straight east at 10 m/s on odometry, GPS fixes 0.2 s late; from `shiftAt` on, the fixes sit `dy` m north of the odometry. */
+  function run(T, shiftAt, dy, onStep) {
+    const est = new PoseEstimator({ gpsLag: GPS_LAG_S, speedScale: 1.0 });
+    const dt = 0.01;
+    for (let i = 0; i * dt <= T + 1e-9; i++) {
+      const t = i * dt;
+      est.predict(t, 10, 0);
+      if (i % 10 === 0 && t >= 0.2) {
+        const tFix = t - 0.2, [lat, lon] = toGeo(10 * tFix, tFix >= shiftAt ? dy : 0);
+        est.gps(t, lat, lon);
+        est.heading(t, 90, 0.2);
+      }
+      if (onStep) onStep(t, { ...est.state(t), raw: est.shownAt(t) });
+    }
+    return est;
+  }
+
+  test('the first fix and heading place it outright; afterwards it follows the estimate slowly and never steps', () => {
+    let prev = null, maxStep = 0, snapsAfter = 0;
+    const est = run(60, 20, 2.0, (t, st) => {
+      if (prev && t > 1) {
+        // the shown pose's sideways move per step (the car drives straight east: all of it is correction)
+        const dx = st.raw[0] - prev.raw[0], dy = st.raw[1] - prev.raw[1];
+        const lateral = Math.abs(-Math.sin(st.raw[2]) * dx + Math.cos(st.raw[2]) * dy);
+        maxStep = Math.max(maxStep, lateral);
+        if (st.snaps !== prev.snaps) snapsAfter++;
+      }
+      prev = st;
+    });
+    assert.equal(snapsAfter, 0, 'no snaps once running');
+    assert.ok(est.snaps >= 1 && est.snaps <= 3, String(est.snaps));
+    // per 10 ms step at 10 m/s the sideways move stays under the rate (0.05 + 0.02 * 10 = 0.25 m/s)
+    assert.ok(maxStep < 0.25 * 0.01 * 1.05, String(maxStep));   // (a hair over the cap: the heading correction's share)
+    // the estimate took the 2 m, and the shown pose got there too, by the end
+    const st = est.state(60);
+    assert.ok(Math.abs(st.est.y - 2.0) < 0.3, String(st.est.y));
+    assert.ok(Math.abs(st.y - 2.0) < 0.3, String(st.y));
+    assert.ok(Math.abs(st.offset.left) < 0.3);
+  });
+
+  test('right after the fixes move, the shown pose trails the estimate; the trail closes within seconds', () => {
+    const trail = [];
+    run(40, 20, 2.0, (t, st) => { if (Math.abs(t - 21) < 0.006 || Math.abs(t - 35) < 0.006) trail.push([t, st.offset.left, st.est.y - st.y]); });
+    assert.ok(Math.abs(trail[0][2]) > 0.02, `trails right after: ${trail[0]}`);
+    assert.ok(Math.abs(trail[1][2]) < Math.abs(trail[0][2]) / 2, `closes: ${trail[1]} vs ${trail[0]}`);
+  });
+});

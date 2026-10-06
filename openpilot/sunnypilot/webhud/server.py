@@ -42,7 +42,7 @@ from openpilot.sunnypilot.webhud.paths import STATIC_DIR, STATIC_FILES, STATIC_R
 from openpilot.sunnypilot.webhud.sources import LiveSource, ReplaySource, list_routes
 from openpilot.sunnypilot.webhud.state import StreamBuilder, merge_ticks
 from openpilot.sunnypilot.webhud.websocket import WebSocket, accept_key
-from openpilot.sunnypilot.webhud.maptiles import MapTiles, parse_tile_path
+from openpilot.sunnypilot.webhud.maptiles import MapFeatures, MapPrefetch, MapTiles, parse_features_path, parse_tile_path
 
 VERSION = "1.0"
 DEFAULT_PORT = int(os.getenv("WEBHUD_PORT", "8088"))
@@ -358,6 +358,8 @@ class HudServer(ThreadingHTTPServer):
 
 
 MAP_TILES = MapTiles()
+MAP_FEATURES = MapFeatures()
+MAP_PREFETCH = MapPrefetch(MAP_TILES, MAP_FEATURES)
 
 
 class HudHandler(BaseHTTPRequestHandler):
@@ -435,6 +437,13 @@ class HudHandler(BaseHTTPRequestHandler):
         return self._websocket()
       if path.startswith("/map/tile/") and method == "GET":
         return self._map_tile(path)
+      if path.startswith("/map/features/") and method == "GET":
+        return self._map_features(path)
+      if path == "/map/prefetch" and method == "POST":   # the page's position: download the map around it (maptiles.py MapPrefetch)
+        body = self._json_body()
+        return self._json(MAP_PREFETCH.request(float(body["lat"]), float(body["lon"]), float(body.get("radius_km", 25))))
+      if path == "/map/status" and method == "GET":
+        return self._json(MAP_PREFETCH.status())
       route = ROUTES.get((method, path))
       if route is not None:
         return route(self, query)
@@ -474,6 +483,16 @@ class HudHandler(BaseHTTPRequestHandler):
       self.wfile.write(body)
 
   # static -----------------------------------------------------------------------
+  # the point features of a map cell (maptiles.py MapFeatures): from Overpass once, then from disk
+  def _map_features(self, path: str) -> None:
+    klat, klon = parse_features_path(unquote(path))
+    full = MAP_FEATURES.cell_path(klat, klon)
+    if full is None:
+      return self._error(404, "no features for this cell")
+    with open(full, "rb") as f:
+      body = f.read()
+    self._send(200, body, "application/json", {"Cache-Control": "max-age=86400"})
+
   def _not_modified(self, mtime: int, etags: tuple[str, ...]) -> bool:
     """The request's If-None-Match (or, without one, If-Modified-Since) says its copy is current."""
     inm = self.headers.get("If-None-Match")
@@ -823,6 +842,7 @@ def main(argv: list[str] | None = None) -> None:
   args = parser.parse_args(argv if argv is not None else [])
   if args.map_root:
     MAP_TILES.root = args.map_root
+    MAP_FEATURES.root = os.path.join(os.path.dirname(os.path.abspath(args.map_root)), "features")   # beside the tiles' `offline`
 
   try:
     os.nice(10)  # never compete with the driving stack

@@ -373,142 +373,64 @@ html.carmode .musiccard, html.carmode .navcard { display: none; }
   #drive { padding: 8px 14px; }
 }
 
-/* ---------- car controls mockup (carcontrols.js) ---------- */
-/* category ribbon: hidden below the screen until the car is tapped */
-.carribbon { position: absolute; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 10; display: flex; align-items: center; gap: 4px;
-  max-width: calc(100vw - 32px); padding: 6px; border-radius: 22px; background: var(--panel-solid); box-shadow: var(--shadow);
-  transform: translate(-50%, calc(100% + 40px)); opacity: 0; pointer-events: none;
-  transition: transform .38s cubic-bezier(.2, .8, .2, 1), opacity .25s; }
-html.carmode .carribbon { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
-.carribbon .cats { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; overscroll-behavior: contain; scroll-behavior: smooth; }
-.carribbon .cats::-webkit-scrollbar { display: none; }
-.carribbon .cat { flex: none; min-width: 76px; height: 64px; padding: 0 8px; border: 0; border-radius: 15px; background: transparent; color: var(--muted);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
-.carribbon .cat svg { width: 25px; height: 25px; }
-.carribbon .cat.on { background: var(--accent-soft); color: var(--accent); }
-.carribbon .sep { flex: none; width: 1px; align-self: stretch; margin: 12px 4px; background: var(--line); }
-.carribbon .done { flex: none; width: 50px; height: 50px; margin-left: 4px; border: 0; border-radius: 50%; background: var(--bg2); color: var(--text); }
-.carribbon .mock { flex: none; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 9px; font-weight: 800; letter-spacing: 1.2px;
-  text-transform: uppercase; color: var(--muted); opacity: .8; padding: 0 2px; }
+/* ---------- car controls (carcontrols.js, DESIGN.md) ---------- */
+/* The look comes from design.css (the `fo-` classes on #carribbon, #carpanel and #caranchors); this places
+   them. design.css sizes in rem against a 1080-wide frame, so in portrait the root font size follows the
+   width (app.css itself uses px only, so nothing else moves). */
+@media (max-aspect-ratio: 1/1) { html { font-size: calc(100vw / 67.5); } }
 
-/* half-screen panel: a sheet on the right in landscape, from the bottom in portrait */
-.carpanel { position: absolute; z-index: 9; display: flex; flex-direction: column; overflow: hidden; background: var(--panel-solid); box-shadow: 0 10px 50px rgba(0, 0, 0, .22);
-  top: 16px; right: 16px; bottom: calc(var(--ribbon-h, 76px) + 28px); width: min(44vw, 700px); border-radius: var(--radius);
-  transform: translateX(calc(100% + 40px)); visibility: hidden; transition: transform .38s cubic-bezier(.2, .8, .2, 1), visibility 0s .38s; }
-.carpanel.open { transform: none; visibility: visible; transition: transform .38s cubic-bezier(.2, .8, .2, 1); }
-.carpanel header { display: flex; align-items: center; gap: 8px; padding: 10px 14px 10px 8px; border-bottom: 1px solid var(--line); }
-.carpanel header h2 { flex: 1; margin: 0; font-size: 19px; font-weight: 650; display: flex; align-items: center; gap: 10px; }
-.carpanel header h2 .tt { width: 24px; height: 24px; color: var(--accent); }
-.carpanel header .back { height: 44px; border: 0; background: transparent; border-radius: 10px; color: var(--muted); }
-.carpanel .pbody { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 16px 18px 20px; -webkit-overflow-scrolling: touch; }
-.carpanel .pfoot { padding: 8px 18px 12px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--line); }
+/* the dock: a flat bar across the bottom, below the screen until the car is tapped */
+nav.carribbon { position: absolute; left: 0; right: 0; bottom: 0; z-index: 10; padding-bottom: env(safe-area-inset-bottom);
+  transform: translateY(calc(100% + 8px)); transition: transform .38s cubic-bezier(.2, .8, .2, 1); }
+html.carmode nav.carribbon { transform: none; }
+html.carmode .viewdock, html.carmode .musiccard, html.carmode .navcard, html.carmode #replaybar { display: none; }
 
-/* panel controls (the rest reuse .rows/.row, .seg, .switch, the range input and .btn) */
-.row.slider { flex-wrap: wrap; row-gap: 2px; }
-.row.slider .lbl { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.row.slider .lbl em { font-style: normal; font-size: 14px; font-weight: 650; color: var(--accent); font-variant-numeric: tabular-nums; }
-.row.slider input[type=range] { flex: 1 0 100%; }
-.stepper { display: inline-flex; align-items: center; gap: 6px; }
-.stepper button { width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line); background: var(--bg2); font-size: 22px; font-weight: 500; line-height: 1; }
-.stepper b { min-width: 74px; text-align: center; font-size: 24px; font-weight: 300; font-variant-numeric: tabular-nums; }
-.levels { display: inline-flex; gap: 4px; }
-.levels button { width: 42px; height: 40px; border-radius: 11px; border: 1px solid var(--line); background: var(--bg2); color: var(--muted); display: inline-flex; align-items: center; justify-content: center; gap: 2px; }
-.levels button i { width: 4px; border-radius: 2px; background: currentColor; opacity: .35; }
-.levels button i:nth-child(1) { height: 8px; } .levels button i:nth-child(2) { height: 13px; } .levels button i:nth-child(3) { height: 18px; }
-.levels button.on { color: #fff; border-color: transparent; }
-.levels button.on i { opacity: 1; }
-.levels.heat button.on { background: #ef6a2c; } .levels.vent button.on { background: #2f8fe6; } .levels.plain button.on { background: var(--accent); }
-.levels button.off { width: auto; padding: 0 10px; font-size: 12px; font-weight: 700; }
-.checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 2px 12px; padding: 6px 2px; }
-.checks label { display: flex; align-items: center; gap: 10px; min-height: 40px; font-size: 14px; }
-.checks input { width: 20px; height: 20px; accent-color: var(--accent); }
-.plist .row .lbl small.ok { color: var(--green); }
-.hero { display: flex; align-items: center; gap: 18px; padding: 14px 16px; margin-bottom: 18px; border-radius: 16px; background: var(--bg2); border: 1px solid var(--line); }
-.hero .big { font-size: 46px; font-weight: 300; line-height: 1; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
-.hero .big small { font-size: 18px; color: var(--muted); margin-left: 2px; }
-.hero .meta { flex: 1; min-width: 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
-.hero .meta b { display: block; font-size: 16px; color: var(--text); font-weight: 650; }
-.hero .bar { height: 8px; border-radius: 4px; margin-top: 8px; background: var(--line); overflow: hidden; }
-.hero .bar i { display: block; height: 100%; border-radius: 4px; background: var(--green); }
-.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 4px; }
-.modes button { padding: 12px 10px 11px; border-radius: 14px; border: 2px solid var(--line); background: var(--bg2); text-align: left; }
-.modes button b { display: block; font-size: 16px; font-weight: 700; }
-.modes button small { display: block; font-size: 11.5px; color: var(--muted); margin-top: 3px; line-height: 1.3; }
-.modes button.on { border-color: var(--mode, var(--accent)); background: color-mix(in srgb, var(--mode, var(--accent)) 14%, var(--bg2)); }
-.modes button.on b { color: var(--mode, var(--accent)); }
-/* a seat's adjusters beside a side view of the seat */
-.seatpos { display: flex; align-items: center; gap: 10px; }
-.seatpic { flex: 0 0 104px; }
-.seatpic svg { width: 104px; height: 72px; display: block; overflow: visible; }
-.seatpic .seat rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
-.seatpic .rail { fill: var(--line); }
-.adjs { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
-.adj { display: flex; align-items: center; gap: 4px; }
-.adj small { flex: 1; font-size: 11.5px; font-weight: 600; color: var(--muted); }
-.adj button { width: 36px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg2); color: var(--text); font-size: 14px; touch-action: none; }
-.adj button:active { background: var(--accent); color: #fff; }
-.memory { display: flex; align-items: center; gap: 6px; }
-.btn.small { height: 36px; padding: 0 12px; font-size: 13px; }
-.btns .btnsub { flex-basis: 100%; font-size: 12px; color: var(--muted); }
+/* the sheet: beside the car in landscape, over its lower part in portrait, where it has three heights
+   (.peek / .half / .full, DESIGN.md) and sits on the dock */
+aside.carpanel { position: absolute; z-index: 9; top: 16px; right: 16px; bottom: calc(var(--ribbon-h, 112px) + 16px); width: min(44vw, 700px);
+  border-radius: var(--fo-r); border: 1px solid var(--fo-line); transform: translateX(calc(100% + 40px)); visibility: hidden;
+  transition: transform .38s cubic-bezier(.2, .8, .2, 1), visibility 0s .38s; }
+aside.carpanel.open { transform: none; visibility: visible; transition: transform .38s cubic-bezier(.2, .8, .2, 1); }
+@media (max-aspect-ratio: 1/1) {
+  aside.carpanel { top: auto; left: 0; right: 0; bottom: var(--ribbon-h, 7rem); width: auto; height: 53rem; border: 0; border-top: 1px solid var(--fo-line);
+    border-radius: var(--fo-r-sheet) var(--fo-r-sheet) 0 0; transform: translateY(calc(100% + 8px));
+    transition: transform .38s cubic-bezier(.2, .8, .2, 1), height .38s cubic-bezier(.2, .8, .2, 1), visibility 0s .38s; }
+  aside.carpanel.open { transition: transform .38s cubic-bezier(.2, .8, .2, 1), height .38s cubic-bezier(.2, .8, .2, 1); }
+  aside.carpanel.peek { height: 28rem; }
+  aside.carpanel.full { height: 85rem; }
+  aside.carpanel.hvac { height: 22rem; }
+  .carback { top: calc(var(--drive-h, 200px) + 12px); }
+}
+@media (max-width: 760px) and (min-aspect-ratio: 1/1) {
+  aside.carpanel { width: 50vw; top: 8px; right: 8px; }
+  .ccard { width: 22rem; }
+}
 
-/* callouts and on-car cards, placed every frame next to points on the car (leader lines in #carlines). No
-   backdrop blur in car mode: over a 3D view that redraws every frame, each blurred box is blurred again
-   every frame, which a car's display pays for in frame rate. */
+/* on the car: badges, chips, drag controls and cards, placed every frame next to points on the car (leader
+   lines in #carlines). No backdrop blur: over a 3D view that redraws every frame, each blurred box is blurred
+   again every frame, which a car's display pays for in frame rate. */
 .caranchors { position: absolute; inset: 0; z-index: 4; overflow: hidden; pointer-events: none; }
 #carlines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-#carlines line { stroke: var(--accent); stroke-width: 1.5; opacity: .75; }
-#carlines circle { fill: var(--accent); }
-#carlines circle.ring { fill: none; stroke: var(--accent); stroke-width: 1.5; opacity: .5; }
-.callout { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px 0 10px; border: 0; border-radius: 99px;
-  background: var(--panel-solid); color: var(--text); box-shadow: var(--shadow);
-  font-size: 13.5px; font-weight: 650; white-space: nowrap; pointer-events: auto; will-change: transform; animation: fadein .3s ease-out; }
-.callout .tt { width: 20px; height: 20px; color: var(--accent); }
-.callout.iconly { padding: 0; width: 40px; justify-content: center; }
-.callout.iconly > span:not(.tt) { display: none; }
+#carlines line { stroke: var(--text); stroke-width: 1; opacity: .45; }
+#carlines circle { fill: var(--text); opacity: .7; }
+.caranchors .fo-chip, .caranchors .fo-winctl, .caranchors .ccard { position: absolute; left: 0; top: 0; pointer-events: auto; will-change: transform; animation: fadein .2s ease-out; }
 @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
-.ccard { position: absolute; left: 0; top: 0; width: 290px; padding: 10px 12px 10px; border-radius: 18px; background: var(--panel-solid); box-shadow: var(--shadow);
-  pointer-events: auto; will-change: transform; animation: fadein .3s ease-out; }
-.ccard h4 { margin: 2px 2px 6px; font-size: 11.5px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); }
-.ccard .crow { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; padding: 2px 2px; font-size: 14px; font-weight: 600; }
-.ccard .crow + .crow { border-top: 1px solid var(--line); }
-.ccard .crow.stack { flex-direction: column; align-items: stretch; gap: 6px; padding: 6px 2px 8px; }
-.ccard .seg { flex-wrap: nowrap; }
-.ccard .seg button { padding: 0 9px; height: 34px; font-size: 12.5px; }
-.ccard input[type=range] { height: 24px; }
-.carback { position: absolute; left: 50%; top: calc(16px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 5; height: 40px; padding: 0 16px 0 10px; border: 0;
-  border-radius: 99px; background: var(--panel); color: var(--text); box-shadow: var(--shadow); font-weight: 650; font-size: 14px; display: flex; align-items: center; gap: 6px; pointer-events: auto; }
-.carback svg { width: 18px; height: 18px; }
-.callout.on { background: var(--accent); color: #fff; }
-.callout.on .tt { color: #fff; }
-html.carmode #replaybar { display: none; }
-.callout.slotpin { padding: 0 12px; font-weight: 800; letter-spacing: .5px; }
-.section.live { border: 1px solid var(--line); border-radius: 16px; padding: 10px 12px 12px; background: var(--bg2); }
-.section.live h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; }
-.section.live.off { opacity: .7; }
-.livedot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 25%, transparent); animation: livepulse 2s ease-in-out infinite; }
-.section.live.off .livedot { background: var(--muted); box-shadow: none; animation: none; }
-@keyframes livepulse { 50% { opacity: .35; } }
-.livegrid { display: grid; grid-template-columns: 1fr auto; gap: 6px 14px; font-size: 13.5px; }
-.livek { color: var(--muted); }
-.livev { font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
-.livenone { grid-column: 1 / -1; color: var(--muted); font-size: 13px; }
-/* a door's chip: the door's and the window's buttons */
-.callout.pair { gap: 4px; padding: 0 4px; }
-.callout .cbtn { flex: none; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 99px;
-  background: var(--bg2); color: var(--accent); cursor: pointer; }
-.callout .cbtn svg { width: 18px; height: 18px; }
-.callout .cbtn.on { background: var(--accent); color: #fff; }
+.caranchors .fo-chip.badge { cursor: pointer; }
+.caranchors .fo-chip.slotpin { font-weight: 500; letter-spacing: .06em; }
+/* an on-car card (landscape): a small sheet beside a seat or a lamp */
+.ccard { width: 27rem; padding: .75rem 1.25rem 1rem; background: var(--fo-ground); border: 1px solid var(--fo-line); border-radius: var(--fo-r); color: var(--fo-ink); }
+.ccard > h4 { margin: .25rem 0 .5rem .125rem; font: var(--fo-heading); }
+.ccard > * + * { margin-top: .5rem; }
+.ccard .fo-row { padding-left: .125rem; }
+/* the way back to the overview from an on-car card view */
+.carback { position: absolute; left: 50%; top: calc(16px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 5; pointer-events: auto; cursor: pointer; }
+.carback .fo-icon { width: 1.25rem; height: 1.25rem; }
 
-/* mock automated parking */
-.hero.apa .pmark { flex: none; width: 46px; height: 46px; border-radius: 12px; background: var(--accent); color: #fff;
-  display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 800; }
-.hero.apa .meta span { display: block; }
-.spaces { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-.space { min-width: 96px; padding: 8px 12px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg2); text-align: left; }
-.space b { display: block; font-size: 17px; }
-.space small { font-size: 11px; color: var(--muted); }
-.space.on { border-color: var(--accent); background: var(--accent-soft); }
-.space:disabled { opacity: .6; }
+aside.carpanel.hvac .fo-sheet__head { display: none; }
+aside.carpanel.hvac .fo-sheet__body { padding-top: .25rem; padding-bottom: .5rem; overflow: hidden; }
+aside.carpanel.hvac .fo-sheet__body > * + * { margin-top: 0; }
+
+/* the mock parking's CAN read-out (apamock.js) */
 .cansig { display: grid; grid-template-columns: auto auto 1fr; gap: 5px 10px; align-items: baseline; font-size: 12.5px; }
 .cansig code { font: 600 11.5px ui-monospace, Menlo, Consolas, monospace; }
 .cansig small { font-size: 11px; text-align: right; color: var(--muted); }
@@ -519,52 +441,6 @@ html.carmode #replaybar { display: none; }
 .canlog small { color: var(--muted); }
 .canlog span { grid-column: 2; color: var(--text); opacity: .85; overflow-wrap: anywhere; }
 
-/* rows whose control is too wide to sit beside the label */
-.row.stack { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 12px 12px; }
-.row.stack .seg { display: flex; }
-.row.stack .seg button { flex: 1 1 auto; padding: 0 8px; }
-.ccard .crow .lbl { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.ccard .crow .lbl em { font-style: normal; font-weight: 650; color: var(--accent); font-variant-numeric: tabular-nums; }
-.ccard .crow.stack .seg button { flex: 1 1 auto; }
-.ccard .dots { gap: 6px; }
-.ccard .dots button { width: 28px; height: 28px; }
-.carpanel .kv.info { padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; }
-.carpanel .btns { margin: 10px 0 0; }
-.carpanel .rows + .rows, .carpanel .btns + .rows, .carpanel .rows.plist + .btns { margin-top: 10px; }
-.carpanel p.desc { margin: 0 0 10px; }
-/* climate: the two set temperatures */
-.temps { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 6px 14px; padding: 12px 14px; border-radius: 16px; background: var(--bg2); border: 1px solid var(--line); }
-.temp { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.temp small { font-size: 12px; font-weight: 600; color: var(--muted); }
-.temps .sync { grid-column: 1 / -1; justify-self: center; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
-.temps .sync input { width: 18px; height: 18px; accent-color: var(--accent); }
-.hero .bar { position: relative; }
-.hero .bar em { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text); opacity: .45; }
-.hero.lock .tt { width: 38px; height: 38px; color: var(--accent); }
-.hero.lock .meta { font-size: 13px; }
-
-@media (max-aspect-ratio: 1/1) {
-  .carribbon { left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); max-width: none; transform: translateY(calc(100% + 40px)); }
-  html.carmode .carribbon { transform: none; }
-  .carribbon .cats { flex: 1; }
-  .carribbon .cat { min-width: 70px; padding: 0 6px; }
-  .carpanel { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 50%; border-radius: 26px 26px 0 0; transform: translateY(100%); }
-  .carpanel .pbody { padding-bottom: calc(var(--ribbon-h, 76px) + 24px); }
-  .carpanel .pfoot { display: none; }
-  .carback { top: calc(var(--drive-h, 200px) + 12px); }
-}
-@media (max-width: 760px) and (min-aspect-ratio: 1/1) {
-  .carpanel { width: 50vw; top: 8px; right: 8px; }
-  .ccard { width: 250px; }
-}
-@media (max-height: 520px), (max-width: 520px) {
-  .callout.iconly { width: 32px; height: 32px; }
-  .callout { height: 34px; font-size: 12.5px; padding: 0 12px 0 8px; }
-  .callout .tt { width: 17px; height: 17px; }
-  .callout.pair { padding: 0 3px; }
-  .callout .cbtn { width: 28px; height: 28px; }
-  .callout .cbtn svg { width: 16px; height: 16px; }
-}
 /* a phone: the nav card goes under the status card, and the alerts and frame rate under it */
 @media (max-aspect-ratio: 1/1) and (max-width: 640px) {
   .navcard { top: calc(var(--drive-h, 200px) + 10px); left: 10px; right: 10px; width: auto; transform: none; }
@@ -583,17 +459,20 @@ html.carmode #replaybar { display: none; }
 .offline #drive, .offline .alerts, .offline #roadinfo, .offline #replaybar, .offline #chip-mode, .offline #chip-radar { display: none !important; }
 .offline .fps { top: calc(16px + env(safe-area-inset-top)); }
 
-/* car controls on the car: what can't be sent is greyed with why; held buttons for windows, the liftgate
-   and the seats; the charging read-out */
-.carpanel .row.off, .ccard .crow.off { opacity: .5; }
-.carpanel .row.off input, .carpanel .row.off button, .carpanel .row.off select, .ccard .crow.off input, .ccard .crow.off button { pointer-events: none; }
-.carpanel .offwhy, .ccard .offwhy { display: block; color: var(--muted); font-size: 11.5px; margin-top: 2px; }
-.carpanel .holdbtns { display: flex; gap: 6px; align-items: center; }
-.carpanel .holdbtns button { height: 38px; min-width: 64px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-solid); color: var(--text); font-weight: 600; font-size: 13px; touch-action: none; user-select: none; -webkit-user-select: none; }
-.carpanel .holdbtns button:active, .carpanel .holdbtns button.held { background: var(--accent); color: #fff; border-color: var(--accent); }
-.carpanel .holdbtns em { font-style: normal; color: var(--muted); font-size: 12.5px; min-width: 54px; text-align: right; }
-.carpanel .charging { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; }
-.carpanel .charging .k { color: var(--muted); }
-.carpanel .charging .big { grid-column: 1 / -1; font-size: 22px; font-weight: 700; margin-bottom: 4px; }
-.carpanel .carnote { color: var(--muted); font-size: 12px; margin: 2px 0 8px; }
-.carribbon .sent { background: var(--green); color: #fff; }
+
+/* Without the comma (the Android app on the car, alone): no driving data to show. The car controls, music
+   and navigation stay; what the ADAS bus and openpilot feed is hidden until the link is back. */
+.offline #drive, .offline .alerts, .offline #roadinfo, .offline #replaybar, .offline #chip-mode, .offline #chip-radar { display: none !important; }
+.offline .fps { top: calc(16px + env(safe-area-inset-top)); }
+
+/* ---------- power: a bar at the bottom of the status card (hud.js Econ) ---------- */
+/* Tesla's power bar without the graduations: the origin at the middle, regeneration to the left in green,
+   consumption to the right in the text color; a tap opens the last minute as a trace */
+.econ { margin-top: 10px; cursor: pointer; }
+.econ-bar { position: relative; height: 4px; border-radius: 2px; background: var(--line); }
+.econ-bar::before { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; margin-left: -.5px; background: var(--muted); }
+.econ-pos { position: absolute; left: 50%; top: 0; bottom: 0; width: 0; border-radius: 0 2px 2px 0; background: var(--text); transition: width .12s linear; }
+.econ-neg { position: absolute; right: 50%; top: 0; bottom: 0; width: 0; border-radius: 2px 0 0 2px; background: var(--green); transition: width .12s linear; }
+.econ canvas { display: none; width: 100%; height: 56px; margin-top: 8px; }
+.econ.open canvas { display: block; }
+@media (max-aspect-ratio: 1/1) { .econ { margin-top: 6px; padding-top: 6px; } .econ canvas { height: 40px; } }

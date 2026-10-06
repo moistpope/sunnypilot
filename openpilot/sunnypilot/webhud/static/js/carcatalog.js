@@ -16,7 +16,12 @@
 // the horizon, fit [across, up] m to fill the free screen area (fitP: in portrait), or r m), roof (fade the roof), ghost
 // (parts kept solid while the rest turns see-through), and either cards (on-car) or sections (panel).
 //
-// A control: { id, type, label, sub, def, live, tx, off, ... } with type
+// A section: { kind, title, note, controls }. kind 'rows' (the default) lists the controls; 'tiles' lays
+// toggles and actions out as cells; 'climate' is the Tesla climate bar (carcontrols.js climate());
+// 'status' is Energy's one line; 'hidden' holds controls the 3D car and the chips need (live readers,
+// defaults) that the sheet doesn't show. A control may carry an icon (util.js ICONS) for a tile or a bar.
+//
+// A control: { id, type, label, sub, def, live, tx, off, icon, ... } with type
 //   toggle, seg (options), slider (min max step unit), select (options), levels (max, kind), swatches, modes,
 //   checks, seatpos (a seat's adjusters), hold (buttons held: down/up), button (style, toast), action (does
 //   something on the car: action), list (items), info (items [key, value]), hero (energy summary), lock
@@ -93,7 +98,7 @@ export const CATEGORIES = [
     focus: { at: [0, 0.78, 0.2], az: 0, el: 9, fit: [4.8, 1.7] },
     cards: [
       {
-        title: 'Headlights', anchor: 'lampL',
+        title: 'Exterior lights', anchor: 'lampL',
         controls: [
           // BCM_ExtLampSwtSts is the stalk's position; the head unit's message switches the lamps themselves
           S('light.mode', 'Headlights', [[0, 'Off'], [1, 'Auto'], [2, 'Parking'], [3, 'Low']], 1, 'Auto is the stalk\'s own position: it can\'t be sent', {
@@ -125,40 +130,35 @@ export const CATEGORIES = [
   },
   {
     id: 'climate',
- label: 'Climate', icon: 'fan', zone: 'vents', roof: true,
-    focus: { at: [0, 0.95, 2.05], az: 180, el: 62, fit: [2.1, 2.3] },
+ label: 'Climate', icon: 'fan', zone: 'vents', roof: true, hvac: true,
+    // from between the front seats, at the dash: the air from the vents shows, colored by each side's temperature
+    focus: { at: [0, 1.0, 1.7], az: 180, el: 18, r: 1.75 },   // the whole dash, the front seats framing it
+    // Tesla's climate screen (carcontrols.js climate()): every control has a fixed place in three rows of
+    // borderless buttons. Row 1: power, Auto, A/C; the three vents (windshield, face, feet) with Front / Rear
+    // under them; Schedule at the right. Row 2: the heated wheel and the defrosters; the fan between its
+    // arrows; recirculation and the purifier. Row 3: the two set temperatures between their arrows, Sync
+    // between. The seat heaters are under Seats; the Ocean has no keep-climate or pet mode.
     sections: [
-      { controls: [{ id: 'climate.temps', type: 'temps' }] },
       {
-        title: 'Air',
+        kind: 'climate',
         controls: [
-          T('climate.on', 'Climate on', true, null, { live: (cs) => { const f = cs.rawOf('ECC_WindSpdSts'); return f === undefined ? undefined : f > 0; },
+          { id: 'climate.temps', type: 'temps' },
+          T('climate.on', 'Climate', true, null, { icon: 'power', live: (cs) => { const f = cs.rawOf('ECC_WindSpdSts'); return f === undefined ? undefined : f > 0; },
             tx: (cmd, v) => cmd.request(MSG.CLIMATE2, { ICC_ECCSysSwtCmd: v ? 1 : 2 }) }),
-          T('climate.auto', 'Auto', true, 'Fan and airflow follow the set temperature', { live: bool('ECC_AUTOSts'), tx: press(MSG.CLIMATE, 'ICC_ECCAUTOReq', 1, bool('ECC_AUTOSts')) }),
-          T('climate.ac', 'A/C', true, null, { live: bool('ECC_ACSts'), tx: press(MSG.CLIMATE, 'ICC_ACSwtReq', 1, bool('ECC_ACSts')) }),
-          R('climate.fan', 'Fan', 1, 7, 1, 3, '', null, { live: raw('ECC_WindSpdSts'), tx: req(MSG.CLIMATE, 'ICC_AirVolSet', v => v) }),
-          S('climate.flow', 'Airflow', [[1, 'Face'], [2, 'Face + feet'], [3, 'Feet'], [4, 'Feet + windshield'], [5, 'Windshield']], 1, null,
+          T('climate.auto', 'Auto', true, 'Fan and airflow follow the set temperature', { icon: 'auto', live: bool('ECC_AUTOSts'), tx: press(MSG.CLIMATE, 'ICC_ECCAUTOReq', 1, bool('ECC_AUTOSts')) }),
+          T('climate.ac', 'A/C', true, null, { icon: 'snow', live: bool('ECC_ACSts'), tx: press(MSG.CLIMATE, 'ICC_ACSwtReq', 1, bool('ECC_ACSts')) }),
+          // the vents: the car knows five front patterns and four rear ones; the three vent buttons pick the nearest
+          S('climate.flow', 'Front vents', [[1, 'Face'], [2, 'Face and feet'], [3, 'Feet'], [4, 'Feet and windshield'], [5, 'Windshield']], 1, null,
             { live: raw('ECC_DrvrAirOutlMod'), tx: (cmd, v) => cmd.request(MSG.CLIMATE2, { ICC_DrvrBlowModReq: v, ICC_PassBlowModReq: v }) }),
-          S('climate.recirc', 'Air intake', [[1, 'Fresh'], [0, 'Recirculate']], 1, null, { live: raw('ECC_CircSts'), tx: press(MSG.CLIMATE, 'ICC_ECCIntExtCircReq', 1, raw('ECC_CircSts')) }),
-          T('climate.purify', 'Air purifier', false, null, { live: bool('ECC_AirClnSts'), tx: req(MSG.CLIMATE, 'ICC_AirClnSwtReq', { true: 1, false: 0 }) }),
-          S('climate.rear', 'Rear vents', [[0, 'Face'], [1, 'Face + feet'], [2, 'Feet'], [3, 'Off']], 0, null,
+          S('climate.rear', 'Rear vents', [[0, 'Face'], [1, 'Face and feet'], [2, 'Feet'], [3, 'Off']], 0, null,
             { live: raw('ECC_BackRowAirOutlModSts'), tx: req(MSG.CLIMATE2, 'ICC_BackRowAirOutlModReq', v => v + 1) }),
-        ],
-      },
-      {
-        title: 'Defrost & heating',
-        controls: [
-          T('climate.defrostF', 'Max front defrost', false, null, { live: bool('ECC_MaxFrntDefrst'), tx: press(MSG.CLIMATE, 'ICC_MaxFrntDefrstSet', 1, bool('ECC_MaxFrntDefrst')) }),
-          T('climate.defrostR', 'Rear defrost', false, null, { live: bool('BCM_ReDefrstHeatgCmd'), tx: req(MSG.BODY, 'ICC_ReDefrstOpenReq', ON_OFF) }),
-          T('climate.wheel', 'Heated steering wheel', false, 'The car doesn\'t report whether it\'s on', { tx: (cmd, v) => cmd.pulse(MSG.SEATHEAT, { ICC_SWH_Req: 1 }) }),
-        ],
-      },
-      {
-        title: 'Preconditioning',
-        controls: [
-          T('climate.precond', 'Precondition before departure', false, null, { off: 'The telematics unit keeps the schedules' }),
-          SEL('climate.depart', 'Departure', [['06:30', '6:30 AM'], ['07:00', '7:00 AM'], ['07:30', '7:30 AM'], ['08:00', '8:00 AM'], ['17:30', '5:30 PM']], '07:30', null, { off: 'The telematics unit keeps the schedules' }),
-          T('climate.dog', 'Keep cabin climate when parked', false, 'For a pet left in the car; the screen says so', { off: NO_MSG }),
+          T('climate.precond', 'Schedule', false, 'Precondition before departure', { icon: 'clock', off: 'The telematics unit keeps the schedules' }),
+          T('climate.wheel', 'Heated steering wheel', false, 'The car doesn\'t report whether it\'s on', { icon: 'wheelheat', heat: true, tx: (cmd, v) => cmd.pulse(MSG.SEATHEAT, { ICC_SWH_Req: 1 }) }),
+          T('climate.defrostF', 'Front defrost', false, null, { icon: 'defrostF', live: bool('ECC_MaxFrntDefrst'), tx: press(MSG.CLIMATE, 'ICC_MaxFrntDefrstSet', 1, bool('ECC_MaxFrntDefrst')) }),
+          T('climate.defrostR', 'Rear defrost', false, null, { icon: 'defrostR', live: bool('BCM_ReDefrstHeatgCmd'), tx: req(MSG.BODY, 'ICC_ReDefrstOpenReq', ON_OFF) }),
+          R('climate.fan', 'Fan', 1, 7, 1, 3, '', null, { icon: 'fan', live: raw('ECC_WindSpdSts'), tx: req(MSG.CLIMATE, 'ICC_AirVolSet', v => v) }),
+          S('climate.recirc', 'Recirculate', [[1, 'Fresh'], [0, 'Recirculate']], 1, null, { icon: 'recirc', live: raw('ECC_CircSts'), tx: press(MSG.CLIMATE, 'ICC_ECCIntExtCircReq', 1, raw('ECC_CircSts')) }),
+          T('climate.purify', 'Air purifier', false, null, { icon: 'purify', live: bool('ECC_AirClnSts'), tx: req(MSG.CLIMATE, 'ICC_AirClnSwtReq', { true: 1, false: 0 }) }),
         ],
       },
     ],
@@ -183,17 +183,23 @@ export const CATEGORIES = [
     sections: [
       { title: 'Drive mode', controls: [{ id: 'drive.mode', type: 'modes', options: DRIVE_MODES, def: 'earth', live: map('VCU_DrvModSigFb', DRIVE_MODE_FROM_CAR), off: OWNED }] },   // ICC_0x610
       {
+        kind: 'rows',
         controls: [
           S('drive.regen', 'Regenerative braking', [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']], 'medium', 'High is close to one-pedal driving',
             { live: map('VCU_RegenLvlFb', { 0: 'low', 1: 'medium', 2: 'high' }), off: OWNED }),
-          T('drive.creep', 'Creep', true, 'Moves off slowly when the brake is released', { live: (cs) => { const r = cs.rawOf('VCU_EPedlStsFb'); return r === undefined ? undefined : r === 2; }, off: OWNED }),
+          T('drive.creep', 'Creep', true, 'Moves off slowly when the brake is released', { icon: 'creep', live: (cs) => { const r = cs.rawOf('VCU_EPedlStsFb'); return r === undefined ? undefined : r === 2; }, off: OWNED }),
           S('drive.accel', 'Accelerator response', [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']], 'medium', null,
             { live: map('VCU_AccelModFb', { 0: 'low', 1: 'medium', 2: 'high' }), off: OWNED }),
           S('drive.steer', 'Steering feel', [['comfort', 'Comfort'], ['standard', 'Standard'], ['sport', 'Sport']], 'standard', null, { off: OWNED }),   // ICC_0x336
-          T('drive.hold', 'Auto hold', true, 'Holds the car at a stop until you press the accelerator', { off: NO_MSG }),
-          T('drive.traction', 'Traction control', true, null, { off: OWNED }),   // ICC_0x336 ESP switch
-          T('drive.hdc', 'Hill descent control', false, null, { off: OWNED }),
-          T('drive.terrain', 'Special terrain mode', false, null, { live: bool('VCU_SpclTerrainModEnaSig'), off: OWNED }),   // ICC_0x529
+        ],
+      },
+      {
+        kind: 'tiles',
+        controls: [
+          T('drive.hold', 'Auto hold', true, 'Holds the car at a stop until you press the accelerator', { icon: 'hold', off: NO_MSG }),
+          T('drive.traction', 'Traction control', true, null, { icon: 'traction', off: OWNED }),   // ICC_0x336 ESP switch
+          T('drive.hdc', 'Hill descent', false, null, { icon: 'hill', off: OWNED }),
+          T('drive.terrain', 'Special terrain mode', false, null, { icon: 'terrain', live: bool('VCU_SpclTerrainModEnaSig'), off: OWNED }),   // ICC_0x529
         ],
       },
     ],
@@ -282,27 +288,33 @@ export const CATEGORIES = [
     id: 'energy',
  label: 'Energy', icon: 'bolt', zone: 'port', roof: false,
     focus: { at: [-0.6, 0.62, 1.6], az: -52, el: 22, fit: [3.2, 1.9] },
-    chips: [{ anchor: 'port', id: 'energy.port', kind: 'port', label: 'Charge port', toward: [-0.6, -0.8], live: bool('VCU_ACChrgShttrSts'), off: NO_MSG }],
+    // the charge shows as the pack filling (cutaway.js), the port door as the door itself (it's manual)
     sections: [
-      { controls: [{ type: 'hero' }] },
-      { title: 'Charging', controls: [{ type: 'charging' }] },
+      { kind: 'status' },
       {
-        title: 'Charge settings',
+        kind: 'rows', title: 'Charging',
         controls: [
-          R('energy.limit', 'Charge limit', 50, 100, 5, 80, '%', 'Daily use; 100% before a long trip', { off: OWNED }),   // ICC_0x610 SetChrgEndSOC
-          R('energy.amps', 'Charge current', 8, 32, 1, 32, 'A', null, { live: raw('VCU_ACChrgCrtUpprLmt'), off: OWNED }),   // ICC_0x610 SetACChrgLmtCrt
-          T('energy.charging', 'Charging', false, 'Start or stop', { live: (cs) => { const p = cs.value('VCU_HVBattActPwr'); return p === undefined ? undefined : p > 0.3; }, off: OWNED }),   // ICC_0x610 Start/StopChrgBtn
+          R('energy.limit', 'Charge limit', 50, 100, 5, 80, '%', 'Daily use; 100% before a long trip', { fill: 'ok', off: OWNED }),   // ICC_0x610 SetChrgEndSOC
+          R('energy.amps', 'Charge current', 8, 32, 1, 32, 'A', null, { stepper: true, live: raw('VCU_ACChrgCrtUpprLmt'), off: OWNED }),   // ICC_0x610 SetACChrgLmtCrt
+          T('energy.charging', 'Charging', false, null, { as: 'button', labels: ['Start charging', 'Stop charging'],
+            live: (cs) => { const p = cs.value('VCU_HVBattActPwr'); return p === undefined ? undefined : p > 0.3; }, off: OWNED }),   // ICC_0x610 Start/StopChrgBtn
+        ],
+      },
+      {
+        kind: 'rows', title: 'Schedule',
+        controls: [
           T('energy.schedule', 'Scheduled charging', true, 'Starts when off-peak rates do', { off: 'The telematics unit keeps the schedules' }),
           SEL('energy.start', 'Start at', [['21:00', '9:00 PM'], ['23:00', '11:00 PM'], ['00:00', '12:00 AM'], ['01:00', '1:00 AM']], '23:00', null, { off: 'The telematics unit keeps the schedules' }),
         ],
       },
       {
-        title: 'Power out',
+        kind: 'rows', title: 'Power out',
         controls: [
           T('energy.v2l', 'Vehicle to load (V2L)', false, 'Powers devices from the charge port', { off: OWNED }),   // ICC_0x529
           R('energy.v2lMin', 'Stop powering devices at', 10, 50, 5, 20, '%', null, { off: OWNED }),
         ],
       },
+      { kind: 'hidden', controls: [{ id: 'energy.port', type: 'hidden', def: false, live: bool('VCU_ACChrgShttrSts') }] },
     ],
   },
   {
@@ -336,87 +348,52 @@ export const CATEGORIES = [
   },
   {
     id: 'doors',
- label: 'Doors & Windows', icon: 'door', zone: 'doors', roof: false,
+ label: 'Doors & Windows', short: 'Doors', icon: 'door', zone: 'doors', roof: false,
     focus: { at: [0, 0.95, 2.9], az: -142, el: 30, fit: [4.6, 2.6] },
-    // a door's chip shows the door and winds its window (one touch: all the way); the liftgate's opens it
+    // on the car: a drag control on each window the head unit can move (down opens, up closes; a tap on
+    // an arrow goes all the way), one on the sunroof, one on the liftgate (up opens). What the car
+    // reports (the quarter windows, the rear window) shows on the model alone.
     chips: [
-      { anchor: 'winFL', kind: 'pair', label: 'Front left', door: 'Door_Front_L', win: 'win.FL', winSig: 'ICC_LeFrntWinCtrl' },
-      { anchor: 'winFR', kind: 'pair', label: 'Front right', door: 'Door_Front_R', win: 'win.FR', winSig: 'ICC_RiFrntWinCtrl' },
-      { anchor: 'winRL', kind: 'pair', label: 'Rear left', door: 'Door_Rear_L', win: 'win.RL', winSig: 'ICC_LeReWinCtrl' },
-      { anchor: 'winRR', kind: 'pair', label: 'Rear right', door: 'Door_Rear_R', win: 'win.RR', winSig: 'ICC_RiReWinCtrl' },
-      { anchor: 'winQL', kind: 'pair', label: 'Left quarter', win: 'win.QL' },
-      { anchor: 'winQR', kind: 'pair', label: 'Right quarter', win: 'win.QR' },
-      { anchor: 'winRear', kind: 'pair', label: 'Liftgate', door: 'Tailgate', win: 'win.rear' },
-      { anchor: 'sunroof', id: 'win.sunroof', kind: 'window', label: 'Sunroof', toward: [0.4, -0.9] },
+      windowCtl('win.FL', 'Front left window', 'winFL', 'Door_Front_L', 'ICC_LeFrntWinCtrl', 'BCM_AP_FL_LeFrntWinPosnInfo', 'BCM_LeFrntWinSts'),
+      windowCtl('win.FR', 'Front right window', 'winFR', 'Door_Front_R', 'ICC_RiFrntWinCtrl', 'BCM_AP_FL_RiFrntWinPosnInfo', 'BCM_RiFrntWinSts'),
+      windowCtl('win.RL', 'Rear left window', 'winRL', 'Door_Rear_L', 'ICC_LeReWinCtrl', 'BCM_AP_FL_LeReWinPosnInfo', 'BCM_LeReWinSts'),
+      windowCtl('win.RR', 'Rear right window', 'winRR', 'Door_Rear_R', 'ICC_RiReWinCtrl', 'BCM_AP_FL_RiReWinPosnInfo', 'BCM_RiReWinSt'),
+      { anchor: 'sunroof', kind: 'winctl', sunroof: true, id: 'win.sunroof', label: 'Sunroof', def: 0,
+        live: (cs) => { const p = cs.rawOf('BCM_SunroofPosnInfo'), ar = cs.rawOf('BCM_SunroofOpenAr'); return p === undefined || p === 0x7F ? undefined : ar === 1 ? 0 : Math.min(100, p); } },
+      { anchor: 'liftgate', kind: 'liftctl', id: 'doors.liftgate', label: 'Liftgate', door: 'Tailgate', def: 0, live: raw('PLGM_LeTrPosn') },
     ],
     sections: [
       { controls: [{ id: 'doors.locked', type: 'lock', def: true, live: (cs) => { const r = cs.rawOf('BCM_FrntDrDoorLockSts'); return r === undefined ? undefined : r === 0; }, tx: req(MSG.BODY, 'ICC_CentrLockCtrl', { true: 2, false: 1 }) }] },
       {
+        kind: 'tiles',
         controls: [
-          ACT('California Mode', 'california', 'primary', 'Opens all eight: the windows, the rear window and the sunroof', { off: OWNED }),   // ICC_0x336 ReqCalifModHMIBtn, E2E
-          ACT('Close all', 'closeAll', null, 'The four door windows and the sunroof'),
+          ACT('California Mode', 'california', 'primary', 'Opens all eight: the windows, the rear window and the sunroof', { icon: 'window', off: OWNED }),   // ICC_0x336 ReqCalifModHMIBtn, E2E
+          ACT('Close all', 'closeAll', null, 'The four door windows and the sunroof', { icon: 'close' }),
+          T('doors.mirrors', 'Fold mirrors', false, null, { icon: 'mirror', live: map('BCM_MirrCmd', { 1: true, 2: false }), tx: req(MSG.BODY, 'ICC_MirrCmd', { true: 1, false: 2 }) }),
+          T('doors.winLock', 'Rear window lock', false, null, { icon: 'winlock', off: NO_MSG }),
+          T('doors.child', 'Child locks', false, null, { icon: 'child', off: NO_MSG }),
         ],
       },
       {
-        title: 'Liftgate',
-        controls: [
-          { id: 'doors.liftgate', type: 'hold', label: 'Liftgate', sub: 'The doors are manual; the liftgate is powered', live: raw('PLGM_LeTrPosn'),
-            buttons: [
-              { label: 'Open', down: (cmd) => cmd.pulse(MSG.LIFTGATE, { ICC_TrActnCmd: 1 }) },
-              { label: 'Stop', down: (cmd) => cmd.pulse(MSG.LIFTGATE, { ICC_TrActnCmd: 3 }) },
-              { label: 'Close', down: (cmd) => cmd.pulse(MSG.LIFTGATE, { ICC_TrActnCmd: 2 }) },
-            ] },
-        ],
-      },
-      {
-        title: 'Windows',
-        note: 'The head unit only knows "all the way up" and "all the way down"; pressing again while a window moves should stop it.',
-        controls: [
-          windowControl('win.FL', 'Front left', 'ICC_LeFrntWinCtrl', 'BCM_AP_FL_LeFrntWinPosnInfo', 'BCM_LeFrntWinSts'),
-          windowControl('win.FR', 'Front right', 'ICC_RiFrntWinCtrl', 'BCM_AP_FL_RiFrntWinPosnInfo', 'BCM_RiFrntWinSts'),
-          windowControl('win.RL', 'Rear left', 'ICC_LeReWinCtrl', 'BCM_AP_FL_LeReWinPosnInfo', 'BCM_LeReWinSts'),
-          windowControl('win.RR', 'Rear right', 'ICC_RiReWinCtrl', 'BCM_AP_FL_RiReWinPosnInfo', 'BCM_RiReWinSt'),
-          windowControl('win.QL', 'Left quarter', null, 'BCM_AP_TL_LeReWinPosnInfo', 'BCM_AP_TL_LeReWinSts', 'The doggie window behind the rear door'),
-          windowControl('win.QR', 'Right quarter', null, 'BCM_AP_TL_RiReWinPosnInfo', 'BCM_AP_TL_RiReWinSts', 'The doggie window behind the rear door'),
-          windowControl('win.rear', 'Rear window', null, 'BCM_AP_RW_WinPosnInfo', 'BCM_AP_RW_WinSts', 'Drops into the liftgate'),
-        ],
-      },
-      {
-        title: 'Sunroof',
-        controls: [
-          S('win.sunroofMode', 'Sunroof', [['closed', 'Closed'], ['tilt', 'Tilt'], ['open', 'Open']], 'closed', 'Tilt can\'t be sent: the head unit only sets how far open', {
-            live: (cs) => { const p = cs.rawOf('BCM_SunroofPosnInfo'), ar = cs.rawOf('BCM_SunroofOpenAr'); if (p === undefined || p === 0x7F) return undefined; return p > 0 && ar === 1 ? 'tilt' : p > 0 ? 'open' : 'closed'; },
-            tx: (cmd, v) => { if (v === 'tilt') cmd.app.toast('Tilt: use the sunroof switch'); else cmd.request(MSG.BODY, { ICC_SunroofPercCtrlCmdReq: v === 'open' ? 100 : 0, ICC_SunroofshadePercCtrlCmdReq: 0 }); },
-          }),
-          R('win.sunroof', 'Opening', 0, 100, 5, 0, '% open', null, {
-            live: (cs) => { const p = cs.rawOf('BCM_SunroofPosnInfo'), ar = cs.rawOf('BCM_SunroofOpenAr'); return p === undefined || p === 0x7F ? undefined : ar === 1 ? 0 : Math.min(100, p); },
-            tx: req(MSG.BODY, 'ICC_SunroofPercCtrlCmdReq', v => v),
-          }),
-        ],
-      },
-      {
-        title: 'Mirrors',
-        controls: [
-          S('doors.mirrors', 'Mirrors', [['unfolded', 'Unfolded'], ['folded', 'Folded']], 'unfolded', null,
-            { live: map('BCM_MirrCmd', { 1: 'folded', 2: 'unfolded' }), tx: req(MSG.BODY, 'ICC_MirrCmd', { folded: 1, unfolded: 2 }) }),
-        ],
-      },
-      {
-        title: 'Locking',
+        kind: 'rows', title: 'Locking',
         controls: [
           S('doors.unlock', 'Unlock', [[0, "Driver's door"], [1, 'All doors']], 1, null, { live: raw('BCM_DoorUnlockSetFb'), tx: req(MSG.BODY, 'ICC_DoorUnlockSet', { 0: 1, 1: 2 }) }),
           T('doors.walkaway', 'Lock when walking away', true, 'The car doesn\'t report this setting', { tx: req(MSG.PROFILE, 'ICC_AutoLockUnlockCmd', { true: 3, false: 0 }) }),
           T('doors.offUnlock', 'Unlock when powered off', false, null, { live: bool('BCM_OffAutoUnlckSetSts'), tx: req(MSG.BODY, 'ICC_OffUnlckSet', ON_OFF) }),
           T('doors.closeWin', 'Close windows when locking', true, null, { live: bool('BCM_ArmedClsWinSetSts'), tx: req(MSG.BODY, 'ICC_ArmedClsdWinSet', ON_OFF) }),
           T('doors.fold', 'Fold mirrors when locking', true, null, { live: bool('BCM_MirrLockAutoSetSts'), tx: req(MSG.BODY, 'ICC_ReMirrAutoFoldSet', ON_OFF) }),
+          T('doors.rain', 'Close the sunroof in rain', true, null, { live: bool('BCM_RainClsSunroofSetSts'), tx: req(MSG.BODY, 'ICC_RainClsdSunroofSet', ON_OFF) }),
         ],
       },
+      // what the car reports that the model shows and the sheet doesn't list
       {
-        title: 'Safety',
+        kind: 'hidden',
         controls: [
-          T('doors.rain', 'Close the sunroof in rain', true, null, { live: bool('BCM_RainClsSunroofSetSts'), tx: req(MSG.BODY, 'ICC_RainClsdSunroofSet', ON_OFF) }),
-          T('doors.winLock', 'Lock rear window switches', false, null, { off: NO_MSG }),
-          T('doors.child', 'Rear child locks', false, null, { off: NO_MSG }),
+          { id: 'win.QL', type: 'hidden', def: 0, live: (cs) => windowOpen(cs, 'BCM_AP_TL_LeReWinPosnInfo', 'BCM_AP_TL_LeReWinSts') },
+          { id: 'win.QR', type: 'hidden', def: 0, live: (cs) => windowOpen(cs, 'BCM_AP_TL_RiReWinPosnInfo', 'BCM_AP_TL_RiReWinSts') },
+          { id: 'win.rear', type: 'hidden', def: 0, live: (cs) => windowOpen(cs, 'BCM_AP_RW_WinPosnInfo', 'BCM_AP_RW_WinSts') },
+          { id: 'win.sunroofMode', type: 'hidden', def: 'closed',
+            live: (cs) => { const p = cs.rawOf('BCM_SunroofPosnInfo'), ar = cs.rawOf('BCM_SunroofOpenAr'); if (p === undefined || p === 0x7F) return undefined; return p > 0 && ar === 1 ? 'tilt' : p > 0 ? 'open' : 'closed'; } },
         ],
       },
     ],
@@ -468,7 +445,7 @@ export const CATEGORIES = [
   },
   // ---- system: no part of the car ----
   {
-    id: 'connectivity', label: 'Connectivity', icon: 'wifi', system: true,
+    id: 'connectivity', label: 'Connectivity', short: 'Network', icon: 'wifi', system: true,
     sections: [
       {
         title: 'Bluetooth',
@@ -496,7 +473,7 @@ export const CATEGORIES = [
     ],
   },
   {
-    id: 'profiles', label: 'Profiles & Keys', icon: 'person', system: true,
+    id: 'profiles', label: 'Profiles & Keys', short: 'Profiles', icon: 'person', system: true,
     sections: [
       {
         title: 'Driver profiles',
@@ -586,19 +563,10 @@ export function windowOpen(cs, posSig, stsSig) {
   return s === undefined ? undefined : s ? 100 : 0;
 }
 
-/** A door window: held buttons, up and down (the head unit's Auto_Up / Auto_Down), and its position from the car. */
-function windowControl(id, label, sig, posSig, stsSig, sub) {
-  const live = (cs) => windowOpen(cs, posSig, stsSig);
-  const c = { id, type: 'hold', label, sub, def: 0, live, unit: '% open' };
-  if (sig) {
-    c.buttons = [
-      { label: 'Up', icon: 'up', down: (cmd) => cmd.request(MSG.BODY, { [sig]: 5 }), again: true },
-      { label: 'Down', icon: 'down', down: (cmd) => cmd.request(MSG.BODY, { [sig]: 6 }), again: true },
-    ];
-  } else {
-    c.off = 'The head unit has no message for this window; it shows where the car says it is';
-  }
-  return c;
+/** A door window's control on the car: a drag control pinned to the glass (carcontrols.js winCtl) that rides
+ *  on its door; sig is the head unit's control signal (5 Auto_Up, 6 Auto_Down), and the position comes from the car. */
+function windowCtl(id, label, anchor, door, sig, posSig, stsSig) {
+  return { anchor, kind: 'winctl', id, label, door, winSig: sig, def: 0, live: (cs) => windowOpen(cs, posSig, stsSig) };
 }
 
 function seatControls(seat, driver) {
@@ -724,12 +692,13 @@ export function defaults() {
   };
   for (const cat of CATEGORIES) {
     for (const card of cat.cards || []) card.controls.forEach(add);
-    for (const sec of cat.sections || []) sec.controls.forEach(add);
+    for (const sec of cat.sections || []) (sec.controls || []).forEach(add);
+    (cat.chips || []).forEach(add);
   }
   Object.assign(out, {
     'climate.tempL': 21.5, 'climate.tempR': 21.5, 'climate.sync': true,
-    'seat.RL.heat': 0, 'seat.RR.heat': 0, 'energy.soc': 72, 'energy.port': false, 'energy.power': 0,
-    'display.hollywood': false, 'doors.open': [], 'doors.liftgate': 0,
+    'seat.RL.heat': 0, 'seat.RR.heat': 0, 'energy.soc': 72, 'energy.power': 0,
+    'display.hollywood': false, 'doors.open': [],
   });
   return out;
 }
@@ -740,7 +709,7 @@ export function liveControls() {
   const add = (c) => { if (c && c.id && c.live) out.push([c.id, c.live]); };
   for (const cat of CATEGORIES) {
     for (const card of cat.cards || []) card.controls.forEach(add);
-    for (const sec of cat.sections || []) sec.controls.forEach(add);
+    for (const sec of cat.sections || []) (sec.controls || []).forEach(add);
     (cat.chips || []).forEach(add);
   }
   return out;

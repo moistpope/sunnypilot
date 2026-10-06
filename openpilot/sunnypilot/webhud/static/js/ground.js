@@ -101,7 +101,10 @@ vec2 polySD(vec2 p) {
       best = d2;
       float L = sqrt(L2);
       vec2 u = L > 0.0 ? ab / L : vec2(1.0, 0.0);
-      sd = vec2(uPolyS[i] + t * L, r.y * u.x - r.x * u.y);
+      // the offset is the whole distance to the nearest point, signed by its side: past a segment's end (a sharp
+      // corner, the polyline's ends) the perpendicular part alone would let the road run straight on as a band
+      float side = r.y * u.x - r.x * u.y;
+      sd = vec2(uPolyS[i] + t * L, side >= 0.0 ? sqrt(d2) : -sqrt(d2));
     }
   }
   return sd;
@@ -225,17 +228,19 @@ export class RoadField {
       U.uPolyN.value = n;
     } else U.uPolyN.value = 0;
     // the car's own place across the road, which the lane region grows out from. The arc is the anchor line
-    // (a.offset from the ego lane's center); the map reference is the center itself
+    // (a.offset from the ego lane's center); the map reference is the carriageway's center, and the region is
+    // the whole carriageway as the map has it
     const rel = ref ? 0 : a.offset;
     const car = ref ? -ref.centerY0 : -a.c.y0 * Math.cos(Math.atan(a.c.t));
     let right = sf.right - rel, left = sf.left - rel;
-    if (ref && ref.width && sf.reveal < mapReveal) { right = ref.width[0]; left = ref.width[1]; }
+    if (ref && ref.width) { right = ref.width[0]; left = ref.width[1]; }
     U.uLat.value.set(mix(car - 0.4, right, across), mix(car + 0.4, left, across), SHOULDER, SIDE_FADE);
     const reach = mix(3, ref ? Math.max(sf.reach, ref.reach) : sf.reach, along);
     const fade = ref ? ref.fade : Math.max(8, 0.4 * reach);
     U.uLong.value.set(mix(-3, ref ? -ref.back : BACK, along), reach + fade, BACK_FADE, fade);
     U.uDisc.value.set(-EGO_LEN / 2, 0, mix(DISC_R, ROAD_DISC_R, across), mix(DISC_FADE, 2.5, across));
-    U.uField.value.set(reveal, RIPPLE + RIPPLE_MORPH * sf.energy, sf.phase, tint);
+    // the edge ripple answers the cameras' road reshaping; the map's road doesn't reshape
+    U.uField.value.set(reveal, ref ? RIPPLE : RIPPLE + RIPPLE_MORPH * sf.energy, ref ? 0 : sf.phase, tint);
     ground.updateWorldMatrix(true, false);   // with this frame's pose of `world` above it
     U.uGroundInv.value.copy(ground.matrixWorld).invert();
   }

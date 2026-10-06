@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="en" class="fo guide">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ocean controls: design language</title>
+<link rel="stylesheet" href="/design.css">
+<style>
+  /* the guide itself. The design frame is 1080 wide: the page scales with the viewport up to that. */
+  html.fo.guide { font-size: calc(min(100vw, 1080px) / 67.5); }
+  body { margin: 0; background: var(--fo-ground); color: var(--fo-ink); font: var(--fo-body); }
+  .g-top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 1.5rem; padding: 0 var(--fo-gutter); height: 5rem; background: var(--fo-ground); border-bottom: .0625rem solid var(--fo-line); }
+  .g-top h1 { margin: 0; font: var(--fo-title); letter-spacing: var(--fo-track); }
+  .g-top nav { flex: 1; display: flex; gap: .25rem; overflow-x: auto; scrollbar-width: none; }
+  .g-top nav a { font: var(--fo-caption); color: var(--fo-ink-2); text-decoration: none; padding: .5rem .75rem; border-radius: var(--fo-r); white-space: nowrap; }
+  .g-top nav a:hover { color: var(--fo-ink); }
+  main { max-width: 67.5rem; margin: 0 auto; padding: 2.5rem var(--fo-gutter) 6rem; }
+  section { margin: 0 0 4.5rem; }
+  section > h2 { font: var(--fo-title); margin: 0 0 .5rem; letter-spacing: var(--fo-track); }
+  section > p.lead { font: var(--fo-body); color: var(--fo-ink-2); margin: 0 0 1.5rem; max-width: 58rem; }
+  .g-card { padding: 1.5rem; background: var(--fo-cell); border: .0625rem solid var(--fo-line); border-radius: var(--fo-r); }
+  .g-card + .g-card { margin-top: 1rem; }
+  .g-card > h3 { margin: 0 0 .25rem; font: var(--fo-heading); font-weight: 500; }
+  .g-card > p { margin: 0 0 1.25rem; font: var(--fo-caption); color: var(--fo-ink-2); max-width: 56rem; }
+  code { font: 500 1rem ui-monospace, Menlo, monospace; color: var(--fo-ink-2); }
+  .g-rules { margin: 0; padding-left: 1.25rem; font: var(--fo-caption); color: var(--fo-ink-2); }
+  .g-rules li { margin: .5rem 0; } .g-rules b { color: var(--fo-ink); font-weight: 500; }
+  .g-two { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+  .g-two > .g-card + .g-card { margin-top: 0; }
+  .g-stage { padding: 1.5rem; border-radius: var(--fo-r); background: radial-gradient(120% 80% at 50% 20%, #2b2f38, #131519 75%); }
+  /* swatches */
+  .sw { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; }
+  .sw > div { border: .0625rem solid var(--fo-line); border-radius: var(--fo-r); overflow: hidden; }
+  .sw i { display: block; height: 4rem; }
+  .sw b { display: block; padding: .5rem .75rem 0; font: var(--fo-caption); color: var(--fo-ink); }
+  .sw small { display: block; padding: 0 .75rem .625rem; font: 400 .9375rem/1.3 ui-monospace, Menlo, monospace; color: var(--fo-ink-2); }
+  /* type specimens */
+  .ty { display: grid; grid-template-columns: 11rem 1fr; gap: 1rem 1.5rem; align-items: baseline; }
+  .ty small { font: 400 .9375rem/1.3 ui-monospace, Menlo, monospace; color: var(--fo-ink-2); }
+  /* measures */
+  .ms { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-end; }
+  .ms > div { display: flex; flex-direction: column; align-items: center; gap: .5rem; font: var(--fo-caption); color: var(--fo-ink-2); text-align: center; }
+  .ms i { display: block; background: var(--fo-accent-tint); border: .0625rem dashed var(--fo-accent); border-radius: .25rem; }
+  /* layout diagram */
+  .lay { position: relative; width: 27rem; height: 48rem; border-radius: .5rem; background: #15171b; color: #c9ced8; overflow: hidden; font: var(--fo-caption); }
+  .lay > div { position: absolute; left: 0; right: 0; display: flex; align-items: center; justify-content: center; text-align: center; }
+  .lay .z-status { top: 0; height: 2.4rem; color: #8a8f99; }
+  .lay .z-stage { top: 2.4rem; bottom: 24rem; color: #8a8f99; flex-direction: column; justify-content: flex-start; padding-top: 1rem; gap: .25rem; }
+  .lay .z-stage::after { content: ""; position: absolute; top: 4rem; width: 7.5rem; height: 15rem; border-radius: 2.5rem 2.5rem 2rem 2rem; border: .0625rem solid rgba(255,255,255,.3); }
+  .lay .z-sheet { bottom: 2.8rem; height: 21.2rem; background: #f4f4f4; color: #393c41; border-radius: .5rem .5rem 0 0; border-top: .0625rem solid rgba(0,0,0,.1); flex-direction: column; justify-content: flex-start; padding-top: 1rem; gap: .25rem; }
+  .lay .d { position: absolute; left: 0; right: 0; border-top: .0625rem dashed #3e6ae1; color: #3e6ae1; font-size: .875rem; text-align: right; padding: .125rem .5rem 0 0; }
+  .lay .z-dock { bottom: 0; height: 2.8rem; background: #f4f4f4; color: #8a8d91; border-top: .0625rem solid rgba(0,0,0,.1); }
+  /* screen frames */
+  .frame { position: relative; width: 67.5rem; height: 120rem; margin: 0 auto; scroll-margin-top: 5.5rem; border-radius: .5rem; overflow: hidden; background: radial-gradient(120% 60% at 50% 30%, #2b2f38, #131519 70%); }
+  .frame .fo-status { position: absolute; top: 0; left: 0; right: 0; --fo-ink: #f0f0f0; --fo-ink-2: #9a9fa8; --fo-ink-3: #5a5f69; }
+  .frame .stage { position: absolute; left: 0; right: 0; top: 6rem; display: flex; align-items: center; justify-content: center; }
+  .frame .stage svg { height: 90%; width: auto; }
+  .frame .stage .note { position: absolute; top: .75rem; left: 50%; transform: translateX(-50%); font: var(--fo-caption); color: #6d737e; }
+  .frame .fo-sheet { position: absolute; left: 0; right: 0; bottom: 7rem; transition: height var(--fo-t-sheet) var(--fo-ease); }
+  .frame .fo-dock { position: absolute; left: 0; right: 0; bottom: 0; }
+  .frame.peek .fo-sheet { height: 28rem; } .frame.half .fo-sheet { height: 53rem; } .frame.full .fo-sheet { height: 85rem; }
+  .frame.peek .stage { bottom: 35rem; } .frame.half .stage { bottom: 60rem; } .frame.full .stage { bottom: 92rem; }
+  .frame .fo-chip { position: absolute; }
+  .frame svg.leads { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .frame svg.leads line { stroke: rgba(255,255,255,.6); stroke-width: .0625rem; } .frame svg.leads circle { fill: #fff; }
+  .frame-cap { display: flex; align-items: center; gap: 1.5rem; margin: 3rem 0 .75rem; font: var(--fo-heading); font-weight: 500; }
+  .frame-cap small { font: var(--fo-caption); color: var(--fo-ink-2); flex: 1; }
+  .frame-cap .fo-seg { width: 18rem; }
+  .excerpt { width: 67.5rem; margin: 0 auto; scroll-margin-top: 5.5rem; }
+  .excerpt .fo-sheet { border-radius: var(--fo-r); border: .0625rem solid var(--fo-line); }
+  .excerpt .fo-sheet__body { padding-bottom: 2.5rem; }
+  .excerpt + .excerpt { margin-top: 1rem; }
+  .cardwrap { display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap; }
+  .fo-ccard { width: 27rem; padding: 1rem 1.25rem 1.25rem; background: var(--fo-ground); border: .0625rem solid var(--fo-line); border-radius: var(--fo-r); }
+  .fo-ccard > h4 { margin: .25rem 0 .875rem .125rem; font: var(--fo-heading); }
+  .fo-ccard > * + * { margin-top: .75rem; }
+  table.mo { width: 100%; border-collapse: collapse; font: var(--fo-caption); }
+  table.mo td, table.mo th { text-align: left; padding: .625rem .75rem; border-top: .0625rem solid var(--fo-line); vertical-align: top; }
+  table.mo th { color: var(--fo-ink-2); font-weight: 400; }
+  table.mo td b { font-weight: 500; }
+</style>
+</head>
+<body>
+<header class="g-top">
+  <h1>Ocean controls</h1>
+  <nav>
+    <a href="#principles">Principles</a><a href="#layout">Layout</a><a href="#color">Color</a><a href="#type">Type</a><a href="#measure">Measure</a>
+    <a href="#components">Components</a><a href="#states">States</a><a href="#screens">Screens</a><a href="#motion">Motion</a>
+  </nav>
+  <button class="fo-ib" id="theme" title="Day / night"><span class="fo-icon" data-icon="moon"></span></button>
+</header>
+<main>
+
+<section id="principles">
+  <h2>Principles</h2>
+  <p class="lead">Design language for the car-controls sheet on the Ocean's portrait 1080 × 1920 screen. Tesla's in-car interface is the reference; the 3D Ocean stays on screen in every view.</p>
+  <div class="g-card">
+    <ol class="g-rules">
+      <li><b>What Tesla's screens actually do.</b> A flat ground, near-black at night and warm light grey by day. Controls are cells drawn with a hairline border, not a fill. Radii are small. Type is regular weight; the hierarchy is in size and grey. Icons are thin line drawings. Color is almost absent: a chosen thing turns its glyph blue, a segmented control lifts a pale pill, and a screen has at most one blue-filled button.</li>
+      <li><b>The car is the interface.</b> The sheet holds only what the car can't show by itself. Doors swing, windows sink, seats glow and the port opens on the model; the sheet never repeats that in a read-out block.</li>
+      <li><b>Choose, don't toggle.</b> A choice between named states is a segmented control (Off · Parking · On · Auto). A switch is for a preference you set once.</li>
+      <li><b>Cells for what you do while driving.</b> A tile is a 120 px cell you can hit without looking: A/C, defrost, heated wheel, fold mirrors. Rows are for settings you reach when parked.</li>
+      <li><b>The number first.</b> A category opens on the one number that matters, light and large but not huge: the set temperatures, the charge level, the lock. Then the controls, then the preferences.</li>
+      <li><b>Group by what it does to the car.</b> Climate holds the seat heaters, as Tesla's does. Doors &amp; Windows holds the lock, the windows, the liftgate and the mirrors.</li>
+      <li><b>One language for live, sent and off.</b> An unavailable control is greyed, not hidden, and says why on tap. The dock says whether changes reach the car.</li>
+      <li><b>Scale by frame, not by pixel.</b> Everything is rem against a 1080-wide frame. No backdrop blur over the 3D view.</li>
+    </ol>
+  </div>
+</section>
+
+<section id="layout">
+  <h2>Layout: 1080 × 1920</h2>
+  <p class="lead">Four zones. The dock is a flat bar at the bottom, like Tesla's taskbar; the sheet rises above it with three detents; the stage is what's left and the camera fits the car into it.</p>
+  <div class="g-two">
+    <div class="lay">
+      <div class="z-status">status strip · 96</div>
+      <div class="z-stage"><span>stage: the 3D car</span><span>chips on parts, badges in the overview</span></div>
+      <div class="d" style="bottom: 14rem">peek · 448</div>
+      <div class="d" style="bottom: 24rem">half · 848 (default)</div>
+      <div class="d" style="bottom: 35rem">full · 1360</div>
+      <div class="z-sheet"><span>sheet: handle · head · body</span><span style="color:#8a8d91">groups of hero, cells, rows, sliders</span></div>
+      <div class="z-dock">dock · 112</div>
+    </div>
+    <div class="g-card">
+      <h3>Zones</h3>
+      <ul class="g-rules">
+        <li><b>Status strip, 96.</b> Gear, speed and telltales left; time, outside temperature and the link right. Replaces the floating status card while the controls are open.</li>
+        <li><b>Stage.</b> From the strip to the sheet. Chips on parts, badges in the overview. The camera refits on every detent change.</li>
+        <li><b>Sheet.</b> Ground color, a 12 px radius and a hairline at the top, no shadow. <b>Peek</b> (448) shows the handle, the title and the hero. <b>Half</b> (848) is the default. <b>Full</b> (1360) is for long lists and leaves 352 px of car. Drag the handle or tap it to step.</li>
+        <li><b>Dock, 112.</b> Flat, full width, a hairline on top. Ten car-part categories as icon + 14 px label, a divider, <i>More</i> for the five system categories. The state tag at the left edge; ✕ at the right.</li>
+        <li><b>Gutter 40</b> at the screen edges; 8 between cells; 32 between groups.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="color">
+  <h2>Color</h2>
+  <p class="lead">Two surfaces and a hairline. Text in Tesla's grey, not black. One blue; it appears as a glyph, a thin fill line or a single primary button, never as a wash.</p>
+  <div class="g-card">
+    <h3>Ground, cells and ink</h3>
+    <div class="sw" id="sw-surface"></div>
+  </div>
+  <div class="g-card">
+    <h3>Accent and semantics</h3>
+    <p>The accent marks a chosen glyph, a slider's fill, a window that is open, and the one primary button. Heat is seat and wheel heat; cool is A/C and defog; ok is charging, locked and live.</p>
+    <div class="sw" id="sw-accent"></div>
+  </div>
+</section>
+
+<section id="type">
+  <h2>Type</h2>
+  <p class="lead">The system face (Roboto on the car) at 300, 400 and 500 only, with a little tracking on labels. Tabular numerals wherever a value changes.</p>
+  <div class="g-card"><div class="ty" id="ty"></div></div>
+</section>
+
+<section id="measure">
+  <h2>Measure</h2>
+  <p class="lead">An 8 px grid. Hit targets are 72 at least. One radius, 8, for every cell; 12 for the sheet's top.</p>
+  <div class="g-card">
+    <h3>Hit sizes</h3>
+    <div class="ms">
+      <div><i style="width:4.5rem;height:4.5rem"></i>72 · minimum</div>
+      <div><i style="width:4rem;height:2.25rem"></i>64 × 36 switch (72 hit)</div>
+      <div><i style="width:14rem;height:5rem"></i>80 · row</div>
+      <div><i style="width:7.5rem;height:7.5rem"></i>120 · tile</div>
+      <div><i style="width:5rem;height:6rem"></i>80 × 96 · dock item</div>
+      <div><i style="width:5.5rem;height:3.25rem;border-radius:999px"></i>88 × 52 · slider thumb</div>
+    </div>
+  </div>
+  <div class="g-card">
+    <h3>Icons</h3>
+    <p>Line icons on a 24 grid at a 1.6 stroke, round caps (the HUD's <code>ICONS</code>, drawn thinner here). 32 in tiles and the dock, 28 in a segment, 24 in a row. Resting glyphs are grey; a chosen glyph is blue; nothing is two-tone.</p>
+    <div class="ms" id="icons"></div>
+  </div>
+</section>
+
+<section id="components">
+  <h2>Components</h2>
+  <p class="lead">Each one is a class in <code>design.css</code>. Tap them: the guide wires the states the way carcontrols.js would.</p>
+
+  <div class="g-card">
+    <h3>Segmented control <code>.fo-seg</code></h3>
+    <p>One choice from two to five. A grey track; the chosen segment is a lifted white pill (lighter grey at night). <code>.stack</code> puts an icon over a short label. A segment can carry a color dot.</p>
+    <div style="display:grid;gap:.75rem">
+      <div class="fo-seg" data-seg><button>Off</button><button>Parking</button><button>On</button><button class="on">Auto</button></div>
+      <div class="fo-seg" data-seg><button><i class="dot" style="--c:var(--fo-earth)"></i>Earth</button><button class="on"><i class="dot" style="--c:var(--fo-fun)"></i>Fun</button><button><i class="dot" style="--c:var(--fo-hyper)"></i>Hyper</button></div>
+      <div class="fo-seg stack" data-seg>
+        <button class="on"><span class="fo-icon" data-icon="flowFace"></span><span>Face</span></button><button><span class="fo-icon" data-icon="flowBoth"></span><span>Face · feet</span></button>
+        <button><span class="fo-icon" data-icon="flowFeet"></span><span>Feet</span></button><button><span class="fo-icon" data-icon="flowFeetShield"></span><span>Feet · shield</span></button><button><span class="fo-icon" data-icon="flowShield"></span><span>Shield</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="g-card">
+    <h3>Tiles <code>.fo-tiles .fo-tile</code></h3>
+    <p>Equal cells, four to a row, icon over label. On: the glyph goes blue (heat red, cool blue) and the border darkens a touch; the cell stays white. <code>.primary</code> is the one blue-filled button a screen may have. <code>.off</code> is greyed.</p>
+    <div class="fo-tiles">
+      <button class="fo-tile on" data-toggle><span class="fo-icon" data-icon="auto"></span>Auto</button>
+      <button class="fo-tile on cool" data-toggle><span class="fo-icon" data-icon="snow"></span>A/C</button>
+      <button class="fo-tile heat" data-toggle><span class="fo-icon" data-icon="wheelheat"></span>Heated wheel</button>
+      <button class="fo-tile" data-toggle><span class="fo-icon" data-icon="recirc"></span>Recirculate</button>
+      <button class="fo-tile primary"><span class="fo-icon" data-icon="window"></span>California Mode</button>
+      <button class="fo-tile" data-toggle><span class="fo-icon" data-icon="mirror"></span>Fold mirrors</button>
+      <button class="fo-tile off"><span class="fo-icon" data-icon="paw"></span>Pet mode</button>
+      <button class="fo-tile" data-toggle><span class="fo-icon" data-icon="defrostR"></span>Rear defrost</button>
+    </div>
+  </div>
+
+  <div class="g-card">
+    <h3>Rows <code>.fo-rows .fo-row</code> and the switch <code>.fo-switch</code></h3>
+    <p>Preferences. Hairline dividers, nothing filled. Label, an optional second line, the control at the end: a switch, a value with a chevron, or a segmented control (under the label when it has more than three options).</p>
+    <div class="fo-rows">
+      <div class="fo-row"><div class="fo-row__lbl"><b>Lock when walking away</b></div><label class="fo-switch"><input type="checkbox" checked><span></span></label></div>
+      <div class="fo-row"><div class="fo-row__lbl"><b>Close windows when locking</b><small class="fo-row__sub">Also the sunroof</small></div><label class="fo-switch"><input type="checkbox" checked><span></span></label></div>
+      <div class="fo-row"><div class="fo-row__lbl"><b>Unlock</b></div><div class="fo-seg" data-seg><button>Driver's door</button><button class="on">All doors</button></div></div>
+      <div class="fo-row stack"><div class="fo-row__lbl"><b>Follow me home</b><small class="fo-row__sub">Headlights stay on after you lock</small></div><div class="fo-seg" data-seg><button>Off</button><button>15 s</button><button class="on">30 s</button><button>45 s</button><button>60 s</button></div></div>
+      <div class="fo-row"><div class="fo-row__lbl"><b>Departure</b></div><span class="fo-row__val">7:30 AM</span><span class="fo-icon" data-icon="chevron"></span></div>
+      <div class="fo-row off"><div class="fo-row__lbl"><b>Ambient lighting</b><small class="fo-row__sub">The head unit sends this itself every second</small></div><span class="fo-icon" data-icon="lock"></span><label class="fo-switch"><input type="checkbox" checked disabled><span></span></label></div>
+    </div>
+  </div>
+
+  <div class="g-two">
+    <div class="g-card">
+      <h3>Slider <code>.fo-slider</code></h3>
+      <p>Tesla's brightness slider: a hairline track and a pill thumb that carries the value, with glyphs at the ends. Discrete values (fan 1–7) are <code>.fo-steps</code>, a segmented track.</p>
+      <div class="fo-slider" data-slider><div class="fo-slider__head"><span class="fo-icon" data-icon="sun"></span>Display brightness</div><div class="fo-slider__rail"><span class="fo-icon" data-icon="moon"></span><div class="fo-slider__track"><div class="fo-slider__thumb">70%</div><input type="range" min="0" max="100" step="5" value="70" data-unit="%"></div><span class="fo-icon" data-icon="sun"></span></div></div>
+      <div style="height:1rem"></div>
+      <div class="fo-slider"><div class="fo-slider__head"><span class="fo-icon" data-icon="fan"></span>Fan</div><div class="fo-steps" data-steps><button>1</button><button>2</button><button class="on">3</button><button>4</button><button>5</button><button>6</button><button>7</button></div></div>
+    </div>
+    <div class="g-card">
+      <h3>Hero <code>.fo-hero</code></h3>
+      <p>The one number in light weight, a line in the state's color under it, a caption, and a thin bar with a marker. No box around it; it sits on the ground like Tesla's energy figure.</p>
+      <div class="fo-hero">
+        <div class="fo-hero__big">72<small>%</small></div>
+        <div class="fo-hero__meta"><b>238 mi range</b><span class="ok">Charging · 7.4 kW · 1 h 10 min to 80%</span></div>
+        <div class="fo-hero__bar"><i style="width:72%"></i><em style="left:80%" data-label="80%"></em></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="g-two">
+    <div class="g-card">
+      <h3>Temperature <code>.fo-temps</code></h3>
+      <p>Driver and passenger set points as light 72 numerals, minus and plus as bare glyphs beside them, as Tesla's bottom bar does. Sync and power sit between; a synced passenger side greys its number.</p>
+      <div class="fo-temps">
+        <div class="fo-temp"><small>Driver</small><div class="fo-temp__ctl"><button class="fo-ib" data-step="-1"><span class="fo-icon" data-icon="minus"></span></button><b data-temp="71">71<sup>°</sup></b><button class="fo-ib" data-step="1"><span class="fo-icon" data-icon="plus"></span></button></div></div>
+        <div class="fo-temps__mid"><button class="fo-tile on" data-toggle><span class="fo-icon" data-icon="power"></span>On</button><button class="fo-tile on" data-toggle-sync><span class="fo-icon" data-icon="sync"></span>Sync</button></div>
+        <div class="fo-temp synced"><small>Passenger</small><div class="fo-temp__ctl"><button class="fo-ib" data-step="-1"><span class="fo-icon" data-icon="minus"></span></button><b data-temp="71">71<sup>°</sup></b><button class="fo-ib" data-step="1"><span class="fo-icon" data-icon="plus"></span></button></div></div>
+      </div>
+    </div>
+    <div class="g-card">
+      <h3>Heat glyph <code>.fo-heat</code></h3>
+      <p>A seat with three waves above the cushion, as Tesla's heated-seat symbol; each level fills one wave red. Tap cycles Off → 1 → 2 → 3 → Off. The same glyph is the rear seats' chip and the steering wheel's.</p>
+      <div class="fo-heatrow">
+        <button class="fo-heat l2" data-heat><span class="glyph" data-glyph="seat"></span><small>Driver</small><em>2</em></button>
+        <button class="fo-heat l0" data-heat><span class="glyph" data-glyph="seat"></span><small>Passenger</small><em>Off</em></button>
+        <button class="fo-heat l1" data-heat><span class="glyph" data-glyph="seat"></span><small>Rear left</small><em>1</em></button>
+        <button class="fo-heat l3" data-heat><span class="glyph" data-glyph="wheel"></span><small>Wheel</small><em>3</em></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="g-two">
+    <div class="g-card">
+      <h3>Hold buttons <code>.fo-hold</code></h3>
+      <p>Held, a button keeps the car moving and fills blue; let go, it stops. The car's reported position at the end.</p>
+      <div class="fo-hold"><button><span class="fo-icon" data-icon="up"></span>Open</button><button class="square"><span class="fo-icon" data-icon="stop"></span></button><button><span class="fo-icon" data-icon="down"></span>Close</button><span class="fo-row__val">Closed</span></div>
+    </div>
+    <div class="g-card">
+      <h3>Windows <code>.fo-wins .fo-win</code></h3>
+      <p>The eight openings as cells in two rows of four, front row first, left to right as in the car. An open one shows its percentage in blue with a thin line along the bottom for how far. Tap: all the way the other way; hold: jog.</p>
+      <div class="fo-wins" id="wins"></div>
+    </div>
+  </div>
+
+  <div class="g-two">
+    <div class="g-card">
+      <h3>Equalizer <code>.fo-eq</code></h3>
+      <p>Hairline rails for the five bands, zero marked, a small round thumb, the value above.</p>
+      <div class="fo-eq" id="eq"></div>
+    </div>
+    <div class="g-card">
+      <h3>Seat adjuster <code>.fo-seatpos</code></h3>
+      <p>The seat from the side as a line drawing in its position, and the four jog pairs laid out like the switch on the seat's flank.</p>
+      <div class="fo-seatpos" id="seatpos"></div>
+    </div>
+  </div>
+
+  <div class="g-two">
+    <div class="g-card">
+      <h3>Chips on the car <code>.fo-chip</code></h3>
+      <p>Tesla labels the car with grey text on a thin leader line. Over the moving 3D view the text needs a ground, so a chip is a dark translucent cell with a hairline leader. A pair chip has the door and its window; a chosen glyph is blue.</p>
+      <div class="g-stage" style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
+        <span class="fo-chip badge"><span class="fo-icon" data-icon="fan"></span></span>
+        <span class="fo-chip"><span class="fo-icon" data-icon="window"></span>Sunroof · closed</span>
+        <span class="fo-chip on"><span class="fo-icon" data-icon="plug"></span>Charge port open</span>
+        <span class="fo-chip pair"><button class="on"><span class="fo-icon" data-icon="door"></span></button><button><span class="fo-icon" data-icon="window"></span></button></span>
+        <span class="fo-chip"><span class="fo-icon" data-icon="tire"></span>42 psi</span>
+        <span class="fo-chip text">Open liftgate</span>
+      </div>
+    </div>
+    <div class="g-card">
+      <h3>Buttons and toast</h3>
+      <p>A button is a cell. <code>.primary</code> is the one blue fill. The toast is the chip's dark cell, bottom center above the dock.</p>
+      <div class="fo-btns"><button class="fo-btn">Close all</button><button class="fo-btn primary">Unlock</button><button class="fo-btn danger">Reset</button></div>
+      <div style="margin-top:1rem"><span class="fo-toast"><span class="fo-icon" data-icon="lock"></span>The head unit sends this setting itself every second</span></div>
+    </div>
+  </div>
+
+  <div class="g-card" style="padding:0;overflow:hidden">
+    <h3 style="padding:1.5rem 1.5rem 0">Dock <code>.fo-dock</code></h3>
+    <p style="padding:0 1.5rem">A flat bar, the ground color, a hairline on top. Icon over a 14 px label; the open category's glyph blue and label dark. The state tag at the left edge reads <i>Mockup</i>, <i>On the car</i> (green) or <i>Car link down</i>.</p>
+    <div id="dock"></div>
+  </div>
+</section>
+
+<section id="states">
+  <h2>States</h2>
+  <p class="lead">Every control can be live, sent, or off. The look is the same everywhere.</p>
+  <div class="g-card">
+    <table class="mo">
+      <tr><th>State</th><th>Means</th><th>Looks</th></tr>
+      <tr><td><b>Rest</b></td><td>Not chosen, not on</td><td>White cell, hairline border, grey glyph and label</td></tr>
+      <tr><td><b>On / chosen</b></td><td>The state the car is in</td><td>Blue glyph (red for heat, blue for cool), label at 500, border a touch darker; a chosen segment lifts a white pill</td></tr>
+      <tr><td><b>Primary</b></td><td>The one thing a screen is for</td><td>Blue fill, white text. At most one per screen</td></tr>
+      <tr><td><b>Pressed / held</b></td><td>Finger down; a hold button keeps sending</td><td>Cell goes light grey; a hold button fills blue while held</td></tr>
+      <tr><td><b>Live</b></td><td>The value is the car's (carstate.js)</td><td>No mark on the control. The dock tag reads <i>On the car</i> in green</td></tr>
+      <tr><td><b>Pending</b></td><td>Sent, waiting for the car's answer</td><td>The control keeps its old value; its glyph fades to 50% for up to 1.5 s, then settles on what the car reports</td></tr>
+      <tr><td><b>Off</b></td><td>No message for it, or the head unit owns it</td><td>Light grey text and glyph, a small lock at the end of a row; a tap shows the reason as a toast and nothing changes</td></tr>
+      <tr><td><b>Mock</b></td><td>No car: values live in the page</td><td>Nothing is greyed for being mock; the dock tag reads <i>Mockup</i></td></tr>
+    </table>
+    <div style="margin-top:1.25rem;display:flex;gap:1.5rem;flex-wrap:wrap">
+      <span class="fo-tag ok"><i class="fo-dot"></i>On the car</span><span class="fo-tag"><i class="fo-dot"></i>Mockup</span><span class="fo-tag warn"><i class="fo-dot"></i>Car link down</span>
+    </div>
+  </div>
+</section>
+
+<section id="screens">
+  <h2>Screens</h2>
+  <p class="lead">Four categories at frame size, the stage above the sheet, the dock below. Change the detent to see the stage give way. The outline stands for the 3D car.</p>
+
+  <div class="frame-cap">Climate <small>Set temperatures first. Comfort cells. Fan. Airflow as icon segments. The four seat heaters, as Tesla keeps them on the climate screen. Departure last.</small><div class="fo-seg" data-detent><button>Peek</button><button class="on">Half</button><button>Full</button></div></div>
+  <div class="frame half" id="f-climate"></div>
+
+  <div class="frame-cap">Doors &amp; Windows <small>The lock as a line, not a hero box. The window cells replace seven Up/Down rows; the chips on the car do the same per door. Liftgate. Body cells. Locking preferences as rows.</small><div class="fo-seg" data-detent><button>Peek</button><button class="on">Half</button><button>Full</button></div></div>
+  <div class="frame half" id="f-doors"></div>
+
+  <div class="frame-cap">Energy <small>Charge, range and status, the limit marked on the bar. The limit slider under it, current as a stepper, Stop charging as the one primary. Schedule and V2L below.</small><div class="fo-seg" data-detent><button>Peek</button><button class="on">Half</button><button>Full</button></div></div>
+  <div class="frame half" id="f-energy"></div>
+
+  <div class="frame-cap">Driving <small>Drive mode, regen, accelerator and steering as segments, as Tesla's Pedals &amp; Steering is. The assists as cells.</small><div class="fo-seg" data-detent><button>Peek</button><button class="on">Half</button><button>Full</button></div></div>
+  <div class="frame half" id="f-driving"></div>
+
+  <div class="frame-cap">Lighting, Display, Audio <small>Sheet bodies only.</small></div>
+  <div class="excerpt" id="x-lighting"></div>
+  <div class="excerpt" id="x-display"></div>
+  <div class="excerpt" id="x-audio"></div>
+
+  <div class="frame-cap">Seats <small>In landscape, a card beside each front seat. In portrait there is no room for two cards beside the car, so the same groups go in the sheet and only the heat chips stay on the seats.</small></div>
+  <div class="cardwrap" id="x-seats"></div>
+</section>
+
+<section id="motion">
+  <h2>Motion</h2>
+  <p class="lead">Short and physical. One easing for anything that moves into place. Nothing animates continuously over the 3D view.</p>
+  <div class="g-card">
+    <table class="mo">
+      <tr><th>What</th><th>Duration</th><th>Easing</th><th>Note</th></tr>
+      <tr><td>Sheet open, close, detent</td><td>380 ms</td><td><code>cubic-bezier(.2,.8,.2,1)</code></td><td>Height, not transform, so the stage refits with it; the camera eases over the same 380 ms</td></tr>
+      <tr><td>Dock in, out</td><td>380 ms</td><td>same</td><td>Translate from below, the status strip fading in over 250 ms</td></tr>
+      <tr><td>State change (on, chosen)</td><td>180 ms</td><td>ease</td><td>Color and border only; the segment's pill is a shadow and background fade, not a slide</td></tr>
+      <tr><td>Press</td><td>80 ms</td><td>ease</td><td>The cell goes light grey; no scaling</td></tr>
+      <tr><td>Switch knob</td><td>180 ms</td><td>same bezier</td><td></td></tr>
+      <tr><td>Pending</td><td>1.5 s max</td><td>fade to 50%</td><td>Stops when the car answers</td></tr>
+      <tr><td>Chips</td><td>200 ms fade</td><td></td><td>Appear in place; move with their part every frame, with no transition</td></tr>
+      <tr><td>Reduced motion</td><td>0</td><td></td><td><code>prefers-reduced-motion</code> turns every transition off</td></tr>
+    </table>
+  </div>
+</section>
+</main>
+
+<script type="module">
+import { iconSvg as baseIcon } from '/js/util.js';
+
+// icons the controls need beyond util.js (same grammar: 24 grid, round caps; design.css thins the stroke)
+const S = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const EXTRA = {
+  moon: S('<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>'),
+  sun: S('<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>'),
+  auto: S('<path d="M5 19 10.5 5h3L19 19M7.8 13.5h8.4"/>'),
+  snow: S('<path d="M12 2.5v19M4 7.5l16 9M4 16.5l16-9M12 2.5 9.5 5M12 2.5l2.5 2.5M12 21.5 9.5 19M12 21.5l2.5-2.5M4 7.5l.9 3.4M4 7.5l3.4-.9M20 16.5l-.9-3.4M20 16.5l-3.4.9M4 16.5l.9-3.4M4 16.5l3.4.9M20 7.5l-.9 3.4M20 7.5l-3.4-.9"/>'),
+  recirc: S('<path d="M4 15.5a8 8 0 0 1 13-7.5M20 8.5a8 8 0 0 1-13 7.5"/><path d="M17 4v4h-4M7 20v-4h4"/>'),
+  defrostF: S('<path d="M3 12.5 6.5 5h11l3.5 7.5"/><path d="M7 20c1-1.5 1-3 0-4.5M12 20c1-1.5 1-3 0-4.5M17 20c1-1.5 1-3 0-4.5"/>'),
+  defrostR: S('<rect x="3" y="5" width="18" height="9" rx="2.5"/><path d="M7 20c1-1.5 1-3 0-4.5M12 20c1-1.5 1-3 0-4.5M17 20c1-1.5 1-3 0-4.5"/>'),
+  wheelheat: S('<circle cx="12" cy="13" r="8"/><circle cx="12" cy="13" r="2"/><path d="M4.4 11.5c3-.8 5-.6 5.8 1.2M19.6 11.5c-3-.8-5-.6-5.8 1.2M12 15v6"/><path d="M8.5 2.5c.8 1 .8 2 0 3M12 2.5c.8 1 .8 2 0 3M15.5 2.5c.8 1 .8 2 0 3"/>'),
+  purify: S('<path d="M5 19c0-8 5-13 14-14-1 9-6 14-14 14z"/><path d="M5 19c3-4 6-7 10-10"/>'),
+  paw: S('<circle cx="7" cy="9" r="1.8"/><circle cx="12" cy="6.5" r="1.8"/><circle cx="17" cy="9" r="1.8"/><path d="M12 11c3 0 5.5 3 5.5 5.5 0 1.5-1 2.5-2.5 2.5-1.2 0-2-.6-3-.6s-1.8.6-3 .6c-1.5 0-2.5-1-2.5-2.5C6.5 14 9 11 12 11z"/>'),
+  mirror: S('<path d="M4 14.5c0-5 4-8.5 9.5-8.5H20v6.5c0 1-.8 2-2 2z"/><path d="M4 14.5V19M20 12v6"/>'),
+  child: S('<circle cx="12" cy="6" r="2.5"/><path d="M8 21v-6a4 4 0 0 1 8 0v6M6.5 12.5 9 10.5M17.5 12.5 15 10.5"/>'),
+  winlock: S('<path d="M3 13 7.5 5H20v8z"/><rect x="12" y="15" width="9" height="6.5" rx="1.5"/><path d="M14.5 15v-1.5a2 2 0 0 1 4 0V15"/>'),
+  bulb: S('<path d="M8.5 14.5a5.5 5.5 0 1 1 7 0c-.9.8-1.5 1.6-1.5 2.5h-4c0-.9-.6-1.7-1.5-2.5z"/><path d="M10 20h4"/>'),
+  home: S('<path d="M4 11 12 4l8 7"/><path d="M6 10v10h12V10"/><path d="M10 20v-5h4v5"/>'),
+  highbeam: S('<path d="M10 5c-3.5 0-5.5 3-5.5 7s2 7 5.5 7c1.4 0 2-1 2-7s-.6-7-2-7z"/><path d="M15 8h6M15 12h6M15 16h6"/>'),
+  adb: S('<path d="M10 5c-3.5 0-5.5 3-5.5 7s2 7 5.5 7c1.4 0 2-1 2-7s-.6-7-2-7z"/><path d="M15 8.5 21 7M15 12h6M15 15.5 21 17"/>'),
+  tv: S('<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8"/><path d="M10 9.5v3l3-1.5z"/>'),
+  sparkle: S('<path d="M12 3v5M12 16v5M3 12h5M16 12h5M6.5 6.5 9 9M15 15l2.5 2.5M6.5 17.5 9 15M15 9l2.5-2.5"/>'),
+  hold: S('<circle cx="12" cy="12" r="8.5"/><path d="M8 12h8M12 8v8"/>'),
+  traction: S('<path d="M4 15.5c2-3 4-3 6 0s4 3 6 0 4-3 4 0" /><circle cx="12" cy="7" r="2.5"/>'),
+  hill: S('<path d="M3 19 11 7l4 6 6-9"/><path d="M3 19h18"/>'),
+  terrain: S('<path d="M3 17c2-4 4-4 6 0s4 4 6 0 4-4 6 0"/><path d="M3 11c2-4 4-4 6 0s4 4 6 0 4-4 6 0"/>'),
+  creep: S('<path d="M4 15h16l-2 4H6z"/><path d="M6 15c0-4 2.5-7 6-7s6 3 6 7"/><circle cx="12" cy="4" r="1.2"/>'),
+  battery: S('<rect x="3" y="7" width="16" height="10" rx="2"/><path d="M19 10h2v4h-2"/><path d="M6 10v4M9 10v4M12 10v4"/>'),
+  clock: S('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+  chevron: S('<path d="M9 5l7 7-7 7"/>'),
+  power: S('<path d="M12 3v8"/><path d="M7 6.5a7.5 7.5 0 1 0 10 0"/>'),
+  sync: S('<path d="M4 10a8 8 0 0 1 14-4M20 14a8 8 0 0 1-14 4"/><path d="M18 2v4h-4M6 22v-4h4"/>'),
+  minus: S('<path d="M5 12h14"/>'),
+  plus: S('<path d="M12 5v14M5 12h14"/>'),
+  up: S('<path d="M12 19V5M6 11l6-6 6 6"/>'),
+  down: S('<path d="M12 5v14M6 13l6 6 6-6"/>'),
+  stop: S('<rect x="6" y="6" width="12" height="12" rx="1.5"/>'),
+  more: S('<circle cx="5" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="19" cy="12" r="1.4" fill="currentColor"/>'),
+  v2l: S('<path d="M9 3v4M15 3v4M6.5 7h11v3.5a5.5 5.5 0 0 1-11 0z"/><path d="M12 16v2M9 21h6"/>'),
+  flowFace: S('<circle cx="8" cy="7" r="2.5"/><path d="M5 20c0-4 1.5-7 3-7s3 3 3 7"/><path d="M14 7h6M17.5 4.5 20 7l-2.5 2.5"/>'),
+  flowFeet: S('<circle cx="8" cy="7" r="2.5"/><path d="M5 20c0-4 1.5-7 3-7s3 3 3 7"/><path d="M14 19h6M17.5 16.5 20 19l-2.5 2.5"/>'),
+  flowBoth: S('<circle cx="8" cy="7" r="2.5"/><path d="M5 20c0-4 1.5-7 3-7s3 3 3 7"/><path d="M14 7h6M17.5 4.5 20 7l-2.5 2.5M14 19h6M17.5 16.5 20 19l-2.5 2.5"/>'),
+  flowShield: S('<circle cx="8" cy="7" r="2.5"/><path d="M5 20c0-4 1.5-7 3-7s3 3 3 7"/><path d="M14 9 20 3M15.5 3H20v4.5"/>'),
+  flowFeetShield: S('<circle cx="8" cy="7" r="2.5"/><path d="M5 20c0-4 1.5-7 3-7s3 3 3 7"/><path d="M14 9 20 3M15.5 3H20v4.5M14 19h6M17.5 16.5 20 19l-2.5 2.5"/>'),
+};
+const icon = (n) => EXTRA[n] || baseIcon(n) || '';
+const I = (n, cls = 'fo-icon') => `<span class="${cls}">${icon(n)}</span>`;
+
+// heat glyph: a seat from the side with three waves rising off the cushion (Tesla's heated-seat symbol)
+const WAVES = (y) => `<path class="w w1" d="M9 ${y} c1-1.2 1-2.4 0-3.6 c-1-1.2-1-2.4 0-3.6"/><path class="w w2" d="M13 ${y} c1-1.2 1-2.4 0-3.6 c-1-1.2-1-2.4 0-3.6"/><path class="w w3" d="M17 ${y} c1-1.2 1-2.4 0-3.6 c-1-1.2-1-2.4 0-3.6"/>`;
+const GLYPH = {
+  seat: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 10.5 5.8 18.5a1.5 1.5 0 0 0 1.5 1.3h11.2a1.5 1.5 0 0 0 1.5-1.4V17a1.5 1.5 0 0 0-1.5-1.5H8.6L7.6 10"/><path d="M6.5 22h2M17 22h2"/>${WAVES(9.5)}</svg>`,
+  wheel: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="15" r="6.5"/><circle cx="12" cy="15" r="1.8"/><path d="M5.8 13.8c2.4-.7 4.1-.5 4.7.9M18.2 13.8c-2.4-.7-4.1-.5-4.7.9M12 16.8v4.7"/>${WAVES(6.5).replace(/M9 /g, 'M8 ').replace(/M13 /g, 'M12 ').replace(/M17 /g, 'M16 ')}</svg>`,
+};
+for (const n of document.querySelectorAll('[data-icon]')) n.innerHTML = icon(n.dataset.icon);
+for (const n of document.querySelectorAll('[data-glyph]')) n.innerHTML = GLYPH[n.dataset.glyph];
+
+// ---- foundations ----
+const swatch = (name, label, light, dark) => `<div><i style="background:var(${name})"></i><b>${label}</b><small>${name}<br>${light} · ${dark}</small></div>`;
+document.getElementById('sw-surface').innerHTML = [
+  ['--fo-ground', 'Ground: sheet, dock', '#f4f4f4', '#171717'], ['--fo-cell', 'Cell: tiles, buttons, thumbs', '#ffffff', '#1f1f1f'],
+  ['--fo-cell-2', 'Cell 2: pressed, segmented track', '#e8e8e8', '#303030'], ['--fo-line', 'Line: borders, dividers', 'black 10%', 'white 12%'],
+  ['--fo-ink', 'Ink', '#393c41', '#f0f0f0'], ['--fo-ink-2', 'Ink 2: secondary, resting glyphs', '#8a8d91', '#9a9a9a'], ['--fo-ink-3', 'Ink 3: disabled', '#c2c4c7', '#5a5a5a'], ['--fo-on-stage', 'On stage: chips, toast', 'black 72%', 'black 82%'],
+].map(a => swatch(...a)).join('');
+document.getElementById('sw-accent').innerHTML = [
+  ['--fo-accent', 'Accent', '#3e6ae1', '#4d7ff0'], ['--fo-heat', 'Heat', '#e0452c', 'same'], ['--fo-cool', 'Cool', '#2f8fe6', 'same'], ['--fo-ok', 'OK: charging, locked, live', '#2e9e4f', 'same'],
+  ['--fo-warn', 'Warn', '#e8a317', 'same'], ['--fo-earth', 'Earth', '#2e9e4f', 'same'], ['--fo-fun', 'Fun', '#3e6ae1', 'same'], ['--fo-hyper', 'Hyper', '#e8582c', 'same'],
+].map(a => swatch(...a)).join('');
+document.getElementById('ty').innerHTML = [
+  ['display', '72 / 300', '72', 'The set temperature, the charge level'], ['hero', '48 / 300', '238 mi', 'A stepper\'s value'],
+  ['title', '32 / 500', 'Doors & Windows', 'The sheet\'s title'], ['heading', '24 / 400', 'Exterior lights', 'Group headings, a hero\'s line'],
+  ['body', '24 / 400', 'Close windows when locking', 'Row labels'], ['label', '22 / 400 · 500 when chosen', 'California Mode', 'Tiles, segments, buttons, chips'],
+  ['caption', '18 / 400', 'The doors are manual; the liftgate is powered', 'Second lines, notes'],
+].map(([k, spec, sample, use]) => `<small>${k}<br>${spec}</small><div style="font:var(--fo-${k});letter-spacing:var(--fo-track)">${sample}<div style="font:var(--fo-caption);color:var(--fo-ink-2);margin-top:.25rem;letter-spacing:0">${use}</div></div>`).join('');
+document.getElementById('icons').innerHTML = ['beam', 'fan', 'seat', 'gauge', 'radar', 'bolt', 'speaker', 'door', 'wrench', 'screen', 'wifi', 'person', 'pin', 'sliders', 'download', 'lock', 'plug', 'window', 'tire',
+  'snow', 'recirc', 'defrostF', 'defrostR', 'wheelheat', 'purify', 'paw', 'mirror', 'child', 'winlock', 'bulb', 'home', 'tv', 'sparkle', 'hold', 'traction', 'hill', 'terrain', 'battery', 'v2l']
+  .map(n => `<div><span class="fo-icon">${icon(n)}</span>${n}</div>`).join('');
+
+// ---- builders ----
+const tile = (ic, label, cls = '') => `<button class="fo-tile ${cls}" ${/primary|off/.test(cls) ? '' : 'data-toggle'}>${I(ic)}${label}</button>`;
+const seg = (opts, on, cls = '') => `<div class="fo-seg ${cls}" data-seg>${opts.map((o, i) => `<button class="${i === on ? 'on' : ''}">${Array.isArray(o) ? (o[0].startsWith('#') || o[0].startsWith('var') ? `<i class="dot" style="--c:${o[0]}"></i>${o[1]}` : I(o[0]) + `<span>${o[1]}</span>`) : o}</button>`).join('')}</div>`;
+const sw = (on, dis = false) => `<label class="fo-switch"><input type="checkbox" ${on ? 'checked' : ''} ${dis ? 'disabled' : ''}><span></span></label>`;
+const row = (label, sub, ctl, cls = '') => `<div class="fo-row ${cls}"><div class="fo-row__lbl"><b>${label}</b>${sub ? `<small class="fo-row__sub">${sub}</small>` : ''}</div>${ctl}</div>`;
+const rows = (...r) => `<div class="fo-rows">${r.join('')}</div>`;
+const group = (ic, title, body, note = '') => `<div class="fo-group">${title ? `<h3>${ic ? I(ic) : ''}${title}${note ? `<small>${note}</small>` : ''}</h3>` : ''}${body}</div>`;
+const slider = (ic, label, val, min, max, step, v, cls = '', ends = ['', '']) => `<div class="fo-slider ${cls}" data-slider><div class="fo-slider__head">${ic ? I(ic) : ''}${label}</div><div class="fo-slider__rail">${ends[0] ? I(ends[0]) : ''}<div class="fo-slider__track"><div class="fo-slider__thumb">${val}</div><input type="range" min="${min}" max="${max}" step="${step}" value="${v}" data-unit="${val.replace(/[\d.\-+]/g, '')}"></div>${ends[1] ? I(ends[1]) : ''}</div></div>`;
+const heat = (glyph, label, lvl) => `<button class="fo-heat l${lvl}" data-heat><span class="glyph">${GLYPH[glyph]}</span><small>${label}</small><em>${lvl ? lvl : 'Off'}</em></button>`;
+const head = (ic, title) => `<div class="fo-sheet__handle" data-handle><i></i></div><div class="fo-sheet__head"><button class="fo-ib">${I('back')}</button><h2>${I(ic)}${title}</h2><button class="fo-ib">${I('close')}</button></div>`;
+const status = () => `<div class="fo-status"><div class="fo-status__gear"><span>P</span><span>R</span><span>N</span><span class="on">D</span></div><div class="fo-status__speed">58<small>mph</small></div>
+  <div class="fo-status__right"><span><b>9:22</b> PM</span><span><b>49°</b> outside</span><span class="fo-tag ok"><i class="fo-dot"></i>On the car</span></div></div>`;
+const CATS = [['beam', 'Lighting'], ['fan', 'Climate'], ['seat', 'Seats'], ['gauge', 'Driving'], ['radar', 'Assist'], ['bolt', 'Energy'], ['speaker', 'Audio'], ['door', 'Doors'], ['wrench', 'Service'], ['screen', 'Display']];
+const dock = (on) => `<div class="fo-dock"><span class="fo-dock__state ok">On the car</span><div class="fo-dock__items" data-dock>${CATS.map(([ic, l]) => `<button class="fo-dock__item ${l === on ? 'on' : ''}">${I(ic)}<span>${l}</span></button>`).join('')}<i class="fo-dock__sep"></i><button class="fo-dock__item">${I('more')}<span>More</span></button></div><button class="fo-ib">${I('close')}</button></div>`;
+// the stage's stand-in for the 3D car: a top view in one thin line
+const car = () => `<svg viewBox="0 0 220 520" aria-hidden="true"><g fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.5">
+  <path d="M34 110c0-50 30-82 76-82s76 32 76 82v300c0 50-30 80-76 80s-76-30-76-80z"/>
+  <path d="M56 160c14-30 34-45 54-45s40 15 54 45v55H56z" opacity=".7"/><path d="M56 235h108v150H56z" opacity=".5"/><path d="M56 400c14 28 34 42 54 42s40-14 54-42v-15H56z" opacity=".7"/>
+  <path d="M34 150h-8M186 150h8M34 400h-8M186 400h8" opacity=".5"/>
+  <rect x="18" y="118" width="16" height="64" rx="5" fill="rgba(255,255,255,.18)"/><rect x="186" y="118" width="16" height="64" rx="5" fill="rgba(255,255,255,.18)"/><rect x="18" y="372" width="16" height="64" rx="5" fill="rgba(255,255,255,.18)"/><rect x="186" y="372" width="16" height="64" rx="5" fill="rgba(255,255,255,.18)"/></g></svg>`;
+const frame = (id, ic, title, body, extras = '') => {
+  document.getElementById(id).innerHTML = `${status()}<div class="stage">${car()}<span class="note">3D car · the roof fades, the part glows</span></div>${extras}
+    <div class="fo-sheet">${head(ic, title)}<div class="fo-sheet__body">${body}</div></div>${dock(title.split(' ')[0])}`;
+};
+
+// windows: two rows of four, as in the car
+const WINS = [['Front left', 0], ['Sunroof', 0], ['Rear window', 0], ['Front right', 0], ['Rear left', 35], ['Left quarter', 0], ['Right quarter', 0], ['Rear right', 0]];
+const wins = () => WINS.map(([l, p]) => `<button class="fo-win ${p ? 'open' : ''}"><small>${l}</small><b>${p ? p + '% open' : 'Closed'}</b><i style="width:${p}%"></i></button>`).join('');
+document.getElementById('wins').innerHTML = wins();
+
+// equalizer
+const eq = () => [['High treble', 0], ['Treble', 2], ['Mid', 0], ['Bass', 3], ['Sub bass', 4]].map(([l, v]) => {
+  const top = 50 - v * 5, h = Math.abs(v) * 5;
+  return `<div class="fo-band"><b>${v > 0 ? '+' : ''}${v}</b><div class="fo-band__rail"><i style="top:${v >= 0 ? top : 50}%;height:${h}%"></i><em style="top:${top}%"></em></div><small>${l}</small></div>`;
+}).join('');
+document.getElementById('eq').innerHTML = eq();
+
+// seat adjuster
+const seatpos = () => `<svg viewBox="0 0 150 104"><rect class="rail" x="38" y="92" width="74" height="4" rx="2"/><g class="seat"><rect x="36" y="64" width="70" height="15" rx="7"/><g transform="rotate(8 101 72)"><rect x="94" y="14" width="15" height="60" rx="7"/><rect x="96" y="1" width="12" height="15" rx="5"/></g></g></svg>
+  <div class="fo-jogs">${[['Slide', '◀', '▶'], ['Back', '↶', '↷'], ['Front', '▲', '▼'], ['Rear', '▲', '▼']].map(([n, a, b]) => `<div class="fo-jog"><small>${n}</small><button>${a}</button><button>${b}</button></div>`).join('')}</div>`;
+document.getElementById('seatpos').innerHTML = seatpos();
+document.getElementById('dock').innerHTML = dock('Climate');
+
+// ---- screens ----
+const temps = () => `<div class="fo-temps">
+  <div class="fo-temp"><small>Driver</small><div class="fo-temp__ctl"><button class="fo-ib" data-step="-1">${I('minus')}</button><b data-temp="71">71<sup>°</sup></b><button class="fo-ib" data-step="1">${I('plus')}</button></div></div>
+  <div class="fo-temps__mid"><button class="fo-tile on" data-toggle>${I('power')}On</button><button class="fo-tile on" data-toggle-sync>${I('sync')}Sync</button></div>
+  <div class="fo-temp synced"><small>Passenger</small><div class="fo-temp__ctl"><button class="fo-ib" data-step="-1">${I('minus')}</button><b data-temp="71">71<sup>°</sup></b><button class="fo-ib" data-step="1">${I('plus')}</button></div></div></div>`;
+const FLOW = [['flowFace', 'Face'], ['flowBoth', 'Face · feet'], ['flowFeet', 'Feet'], ['flowFeetShield', 'Feet · shield'], ['flowShield', 'Shield']];
+
+frame('f-climate', 'fan', 'Climate', `
+  ${temps()}
+  ${group('', '', `<div class="fo-tiles">${tile('auto', 'Auto', 'on')}${tile('snow', 'A/C', 'on cool')}${tile('recirc', 'Recirculate')}${tile('purify', 'Air purifier')}
+    ${tile('defrostF', 'Front defrost', 'cool')}${tile('defrostR', 'Rear defrost', 'cool')}${tile('wheelheat', 'Heated wheel', 'heat')}${tile('paw', 'Pet mode', 'off')}</div>`)}
+  ${group('fan', 'Fan', `<div class="fo-steps" data-steps>${[1, 2, 3, 4, 5, 6, 7].map(n => `<button class="${n === 3 ? 'on' : ''}">${n}</button>`).join('')}</div>`)}
+  ${group('flowFace', 'Airflow', `<div class="fo-cols">${seg(FLOW, 0, 'stack')}${seg([['flowFace', 'Face'], ['flowBoth', 'Face · feet'], ['flowFeet', 'Feet'], ['close', 'Off']], 0, 'stack')}</div>`, 'front · rear')}
+  ${group('seat', 'Seat heat', `<div class="fo-heatrow">${heat('seat', 'Driver', 2)}${heat('seat', 'Passenger', 0)}${heat('seat', 'Rear left', 0)}${heat('seat', 'Rear right', 1)}</div>`)}
+  ${group('clock', 'Departure', rows(row('Precondition before departure', 'Cabin and battery ready at the time', sw(false, true), 'off'), row('Departure', '', `<span class="fo-row__val">7:30 AM</span>${I('chevron')}`, 'off')), 'the telematics unit keeps the schedules')}
+`);
+
+frame('f-doors', 'door', 'Doors & Windows', `
+  <div class="fo-hero inline">${I('lock')}<div class="fo-hero__meta"><b>Locked</b><span>All doors and the liftgate</span></div><button class="fo-btn primary">Unlock</button></div>
+  ${group('window', 'Windows', `<div class="fo-wins">${wins()}</div><div class="fo-tiles">${tile('window', 'California Mode', 'primary')}${tile('close', 'Close all')}<div class="fo-tile" style="grid-column:span 2;padding:.75rem 1rem;gap:.5rem;cursor:default"><small style="font:var(--fo-caption);color:var(--fo-ink-2)">Sunroof</small>${seg(['Closed', 'Tilt', 'Open'], 0).replace('class="fo-seg "', 'class="fo-seg" style="width:100%"')}</div></div>`, 'tap: all the way · hold: jog')}
+  ${group('door', 'Liftgate', `<div class="fo-hold"><button>${I('up')}Open</button><button class="square">${I('stop')}</button><button>${I('down')}Close</button><span class="fo-row__val">Closed</span></div>`, 'the doors are manual')}
+  ${group('', '', `<div class="fo-tiles cols-3">${tile('mirror', 'Fold mirrors')}${tile('child', 'Child locks', 'off')}${tile('winlock', 'Rear window lock', 'off')}</div>`)}
+  ${group('lock', 'Locking', rows(
+    row('Unlock', '', seg(["Driver's door", 'All doors'], 1)),
+    row('Lock when walking away', 'The car doesn\'t report this setting', sw(true)),
+    row('Unlock when powered off', '', sw(false)),
+    row('Close windows when locking', '', sw(true)),
+    row('Fold mirrors when locking', '', sw(true)),
+    row('Close the sunroof in rain', '', sw(true))))}
+`, `<svg class="leads"><line x1="33%" y1="30%" x2="23%" y2="27%"/><circle cx="33%" cy="30%" r="3"/><line x1="67%" y1="30%" x2="77%" y2="27%"/><circle cx="67%" cy="30%" r="3"/>
+  <line x1="33%" y1="37%" x2="23%" y2="40%"/><circle cx="33%" cy="37%" r="3"/><line x1="67%" y1="37%" x2="77%" y2="40%"/><circle cx="67%" cy="37%" r="3"/><line x1="50%" y1="31%" x2="50%" y2="19%"/><circle cx="50%" cy="31%" r="3"/></svg>
+  <span class="fo-chip pair" style="left:13%;top:25%"><button>${I('door')}</button><button>${I('window')}</button></span><span class="fo-chip pair" style="left:77%;top:25%"><button>${I('door')}</button><button>${I('window')}</button></span>
+  <span class="fo-chip pair" style="left:13%;top:39.5%"><button>${I('door')}</button><button class="on">${I('window')}</button></span><span class="fo-chip pair" style="left:77%;top:39.5%"><button>${I('door')}</button><button>${I('window')}</button></span>
+  <span class="fo-chip" style="left:50%;top:16.5%;transform:translateX(-50%)">${I('window')}Sunroof · closed</span>`);
+
+frame('f-energy', 'bolt', 'Energy', `
+  <div class="fo-hero"><div class="fo-hero__big">72<small>%</small></div><div class="fo-hero__meta"><b>238 mi range</b><span class="ok">Charging · 7.4 kW · 1 h 10 min to 80%</span><span>Plugged in at home · 32 A</span></div><div class="fo-hero__bar"><i style="width:72%"></i><em style="left:80%" data-label="Limit 80%"></em></div></div>
+  ${group('bolt', 'Charging', `${slider('', 'Charge limit', '80%', 50, 100, 5, 80, 'ok', ['battery', 'bolt'])}${rows(row('Charge current', 'Up to 32 A on AC', `<div class="fo-stepper"><button class="fo-ib">${I('minus')}</button><b>32<small>A</small></b><button class="fo-ib">${I('plus')}</button></div>`))}
+    <button class="fo-btn block primary">Stop charging</button>`, 'daily 80 · 100 before a long trip')}
+  ${group('clock', 'Schedule', rows(row('Scheduled charging', 'Starts when off-peak rates do', sw(true, true), 'off'), row('Start at', '', `<span class="fo-row__val">11:00 PM</span>${I('chevron')}`, 'off')), 'the telematics unit keeps the schedules')}
+  ${group('v2l', 'Power out', `<div class="fo-tiles">${tile('v2l', 'Vehicle to load', 'wide off')}</div>${slider('', 'Stop powering devices at', '20%', 10, 50, 5, 20, 'off')}`)}
+`, `<svg class="leads"><line x1="24%" y1="28%" x2="15%" y2="24.5%"/><circle cx="24%" cy="28%" r="3"/></svg><span class="fo-chip on" style="left:3%;top:21.5%">${I('plug')}Charge port open</span>`);
+
+frame('f-driving', 'gauge', 'Driving', `
+  ${group('gauge', 'Drive mode', seg([['var(--fo-earth)', 'Earth'], ['var(--fo-fun)', 'Fun'], ['var(--fo-hyper)', 'Hyper']], 1))}
+  ${group('', '', rows(row('Regenerative braking', 'High is close to one-pedal driving', seg(['Low', 'Medium', 'High'], 1)), row('Accelerator', '', seg(['Low', 'Medium', 'High'], 1)), row('Steering', '', seg(['Comfort', 'Standard', 'Sport'], 1))))}
+  ${group('', '', `<div class="fo-tiles">${tile('creep', 'Creep', 'on')}${tile('hold', 'Auto hold', 'on')}${tile('traction', 'Traction control', 'on')}${tile('hill', 'Hill descent')}${tile('terrain', 'Special terrain mode', 'wide')}</div>`)}
+`);
+
+const excerpt = (id, ic, title, body) => { document.getElementById(id).innerHTML = `<div class="fo-sheet">${head(ic, title)}<div class="fo-sheet__body">${body}</div></div>`; };
+excerpt('x-lighting', 'beam', 'Lighting', `
+  ${group('beam', 'Exterior lights', `${seg(['Off', 'Auto', 'Parking', 'Low'], 1)}<div class="fo-tiles">${tile('highbeam', 'Auto high beam', 'off')}${tile('adb', 'Adaptive beam', 'on')}${tile('home', 'Welcome lights', 'on')}${tile('bulb', 'Ambient', 'off')}</div>`, 'Auto is the stalk\'s position')}
+  ${slider('bulb', 'Ambient brightness', '60%', 0, 100, 5, 60, 'off')}
+  ${group('lock', 'After you lock', rows(row('Follow me home', '', seg(['Off', '15 s', '30 s', '45 s', '60 s'], 2), 'stack'), row('Interior lights off after', '', seg(['0 s', '15 s', '30 s', '45 s', '60 s'], 2), 'stack')))}
+`);
+excerpt('x-display', 'screen', 'Display', `
+  ${slider('sun', 'Display brightness', '70%', 0, 100, 5, 70, '', ['moon', 'sun'])}
+  <div class="fo-tiles cols-3">${tile('auto', 'Auto brightness', 'on')}${tile('tv', 'Hollywood Mode')}${tile('sparkle', 'Clean screen')}</div>
+  ${group('', '', rows(row('Appearance', 'This screen\'s own setting', seg(['Auto', 'Light', 'Dark'], 0)), row('Driver display', '', seg(['Minimal', 'Standard', 'Map'], 1))))}
+`);
+excerpt('x-audio', 'speaker', 'Audio', `
+  ${group('sliders', 'Equalizer', `${seg(['Preset 1', 'Preset 2', 'Preset 3'], 0)}<div class="fo-eq">${eq()}</div>`, 'one message carries every band')}
+  ${group('speaker', 'Sound', `${rows(row('Sound stage', 'Where the music is centered', seg(['All', 'Driver', 'Passenger', 'Front', 'Rear'], 0), 'stack'))}<div class="fo-tiles">${tile('speaker', 'HyperSound', 'on')}${tile('radar', 'Traffic', 'on')}${tile('radar', 'News')}${tile('warn', 'Emergency alerts', 'on')}</div>`)}
+`);
+document.getElementById('x-seats').innerHTML = `
+  <div class="fo-ccard"><h4>Driver</h4><div class="fo-heatrow" style="grid-template-columns:7.5rem 1fr;align-items:stretch">${heat('seat', 'Heat', 2)}<div class="fo-rows" style="display:flex;flex-direction:column;justify-content:center">${row('Memory', '', `<div class="fo-seg" data-seg style="flex:0 0 10rem"><button class="on">1</button><button>2</button><button>3</button></div>`)}${row('Save', 'Hold to store', `<button class="fo-btn" style="height:3.5rem;padding:0 1.25rem">Save</button>`)}</div></div>
+    <div class="fo-seatpos compact">${seatpos()}</div>${rows(row('Easy entry', 'Slides back as you get in or out', sw(true)))}</div>
+  <div class="fo-ccard"><h4>Passenger</h4><div class="fo-heatrow" style="grid-template-columns:7.5rem 1fr;align-items:center">${heat('seat', 'Heat', 0)}<div style="font:var(--fo-caption);color:var(--fo-ink-2);padding:0 .5rem">Slide and recline only: the passenger seat has no height or tilt message.</div></div><div class="fo-seatpos compact">${seatpos()}</div></div>
+  <div class="g-stage" style="display:flex;flex-direction:column;gap:1rem;align-items:flex-start"><span class="fo-chip">${I('seat')}Rear left · heat off</span><span class="fo-chip on">${I('seat')}Rear right · heat 1</span><span style="font:var(--fo-caption);color:#8a8f99">rear seats: chips that cycle the heat</span></div>`;
+
+// ---- behavior: the states a tap gives, as carcontrols.js would ----
+document.addEventListener('click', (e) => {
+  const t = e.target;
+  const segBtn = t.closest('[data-seg] > button');
+  if (segBtn) { for (const b of segBtn.parentElement.children) b.classList.toggle('on', b === segBtn); }
+  const detent = t.closest('[data-detent] > button');
+  if (detent) { const f = detent.closest('.frame-cap').nextElementSibling; f.className = `frame ${detent.textContent.toLowerCase()}`; }
+  const handle = t.closest('[data-handle]');
+  if (handle) { const f = handle.closest('.frame'); if (f) { const order = ['peek', 'half', 'full']; const cur = order.find(k => f.classList.contains(k)); f.className = `frame ${order[(order.indexOf(cur) + 1) % 3]}`; const cap = f.previousElementSibling.querySelector('[data-detent]'); if (cap) for (const b of cap.children) b.classList.toggle('on', b.textContent.toLowerCase() === f.classList[1]); } }
+  const tog = t.closest('[data-toggle]'); if (tog) tog.classList.toggle('on');
+  const sync = t.closest('[data-toggle-sync]'); if (sync) { sync.classList.toggle('on'); sync.closest('.fo-temps').querySelector('.fo-temp:last-child').classList.toggle('synced', sync.classList.contains('on')); }
+  const h = t.closest('[data-heat]'); if (h) { const l = (Number((h.className.match(/l(\d)/) || [0, 0])[1]) + 1) % 4; h.className = h.className.replace(/l\d/, `l${l}`); h.querySelector('em').textContent = l ? l : 'Off'; }
+  const step = t.closest('[data-steps] > button'); if (step) for (const b of step.parentElement.children) b.classList.toggle('on', b === step);
+  const dk = t.closest('[data-dock] > button'); if (dk) for (const b of dk.parentElement.children) b.classList.toggle('on', b === dk);
+  const st = t.closest('[data-step]'); if (st) { const b = st.parentElement.querySelector('[data-temp]'); const v = Number(b.dataset.temp) + Number(st.dataset.step); b.dataset.temp = v; b.innerHTML = `${v}<sup>°</sup>`; st.closest('.fo-temp').classList.remove('synced'); }
+});
+const paintRange = (r) => { const p = (r.value - r.min) / (r.max - r.min) * 100; const track = r.closest('.fo-slider__track'); track.style.setProperty('--p', `${p}%`); track.querySelector('.fo-slider__thumb').textContent = `${r.value}${r.dataset.unit || ''}`; };
+for (const r of document.querySelectorAll('.fo-slider input[type=range]')) { paintRange(r); r.addEventListener('input', () => paintRange(r)); }
+// day / night
+const root = document.documentElement;
+const setTheme = (dark) => { root.dataset.theme = dark ? 'dark' : 'light'; document.querySelector('#theme .fo-icon').innerHTML = icon(dark ? 'sun' : 'moon'); try { localStorage.setItem('fo.guide.theme', dark ? 'dark' : 'light'); } catch (e) {} };
+let dark = false; try { dark = localStorage.getItem('fo.guide.theme') === 'dark'; } catch (e) {}
+setTheme(dark);
+document.getElementById('theme').addEventListener('click', () => setTheme(root.dataset.theme !== 'dark'));
+</script>
+</body>
+</html>

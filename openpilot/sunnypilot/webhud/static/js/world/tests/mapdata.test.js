@@ -95,3 +95,33 @@ describe('MapData', () => {
     assert.equal(before[1], after[1]);
   });
 });
+
+describe('map prefetch', () => {
+  test('the server is asked for the map around the car once, again after 3 km or 2 min, and at once with a new radius', async () => {
+    const asks = [];
+    const md = new MapData(async () => null, null, async (lat, lon, km) => { asks.push([lat, lon, km]); });
+    md.setOrigin({ lat: 33.95, lon: -83.40, seq: 1 });
+    md.ensure(33.95, -83.40, 0);
+    await md.settle();
+    await new Promise(r => setTimeout(r, 0));
+    assert.deepEqual(asks, [[33.95, -83.40, 25]]);
+    md.ensure(33.951, -83.401, 30);          // 150 m on, half a minute later: nothing
+    await new Promise(r => setTimeout(r, 0));
+    assert.equal(asks.length, 1);
+    md.ensure(33.98, -83.40, 60);            // 3.3 km north: asked again
+    await new Promise(r => setTimeout(r, 0));
+    assert.equal(asks.length, 2);
+    md.ensure(33.98, -83.40, 200);           // 140 s later, same place: asked again
+    await new Promise(r => setTimeout(r, 0));
+    assert.equal(asks.length, 3);
+    md.setPrefetchKm(50);
+    md.ensure(33.98, -83.40, 201);
+    await new Promise(r => setTimeout(r, 0));
+    assert.equal(asks.length, 4);
+    assert.equal(asks[3][2], 50);
+    md.setPrefetchKm(0);                     // off: never asked
+    md.ensure(34.1, -83.40, 400);
+    await new Promise(r => setTimeout(r, 0));
+    assert.equal(asks.length, 4);
+  });
+});
