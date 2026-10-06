@@ -191,7 +191,9 @@ export class CarControls {
     if (this.backBtn) this.backBtn.style.left = `${(r.left + r.right) / 2}px`;
     this.scene.setFrame(r);
     const c = this.category, f = (c && c.focus) || (r.bottom - r.top < SHORT_PX && r.right - r.left > r.bottom - r.top ? OVERVIEW_WIDE : OVERVIEW);
-    this.scene.focus(f.fitP && this.portrait ? { ...f, fit: f.fitP } : f, instant);
+    // an instant refit (updateLayout, e.g. the viewdock hiding as car mode opens) must not snap the camera
+    // mid-move: while a view animation is running, retarget it smoothly instead
+    this.scene.focus(f.fitP && this.portrait ? { ...f, fit: f.fitP } : f, instant && !this.scene.viewAnim);
   }
 
   setDetent(d) {
