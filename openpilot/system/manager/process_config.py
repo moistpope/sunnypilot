@@ -68,6 +68,21 @@ def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
 def livestream(started: bool, params: Params, CP: car.CarParams) -> bool:
   return params.get_bool("IsLiveStreaming")
 
+def fisker_secoc(started: bool, params: Params, CP: car.CarParams) -> bool:
+  # Fisker Ocean needs its per-vehicle SecOC key recovered over UDS before openpilot can sign ADAS
+  # control frames. This is a one-shot recovery daemon: only expect it to run until a valid key is
+  # stored, otherwise the process monitor flags it as "not running" once it finishes (which blocks
+  # engagement).
+  if not (started and CP.brand == "fisker" and CP.secOcRequired):
+    return False
+  stored = params.get("SecOCKey")
+  if stored is None:
+    return True
+  try:
+    return len(bytes.fromhex(stored.strip())) != 16
+  except (ValueError, TypeError, AttributeError):
+    return True
+
 def use_copyparty(started, params, CP: car.CarParams) -> bool:
   return bool(params.get_bool("EnableCopyparty"))
 
@@ -135,6 +150,7 @@ procs = [
   PythonProcess("joystickd", "openpilot.tools.joystick.joystickd", or_(joystick, notcar)),
   PythonProcess("selfdrived", "openpilot.selfdrive.selfdrived.selfdrived", only_onroad),
   PythonProcess("card", "openpilot.selfdrive.car.card", only_onroad),
+  PythonProcess("fisker_secoc_keyd", "openpilot.selfdrive.car.fisker_secoc_keyd", fisker_secoc),
   PythonProcess("deleter", "openpilot.system.loggerd.deleter", always_run),
   PythonProcess("dmonitoringd", "openpilot.selfdrive.monitoring.dmonitoringd", driverview, enabled=(WEBCAM or not PC)),
   PythonProcess("qcomgpsd", "openpilot.system.qcomgpsd.qcomgpsd", qcomgps, enabled=COMMA_HARDWARE),
