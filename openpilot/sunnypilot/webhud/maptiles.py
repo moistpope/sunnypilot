@@ -46,7 +46,7 @@ class MapTiles:
 
   def tile_path(self, lat: int, lon: int, name: str) -> str | None:
     """The tile's file, downloading its cell first if needed; None when it can't be had."""
-    if not NAME_RE.match(name) or not (-90 <= lat < 90 and -180 <= lon < 180) or lat % 2 or lon % 2:
+    if not NAME_RE.fullmatch(name) or not (-90 <= lat < 90 and -180 <= lon < 180) or lat % 2 or lon % 2:
       raise ValueError("not a tile name")
     path = os.path.join(self.root, str(lat), str(lon), name)
     if os.path.isfile(path):
@@ -87,13 +87,13 @@ class MapTiles:
           if not m.isfile() or not m.name.startswith(prefix):
             continue
           name = m.name[len(prefix):]
-          if not NAME_RE.match(name):
+          if not NAME_RE.fullmatch(name):
             continue
           src = tar.extractfile(m)
           if src is None:
             continue
           out = os.path.join(dest, name + ".part")
-          with open(out, "wb") as f:
+          with src, open(out, "wb") as f:
             while True:
               chunk = src.read(1 << 20)
               if not chunk:
@@ -188,7 +188,7 @@ class MapFeatures:
 
   def _fetch_tile(self, tlat: int, tlon: int) -> None:
     s, w = tlat * FEAT_TILE_DEG, tlon * FEAT_TILE_DEG
-    bbox = dict(s=f"{s:.4f}", w=f"{w:.4f}", n=f"{s + FEAT_TILE_DEG:.4f}", e=f"{w + FEAT_TILE_DEG:.4f}")
+    bbox = {"s": f"{s:.4f}", "w": f"{w:.4f}", "n": f"{s + FEAT_TILE_DEG:.4f}", "e": f"{w + FEAT_TILE_DEG:.4f}"}
     query = FEATURE_QUERY.format(**bbox)
     cloudlog.info(f"webhud: fetching map features {tlat}/{tlon} ({bbox['s']},{bbox['w']})")
     req = urllib.request.Request(OVERPASS_URL, data=urllib.parse.urlencode({"data": query}).encode(),
@@ -205,7 +205,10 @@ class MapFeatures:
           raise
         time.sleep(OVERPASS_RETRY_S)
     # split into the page's cells (a node on the tile's far edge stays in this tile)
-    cells: dict[tuple[int, int], list] = {(tlat * CELLS_PER_TILE + i, tlon * CELLS_PER_TILE + j): [] for i in range(CELLS_PER_TILE) for j in range(CELLS_PER_TILE)}
+    cells: dict[tuple[int, int], list] = {
+      (tlat * CELLS_PER_TILE + i, tlon * CELLS_PER_TILE + j): []
+      for i in range(CELLS_PER_TILE) for j in range(CELLS_PER_TILE)
+    }
     total = 0
     for el in data.get("elements", []):
       if el.get("type") != "node":
@@ -216,7 +219,7 @@ class MapFeatures:
       cells[(klat, klon)].append([el["id"], el["lat"], el["lon"], tags])
       total += 1
     os.makedirs(self.root, exist_ok=True)
-    now = int(time.time())
+    now = int(time.time())  # noqa: TID251 - persisted Unix timestamp, not an elapsed interval
     for (klat, klon), nodes in cells.items():
       cs, cw = klat * FEAT_DEG, klon * FEAT_DEG
       out = {"cell": [klat, klon], "bbox": [cs, cw, cs + FEAT_DEG, cw + FEAT_DEG], "at": now, "nodes": nodes}
@@ -282,7 +285,10 @@ class MapPrefetch:
   def request(self, lat: float, lon: float, radius_km: float) -> dict:
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
       raise ValueError("bad position")
-    radius_km = max(0.0, min(PREFETCH_MAX_KM, float(radius_km)))
+    radius_km = float(radius_km)
+    if not math.isfinite(radius_km):
+      raise ValueError("bad radius")
+    radius_km = max(0.0, min(PREFETCH_MAX_KM, radius_km))
     with self._lock:
       self._want = (lat, lon, radius_km)
       self._status.update(center=[round(lat, 5), round(lon, 5)], radius_km=radius_km)
@@ -338,6 +344,6 @@ class MapPrefetch:
       finally:
         with self._lock:
           self._status["busy"] = False
-          self._status["updated"] = int(time.time())
+          self._status["updated"] = int(time.time())  # noqa: TID251 - Unix timestamp displayed by the client
       if self._want != want:
         self._wake.set()

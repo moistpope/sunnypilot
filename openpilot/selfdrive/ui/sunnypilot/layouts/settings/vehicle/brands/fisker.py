@@ -22,8 +22,8 @@ class FiskerSettings(BrandSettings):
     # on-vehicle behaviour; off clears just that bit (ACC itself still engages).
     self.acc_auto_speed_toggle = toggle_item_sp(
       tr("ACC Auto-Speed"),
-      tr("Allow ACC to automatically adopt the posted speed limit as its target speed "
-         "(fed from TSR). When off, ACC holds the driver's last set speed until the "
+      tr("Allow ACC to automatically adopt the posted speed limit as its target speed " +
+         "(fed from TSR). When off, ACC holds the driver's last set speed until the " +
          "driver changes it with the wheel buttons."),
       param="FiskerACCAutoSpeed",
     )
@@ -33,7 +33,7 @@ class FiskerSettings(BrandSettings):
     # following distance, gentler acceleration profiles tuned for low-traction surfaces).
     self.acc_terrain_toggle = toggle_item_sp(
       tr("ACC Terrain Mode"),
-      tr("Signal to the ADAS module that ACC should run in Terrain mode — intended for "
+      tr("Signal to the ADAS module that ACC should run in Terrain mode — intended for " +
          "off-road / low-traction driving (longer follow gap, softer accel). Default off."),
       param="FiskerACCTerrain",
     )
@@ -44,8 +44,8 @@ class FiskerSettings(BrandSettings):
     # future trims that may support it, but keep it OFF on the Ocean.
     self.lateral_type_toggle = toggle_item_sp(
       tr("Use LCA / TJA instead of LKA (unsupported — raises DTC)"),
-      tr("Switch ADAS_LatCtrl_Typ from LKA (1) to LCA_or_TJA (3). The Ocean's EPS "
-         "RAISES AN ADAS DTC when it sees Typ=3 (confirmed on-vehicle), so leave this "
+      tr("Switch ADAS_LatCtrl_Typ from LKA (1) to LCA_or_TJA (3). The Ocean's EPS " +
+         "RAISES AN ADAS DTC when it sees Typ=3 (confirmed on-vehicle), so leave this " +
          "OFF. Kept in the UI for future trims that may support TJA. Default off (LKA)."),
       param="FiskerLateralType",
     )

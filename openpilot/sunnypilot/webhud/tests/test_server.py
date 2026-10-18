@@ -27,7 +27,7 @@ class TestServer(OpenpilotTestCase):
     super().setUp()
     self.tmp = tempfile.TemporaryDirectory()
     os.environ["LOG_ROOT"] = os.path.join(self.tmp.name, "realdata")
-    self.saved = (dict(values.ICC_SETTINGS_OVERRIDES), dict(values.ICC_0x35B_OVERRIDES))
+    self.saved = dict(values.ICC_0x35B_OVERRIDES)
     self.params = _DevParams(os.path.join(self.tmp.name, "params.json"))
     self.engine = Engine(self.params)
     api = OverridesApi(self.params, self.engine.builder, self.engine.monitor)
@@ -42,8 +42,8 @@ class TestServer(OpenpilotTestCase):
     self.server.shutdown()
     self.server.server_close()
     self.engine_thread.join(timeout=5)
-    values.ICC_SETTINGS_OVERRIDES.update(self.saved[0])
-    values.ICC_0x35B_OVERRIDES.update(self.saved[1])
+    values.ICC_0x35B_OVERRIDES.clear()
+    values.ICC_0x35B_OVERRIDES.update(self.saved)
     self.tmp.cleanup()
     super().tearDown()
 
@@ -100,15 +100,15 @@ class TestServer(OpenpilotTestCase):
   def test_overrides_api(self):
     status, body, _ = self.request("GET", "/api/overrides")
     data = json.loads(body)
-    assert status == 200 and data["supported"] and [t["message"] for t in data["tables"]] == ["ICC_0x52A", "ICC_0x35B"]
-    sig = next(s for s in data["tables"][0]["signals"] if s["name"] == "ICC_ACCSwt")
-    assert sig["default"] == 1 and sig["values"]
+    assert status == 200 and data["supported"] and [t["message"] for t in data["tables"]] == ["ICC_0x35B"]
+    sig = next(s for s in data["tables"][0]["signals"] if s["name"] == "ICC_BSDSetting")
+    assert sig["default"] == self.saved.get("ICC_BSDSetting") and sig["values"]
 
-    status, body, _ = self.request("PUT", "/api/overrides", {"ICC_0x52A": {"ICC_ACCSwt": 9}})
+    status, body, _ = self.request("PUT", "/api/overrides", {"ICC_0x35B": {"ICC_BSDSetting": 9}})
     assert status == 400 and b"outside" in body
     status, body, _ = self.request("PUT", "/api/overrides", {"ICC_0x35B": {"ICC_BSDSetting": 2}})
     assert status == 200 and self.params.get(PARAM) == {"ICC_0x35B": {"ICC_BSDSetting": 2}}
-    assert json.loads(body)["tables"][1]["customized"]
+    assert json.loads(body)["tables"][0]["customized"]
 
     status, _, _ = self.request("PUT", "/api/overrides", {"ICC_0x35B": {}}, headers={"Origin": "http://evil.example"})
     assert status == 403

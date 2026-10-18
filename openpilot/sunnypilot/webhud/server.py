@@ -27,6 +27,7 @@ import os
 import queue
 import shutil
 import socket
+import tempfile
 import threading
 import time
 from collections.abc import Callable
@@ -390,8 +391,8 @@ class HudHandler(BaseHTTPRequestHandler):
 
   def _body(self, limit: int = 1 << 20) -> bytes:
     n = int(self.headers.get("Content-Length", 0) or 0)
-    if n > limit:
-      raise ValueError("body too large")
+    if not 0 <= n <= limit:
+      raise ValueError("invalid body length")
     return self.rfile.read(n) if n else b""
 
   def _json_body(self):
@@ -662,19 +663,23 @@ def api_upload(h: HudHandler, q) -> None:
   head = h.rfile.read(min(n, 4))
   ext = ".zst" if head[:4] == b"\x28\xb5\x2f\xfd" else (".bz2" if head[:3] == b"BZh" else "")
   kind = "qlog" if "qlog" in name else "rlog"
-  route = f"upload-{time.strftime('%Y%m%d-%H%M%S')}"
-  seg_dir = os.path.join(upload_dir, f"{route}--0")
-  os.makedirs(seg_dir, exist_ok=True)
+  os.makedirs(upload_dir, exist_ok=True)
+  seg_dir = tempfile.mkdtemp(prefix=f"upload-{time.strftime('%Y%m%d-%H%M%S')}-", suffix="--0", dir=upload_dir)
+  route = os.path.basename(seg_dir)[:-3]
   dest = os.path.join(seg_dir, kind + ext)
-  with open(dest, "wb") as f:
-    f.write(head)
-    remaining = n - len(head)
-    while remaining > 0:
-      chunk = h.rfile.read(min(remaining, 1 << 20))
-      if not chunk:
-        break
-      f.write(chunk)
-      remaining -= len(chunk)
+  try:
+    with open(dest, "wb") as f:
+      f.write(head)
+      remaining = n - len(head)
+      while remaining > 0:
+        chunk = h.rfile.read(min(remaining, 1 << 20))
+        if not chunk:
+          raise ValueError("incomplete upload")
+        f.write(chunk)
+        remaining -= len(chunk)
+  except Exception:
+    shutil.rmtree(seg_dir, ignore_errors=True)
+    raise
   # keep only the newest uploads
   dirs = sorted((d for d in os.scandir(upload_dir) if d.is_dir()), key=lambda d: d.stat().st_mtime, reverse=True)
   for old in dirs[MAX_UPLOADS_KEPT:]:

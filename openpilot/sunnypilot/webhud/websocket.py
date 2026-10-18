@@ -47,10 +47,13 @@ def encode_frame(payload: bytes, opcode: int = OP_TEXT, mask: bytes | None = Non
 
 
 def _read_exact(rfile, n: int) -> bytes:
-  buf = rfile.read(n)
-  if buf is None or len(buf) < n:
-    raise WebSocketClosed("connection closed")
-  return buf
+  buf = bytearray()
+  while len(buf) < n:
+    chunk = rfile.read(n - len(buf))
+    if not chunk:
+      raise WebSocketClosed("connection closed")
+    buf.extend(chunk)
+  return bytes(buf)
 
 
 def read_frame(rfile) -> tuple[bool, int, bytes]:
@@ -97,6 +100,7 @@ class WebSocket:
   def recv(self) -> str | None:
     """Next text message, or None once the peer closed."""
     parts: list[bytes] = []
+    size = 0
     while True:
       try:
         fin, opcode, payload = read_frame(self.rfile)
@@ -117,7 +121,8 @@ class WebSocket:
         return None
       if opcode in (OP_TEXT, OP_BINARY, OP_CONT):
         parts.append(payload)
-        if sum(len(p) for p in parts) > MAX_MESSAGE:
+        size += len(payload)
+        if size > MAX_MESSAGE:
           self.close()
           return None
         if fin:
