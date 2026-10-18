@@ -54,10 +54,10 @@ function direction(xs, ys, i) {
 }
 
 /** The centers of the lanes going our way, m left of the carriageway's centerline, rightmost first. */
-export function laneCenters(lanes, oneWay, W = LANE_W) {
+export function laneCenters(lanes, oneWay, W = LANE_W, leftTraffic = false) {
   if (oneWay) { const n = Math.max(1, lanes); return Array.from({ length: n }, (_, k) => -n * W / 2 + (k + 0.5) * W); }
   const n = Math.max(2, lanes), ours = Math.max(1, Math.floor(n / 2)), turn = n % 2 ? W / 2 : 0;   // an odd count: a center turn lane
-  return Array.from({ length: ours }, (_, k) => -turn - (ours - k - 0.5) * W);
+  return Array.from({ length: ours }, (_, k) => leftTraffic ? turn + (k + 0.5) * W : -turn - (ours - k - 0.5) * W);
 }
 
 /** A fresh placement state (kept by the view between frames). */
@@ -78,7 +78,7 @@ export function placeInLane(place, frame, road, dt) {
   // the lane width is the map's (LANE_W): the network's lines are drawn with it for every road, ours included, so the
   // placement must count in the same lanes (the cameras' measured width would put the two out of step)
   const W = p.laneW;
-  const centers = laneCenters(frame.lanes, frame.oneWay, W);
+  const centers = laneCenters(frame.lanes, frame.oneWay, W, frame.leftTraffic);
   const Lmap = -frame.yMap0;   // the car's offset from the centerline (m left) by the pose
   // the ego lane's center at the car: measured, else the last one decaying to the lane's center
   let yCenter;
@@ -95,8 +95,8 @@ export function placeInLane(place, frame, road, dt) {
     yCenter = p.hold;
   }
   if (p.lane == null) {
-    // first placement: the lane whose implied position is nearest the GPS's; a two-way road without lanes seen: the right lane
-    let best = 0;
+    // first placement: the lane whose implied position is nearest the GPS's; a two-way road without lanes seen: the outer lane on our traffic side
+    let best = frame.leftTraffic && !frame.oneWay ? centers.length - 1 : 0;
     if (shown || frame.oneWay) {
       let err = Infinity;
       centers.forEach((d, i) => { const e = Math.abs((d - yCenter) - Lmap); if (e < err) { err = e; best = i; } });
@@ -164,7 +164,7 @@ export function mapReference(map, pose, road, settings, rearAxleZ = REAR_AXLE_TO
   const [, yMap0, seg0] = sample(xs, ys, st, 0);
   const [ux, uy] = direction(xs, ys, seg0);
   const hMap = Math.atan2(uy, ux);
-  const pl = placeInLane(place, { yMap0, hMap, lanes, oneWay: !!way.oneWay, wayId: way.id }, road, dt);
+  const pl = placeInLane(place, { yMap0, hMap, lanes, oneWay: !!way.oneWay, wayId: way.id, leftTraffic: settings?.trafficSide === 'left' }, road, dt);
   const W = pl.laneW, half = lanes * W / 2, shift = pl.shift, dh = pl.dh;
   // the rigid placement: rotate about the car's spot on the line (station 0), slide sideways
   const px0 = 0, py0 = yMap0;
@@ -195,7 +195,7 @@ export function mapReference(map, pose, road, settings, rearAxleZ = REAR_AXLE_TO
   // two-way road (both edges of a center turn lane), the boundaries between lanes, the edges. The two lines
   // bounding the lane the car is drawn in are tagged L1 / R1 so the view can color them as the ego lane's.
   const structure = [];
-  const centers = laneCenters(lanes, !!way.oneWay, W);
+  const centers = laneCenters(lanes, !!way.oneWay, W, settings?.trafficSide === 'left');
   const egoR = pl.laneCenter - W / 2, egoL = pl.laneCenter + W / 2;
   const tag = (d) => (Math.abs(d - egoR) < 1e-6 ? 'R1' : Math.abs(d - egoL) < 1e-6 ? 'L1' : null);
   const push = (d, kind) => structure.push({ d, kind, ego: tag(d) });
@@ -230,7 +230,7 @@ export function mapReference(map, pose, road, settings, rearAxleZ = REAR_AXLE_TO
     reach: st[n - 1], back: -st[0], fade: map.ended ? END_FADE : FAR_FADE,
     centerY0, yMap0, shift, rotated: dh,   // the placement: the map line's y at the bumper by the pose, the slide and the turn about (0, yMap0)
     lane: pl.lane, laneW: W, laneCenter: pl.laneCenter, lanesShown: pl.shown,
-    ourLeft: way.oneWay ? half : -(lanes % 2 ? W / 2 : 0), ourRight: -half,   // our carriageway's bounds, m left of the reference line
+    ourLeft: way.oneWay || settings?.trafficSide === 'left' ? half : -(lanes % 2 ? W / 2 : 0), ourRight: !way.oneWay && settings?.trafficSide === 'left' ? (lanes % 2 ? W / 2 : 0) : -half,   // our carriageway's bounds, m left of the reference line
     branches, structure,
     lanes, oneWay: !!way.oneWay,
   };

@@ -1,3 +1,4 @@
+import { leftTraffic } from './regional.js';
 // three.js car view. World objects (vehicles, people) are 3D; road markings are flat ribbons.
 //
 // Vehicle frame (server data): x forward, y left, meters, origin = ego front bumper.
@@ -1410,7 +1411,7 @@ export class CarScene {
     }
     src.fade = Math.max(0, Math.min(1, src.fade + (src.mode === 'map' ? dt : -dt) / MAP_FADE_S));
     const zr = this.ego.userData.rearAxleZ ?? REAR_AXLE_Z;
-    this.mapRef = src.mode === 'map' && this.lastMap ? mapReference(this.lastMap, this.pose, this.roadOut, s, zr, this.place, dt, src.fade) : null;
+    this.mapRef = src.mode === 'map' && this.lastMap ? mapReference(this.lastMap, this.pose, this.roadOut, { ...s, trafficSide: leftTraffic(s, this.state?.fisker) ? 'left' : 'right' }, zr, this.place, dt, src.fade) : null;
     this.mapFrame = this.mapRef ? mapRoadFrame(this.mapRef, this.road.odo) : null;
     this.field.update(this.roadOut, this.ground, s.showRoad === false ? 0 : this.roadTint, this.mapRef);
     // the map around the car: the roads (ground-fixed; a new layer arrives as the car moves) and what stands along them.

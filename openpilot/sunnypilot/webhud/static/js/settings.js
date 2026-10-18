@@ -257,6 +257,12 @@ export class Settings {
       this.app.segmented([['auto', 'Auto'], ['light', 'Day'], ['dark', 'Night']], s.theme, v => set('theme', v))));
     body.append(el('div.section', el('h3', 'Speed units'),
       this.app.segmented([['auto', 'Follow cluster'], ['mph', 'mph'], ['kmh', 'km/h']], s.units, v => set('units', v))));
+    body.append(el('div.section', el('h3', 'Traffic side'),
+      el('p.desc', 'Which side of a two-way road to drive on. For the UK, choose Left.'),
+      this.app.segmented([['auto', 'Follow car'], ['left', 'Left (UK)'], ['right', 'Right']], s.trafficSide || 'auto', v => set('trafficSide', v))));
+    body.append(el('div.section', el('h3', 'Camera speed-sign units'),
+      el('p.desc', 'Units of the number read from signs, before display conversion. Choose mph for UK signs if Follow car converts them incorrectly.'),
+      this.app.segmented([['auto', 'Follow car'], ['mph', 'mph'], ['kmh', 'km/h']], s.cameraSignUnits || 'auto', v => set('cameraSignUnits', v))));
     const paint = oceanPaint(s.egoPaint);
     body.append(el('div.section', el('h3', 'Paint', el('small', `${paint.name} · ${paint.finish.toLowerCase()}`)),
       el('div.swatches', OCEAN_PAINTS.map(p => el('button.swatch' + (p === paint ? '.on' : ''),

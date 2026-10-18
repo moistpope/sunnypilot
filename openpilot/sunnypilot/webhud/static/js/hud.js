@@ -1,3 +1,4 @@
+import { cameraSignUnit, cameraSignValue } from './regional.js';
 // DOM overlay: speed, gear, steering assist (MADS), ACC set speed + gap, speed limit, telltales, alerts.
 import { $, $$, el, icon, iconSvg, setClass, setText, prettyLabel, MS_TO_KPH, MS_TO_MPH } from './util.js';
 import { EnergyDetails } from './energy.js';
@@ -138,7 +139,7 @@ export class Hud {
     setClass(this.blinkR, 'on', vehicle.lamps.right);
 
     this._assist(op, f, unit, conv);
-    this._limit(op, f, unit, conv, v);
+    this._limit(op, f, unit, conv, v, settings);
     this._telltales(op, f, cs, lights);
     this._alerts(state, op, f);
     this._roadinfo(f, unit);
@@ -231,13 +232,13 @@ export class Hud {
     if (text) this.assistText.append(latCls === 'active' || engaged ? el('b', text) : text);
   }
 
-  _limit(op, f, unit, conv, v) {
+  _limit(op, f, unit, conv, v, settings) {
     let value = null, style = unit === 'kmh' ? 'eu' : 'us';
     const tsr = f && f.tsr;
     if (tsr && tsr.speedLimit) {
-      value = tsr.speedLimit;
-      style = tsr.unit === 'kmh' ? 'eu' : 'us';
-      if (tsr.unit && tsr.unit !== unit) value = Math.round(tsr.speedLimit * (unit === 'kmh' ? 1.609344 : 1 / 1.609344));
+      value = cameraSignValue(settings, tsr, unit);
+      const sourceUnit = cameraSignUnit(settings, tsr);
+      style = sourceUnit === 'kmh' ? 'eu' : 'us';
     } else {
       const sl = op.longitudinalPlanSP && op.longitudinalPlanSP.speedLimit;
       const ms = sl && sl.valid && sl.value > 0 ? sl.value : (op.liveMapDataSP && op.liveMapDataSP.speedLimit);

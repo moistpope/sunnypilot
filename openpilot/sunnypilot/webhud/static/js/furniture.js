@@ -1,3 +1,4 @@
+import { cameraSignUnit, leftTraffic } from './regional.js';
 // Traffic lights, signs and road markings, placed where they most likely are.
 //
 // All of it comes from the car's ADAS camera (fisker.tlr / fisker.tsr / fisker.road), which gives
@@ -321,7 +322,7 @@ export class RoadFurniture {
     const key = JSON.stringify(spec);
     if (this.odo - (this.lastSpawn.get(key) ?? -1e9) < 120) return;   // same sign again within 120 m
     this.lastSpawn.set(key, this.odo);
-    const left = f.road && f.road.trafficSide === 'Left_Hand_Traffic';
+    const left = leftTraffic(this.settings, f);
     const sign = makeSign(spec);
     // SIGN_AHEAD m down the road, beyond the outer lane on our side (a typical shoulder's width out
     // while the lanes aren't sure enough to show)
@@ -363,6 +364,7 @@ export class RoadFurniture {
     const f = (state && state.fisker) || null;
     const v = vehicle ? vehicle.v : 0;
     this.odo += Math.abs(v) * dt;
+    this.settings = settings;
     const showSigns = settings.showSigns !== false;
 
     // traffic light
@@ -373,7 +375,7 @@ export class RoadFurniture {
     const moving = Math.abs(v) > 1.5;
     if (showSigns && f) {
       const plate = { School: 'SCHOOL', School_when_flashing: 'SCHOOL', End_of_Speed_Limit: 'END', Where_Workers_Present: 'WORK ZONE' }[tsr.condition];
-      const limit = tsr.speedLimit ? { kind: 'limit', value: tsr.speedLimit, unit: tsr.unit || 'kmh', ...(plate ? { plate } : {}) } : null;
+      const limit = tsr.speedLimit ? { kind: 'limit', value: tsr.speedLimit, unit: cameraSignUnit(settings, tsr) || 'kmh', ...(plate ? { plate } : {}) } : null;
       const read = tsr.state && tsr.state.n === 'Vision_Mode' && !(this.prev.state === 'Vision_Mode');
       const changed = limit && this.prev.limit && JSON.stringify(limit) !== this.prev.limit;
       if (limit && moving && (changed || read)) this._spawn(limit, f, road, vehicle, toScene);
