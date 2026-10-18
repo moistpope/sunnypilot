@@ -215,6 +215,17 @@ export class Settings {
       el('p.desc', 'openpilot driving personality (used with openpilot longitudinal control). The Fisker ADAS time gap is set with the steering wheel buttons.'),
       this.app.segmented([['0', 'Aggressive'], ['1', 'Standard'], ['2', 'Relaxed']], String(p.LongitudinalPersonality ?? 1), v => put({ LongitudinalPersonality: Number(v) })),
     ));
+    if (typeof p.FiskerACCTerrain === 'boolean') {
+      body.append(el('div.section',
+        el('h3', 'Fisker ACC'),
+        el('div.row', el('div.lbl', el('b', 'ACC Terrain Mode'),
+          el('small', 'Enable the factory ACC terrain setting. Its effect on driving behavior is unverified. Save while parked, then restart the comma to apply.')),
+          this.app.switch(p.FiskerACCTerrain, v => put({ FiskerACCTerrain: v }))),
+      ));
+    } else {
+      body.append(el('div.section', el('h3', 'Fisker ACC'),
+        el('p.desc', 'ACC Terrain Mode requires an updated comma WebHUD server.')));
+    }
     body.append(el('div.section', el('div.rows',
       el('div.row', el('div.lbl', el('b', 'Experimental mode'), el('small', 'End-to-end longitudinal from the driving model.')),
         this.app.switch(!!p.ExperimentalMode, v => put({ ExperimentalMode: v }))),

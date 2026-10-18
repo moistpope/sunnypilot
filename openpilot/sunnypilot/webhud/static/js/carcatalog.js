@@ -221,7 +221,7 @@ export const CATEGORIES = [
           T('icc.autoSpeed', 'Set speed follows the limit', false, null, { off: ADAS }),                                    // ICC_ACCAutoSpdSts
           S('icc.offsetType', 'Over the limit', [[0, 'Never'], [1, 'Percent'], [2, 'Fixed']], 1, null, { off: ADAS }),      // ICC_ACCSpdLimOffsTyp
           S('icc.step', 'Set-speed step', [[0, '1'], [1, '5']], 1, null, { off: ADAS }),                                    // ICC_ACCSpdStepSize
-          T('icc.terrain', 'Slow for curves and hills', true, null, { off: ADAS }),                                         // ICC_ACCTerrainSetting
+          T('icc.terrain', 'ACC Terrain Mode', false, null, { off: 'Set under the gear menu → Driving → ACC Terrain Mode; restart the comma to apply' }),                                         // ICC_ACCTerrainSetting
           T('icc.lcAssist', 'Lane change assist', true, null, { off: ADAS }),                                               // ICC_EnbLnChgAsst
           T('icc.trajectory', 'Show the planned path', true, null, { off: ADAS }),                                          // ICC_LaneTrajectorySetting
         ],

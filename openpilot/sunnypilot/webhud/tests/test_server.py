@@ -122,6 +122,14 @@ class TestServer(OpenpilotTestCase):
     assert self.request("PUT", "/api/params", {"LongitudinalPersonality": 7})[0] == 400
     assert self.request("PUT", "/api/params", {"DisableUpdates": True})[0] == 400
 
+  def test_acc_terrain_param(self):
+    for enabled in (True, False):
+      status, body, _ = self.request("PUT", "/api/params", {"FiskerACCTerrain": enabled})
+      assert status == 200 and json.loads(body)["FiskerACCTerrain"] is enabled
+      assert self.params.get_bool("FiskerACCTerrain") is enabled
+      status, body, _ = self.request("GET", "/api/params")
+      assert status == 200 and json.loads(body)["FiskerACCTerrain"] is enabled
+
   def test_websocket_streams_demo_ticks(self):
     sock = socket.create_connection(("127.0.0.1", self.port), timeout=10)
     key = base64.b64encode(os.urandom(16)).decode()

@@ -61,6 +61,7 @@ PARAM_ALLOWLIST: dict[str, tuple[type, Callable[[int], bool] | None]] = {
   "LongitudinalPersonality": (int, lambda v: v in (0, 1, 2)),
   "ExperimentalMode": (bool, None),
   "IsMetric": (bool, None),
+  "FiskerACCTerrain": (bool, None),
 }
 
 
